@@ -1,6 +1,7 @@
 """Prashna — live Q&A + quiz tool for training sessions."""
 from __future__ import annotations
 
+import os
 import secrets
 import uuid
 from collections import Counter
@@ -35,8 +36,8 @@ from .ws import hub
 
 BASE = Path(__file__).resolve().parent.parent
 STATIC = BASE / "static"
-UPLOADS = BASE / "uploads"
-UPLOADS.mkdir(exist_ok=True)
+UPLOADS = Path(os.environ.get("PRASHNA_UPLOADS_DIR") or (BASE / "uploads"))
+UPLOADS.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 

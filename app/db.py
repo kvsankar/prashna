@@ -1,8 +1,12 @@
+import os
 from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DB_PATH = Path(__file__).resolve().parent.parent / "prashna.db"
+# Allow the DB location to be overridden via env (Docker volume in prod).
+DB_PATH = Path(os.environ.get("PRASHNA_DB_PATH") or
+               Path(__file__).resolve().parent.parent / "prashna.db")
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
     connect_args={"check_same_thread": False},
