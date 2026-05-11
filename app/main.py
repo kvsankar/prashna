@@ -22,9 +22,11 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from contextlib import asynccontextmanager
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession, selectinload
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -40,8 +42,18 @@ UPLOADS.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 PRESENCE_WINDOW = timedelta(seconds=30)
+# Throttle last_seen_at writes — SQLite is single-writer; updating per request
+# bottlenecks under load. Idle polls touch the row at most once per this window.
+LAST_SEEN_THROTTLE = timedelta(seconds=5)
 
-app = FastAPI(title="Prashna")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Prashna", lifespan=lifespan)
 
 
 class UploadsSecurityHeaders(BaseHTTPMiddleware):
@@ -57,11 +69,6 @@ class UploadsSecurityHeaders(BaseHTTPMiddleware):
 
 
 app.add_middleware(UploadsSecurityHeaders)
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
 
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
@@ -154,8 +161,11 @@ def current_participant(
         db.commit()
         db.refresh(p)
     else:
-        p.last_seen_at = datetime.utcnow()
-        db.commit()
+        # Throttle: skip the write if last_seen_at is fresh enough already.
+        now = datetime.utcnow()
+        if now - p.last_seen_at >= LAST_SEEN_THROTTLE:
+            p.last_seen_at = now
+            db.commit()
     if fresh:
         _set_voter_cookie(request, response, token)
     return p
@@ -321,7 +331,9 @@ def _ensure_current_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion:
     """Return the version that captures the quiz's current editable tree.
 
     Creates a new version only if the editable tree has been touched since the
-    latest version was captured.
+    latest version was captured. Race-safe: if two requests both try to create
+    version N+1, the UNIQUE(quiz_id, version_no) constraint causes one to
+    fail; we catch and return the winner's version.
     """
     latest = _latest_version(db, quiz)
     if latest and latest.created_at >= quiz.last_edited_at:
@@ -330,7 +342,14 @@ def _ensure_current_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion:
     next_no = (latest.version_no + 1) if latest else 1
     version = m.QuizVersion(quiz_id=quiz.id, version_no=next_no, quiz_title=quiz.title)
     db.add(version)
-    db.flush()  # get version.id
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        winner = _latest_version(db, quiz)
+        if winner is None:
+            raise
+        return winner
     for it in quiz.items:
         vit = m.QuizVersionItem(
             version_id=version.id,
@@ -639,9 +658,13 @@ async def toggle_vote(
     db: DbSession = Depends(get_db),
 ):
     s = get_session_by_code(db, code)
+    if s.status == "ended":
+        raise HTTPException(400, "Session has ended")
     q = db.get(m.Question, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
+    if q.removed_at is not None:
+        raise HTTPException(404)  # invisible to participants
     p = current_participant(s, request, response, voter_token, db)
     existing = db.scalar(
         select(m.QuestionVote).where(
@@ -833,6 +856,15 @@ def delete_quiz(
     me: m.User = Depends(auth.current_admin),
 ):
     quiz = _owned_quiz_or_404(db, quiz_id, me)
+    # Preserve session data: refuse to delete if any version has been used in a run.
+    used = db.scalar(
+        select(m.QuizRun.id)
+        .join(m.QuizVersion, m.QuizRun.quiz_version_id == m.QuizVersion.id)
+        .where(m.QuizVersion.quiz_id == quiz_id)
+        .limit(1)
+    )
+    if used:
+        raise HTTPException(400, "Quiz has been used in a session run and cannot be deleted")
     db.delete(quiz)
     db.commit()
     return {"ok": True}
@@ -1160,16 +1192,6 @@ async def start_quiz_run(
     s, run = _get_run_mod(db, code, run_id, x_mod_key)
     if run.status != "queued":
         raise HTTPException(400, f"Cannot start from status: {run.status}")
-    # One live run at a time per session.
-    other_live = db.scalar(
-        select(m.QuizRun).where(
-            m.QuizRun.session_id == s.id,
-            m.QuizRun.status == "live",
-            m.QuizRun.id != run.id,
-        )
-    )
-    if other_live:
-        raise HTTPException(409, "Another quiz is already live — close it first.")
     # Auto-advance Session: planning → live the first time a quiz starts.
     if s.status == "planning":
         s.status = "live"
@@ -1178,7 +1200,14 @@ async def start_quiz_run(
     run.current_item_idx = 0
     run.reveal_current = False
     run.started_at = datetime.utcnow()
-    db.commit()
+    # "At most one live run per session" is enforced by a partial unique index
+    # (uq_session_live_run). If a concurrent Start already won, the commit
+    # below raises IntegrityError; we surface 409.
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Another quiz is already live — close it first.")
     await broadcast_session(s, "quiz_run_update")
     return {"ok": True}
 
@@ -1289,11 +1318,19 @@ async def respond_quiz_run(
     db: DbSession = Depends(get_db),
 ):
     s = get_session_by_code(db, code)
+    if s.status == "ended":
+        raise HTTPException(400, "Session has ended")
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id or run.status != "live":
         raise HTTPException(404, "Quiz not live")
     item_id = payload.get("item_id")
-    option_ids = payload.get("option_ids") or []
+    option_ids_raw = payload.get("option_ids") or []
+    if not isinstance(option_ids_raw, list):
+        raise HTTPException(400, "option_ids must be a list")
+    try:
+        option_ids = [int(o) for o in option_ids_raw]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "option_ids must be integers")
     vit = db.get(m.QuizVersionItem, item_id)
     if not vit or vit.version_id != run.quiz_version_id:
         raise HTTPException(404, "Item not in this quiz run")

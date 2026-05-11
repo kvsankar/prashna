@@ -139,11 +139,15 @@
       const live = rows.find(r => r.status === "live");
       const closed = rows.find(r => r.status === "closed");
       activeQuiz = live || closed || null;
+      // Reset working selection only when the item actually changes. On same-item
+      // refreshes (WS-driven), preserve whatever the user has been clicking
+      // before they submit. After submit, my_selections will match anyway.
       if (activeQuiz && activeQuiz.current_item && activeQuiz.current_item.id !== lastItemId) {
         pendingSelection = new Set(activeQuiz.my_selections || []);
         lastItemId = activeQuiz.current_item.id;
-      } else if (activeQuiz) {
-        pendingSelection = new Set(activeQuiz.my_selections || []);
+      } else if (!activeQuiz) {
+        pendingSelection = new Set();
+        lastItemId = null;
       }
       renderQuiz();
     }
@@ -174,15 +178,20 @@
       for (const op of q.options) {
         const selected = pendingSelection.has(op.id);
         const pct = totals ? Math.round((totals[op.id] || 0) / respondents * 100) : 0;
-        const opDiv = el("div", {
+        const onPick = () => {
+          if (locked) return;
+          if (q.qtype === "single") { pendingSelection = new Set([op.id]); }
+          else { pendingSelection.has(op.id) ? pendingSelection.delete(op.id) : pendingSelection.add(op.id); }
+          renderQuiz();
+        };
+        const opDiv = el("button", {
+          type: "button",
+          disabled: locked,
+          "aria-pressed": String(selected),
           class: "option" + (selected ? " selected" : "") + (locked ? " disabled" : "") +
                  (showResults && op.is_correct === true ? " correct" : "") +
                  (showResults && selected && op.is_correct === false ? " wrong" : ""),
-          onclick: locked ? null : () => {
-            if (q.qtype === "single") { pendingSelection = new Set([op.id]); }
-            else { pendingSelection.has(op.id) ? pendingSelection.delete(op.id) : pendingSelection.add(op.id); }
-            renderQuiz();
-          },
+          onclick: onPick,
         });
         if (showResults) {
           const bar = el("div", { class: "bar" });

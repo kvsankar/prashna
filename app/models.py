@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Index, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
@@ -189,6 +189,17 @@ class QuizVersionOption(Base):
 class QuizRun(Base):
     """One playthrough of a QuizVersion inside a Session."""
     __tablename__ = "quiz_runs"
+    __table_args__ = (
+        # Enforce "at most one live QuizRun per Session" at the storage layer.
+        # Partial unique index — SQLite & Postgres both support this syntax.
+        Index(
+            "uq_session_live_run",
+            "session_id",
+            unique=True,
+            sqlite_where=text("status = 'live'"),
+            postgresql_where=text("status = 'live'"),
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
     quiz_version_id: Mapped[int] = mapped_column(ForeignKey("quiz_versions.id", ondelete="CASCADE"), index=True)
@@ -208,6 +219,8 @@ class QuizResponse(Base):
     __tablename__ = "quiz_responses"
     __table_args__ = (
         UniqueConstraint("quiz_run_id", "item_id", "option_id", "participant_id", name="uq_qresp"),
+        # Tally queries filter by (quiz_run_id, item_id); back this with an index.
+        Index("ix_qresp_run_item", "quiz_run_id", "item_id"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     quiz_run_id: Mapped[int] = mapped_column(ForeignKey("quiz_runs.id", ondelete="CASCADE"), index=True)

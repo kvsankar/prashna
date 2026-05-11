@@ -78,7 +78,11 @@ export function openLiveSocket(code, onMessage) {
 }
 
 export function toast(msg, { error = false, duration = 2800 } = {}) {
-  const t = el("div", { class: "toast" + (error ? " toast-error" : "") }, msg);
+  const t = el("div", {
+    class: "toast" + (error ? " toast-error" : ""),
+    role: "status",
+    "aria-live": error ? "assertive" : "polite",
+  }, msg);
   document.body.appendChild(t);
   setTimeout(() => t.remove(), duration);
 }
