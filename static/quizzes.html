@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — quiz library</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Quiz library</h1>
+    <div class="meta">
+      <a href="/">← home</a>
+    </div>
+  </header>
+
+  <main class="wide">
+    <section class="card">
+      <h2>Quizzes</h2>
+      <p class="muted small" style="margin-top: -4px;">Author quiz <em>templates</em> here. Mark one as <strong>Ready</strong> when complete, then attach it to a session from that session's moderator page.</p>
+      <div class="row" style="margin-bottom: 12px;">
+        <input id="new-quiz-title" placeholder="Quiz title">
+        <button class="primary" id="create-quiz">Create</button>
+      </div>
+      <div id="quiz-list" class="quiz-list"></div>
+    </section>
+
+    <section class="card" id="editor-card" style="display:none;">
+      <h2>Editor</h2>
+      <div id="editor"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { $, api, el, escapeHtml } from "/static/common.js";
+
+    let editingId = null;
+    let editing = null;
+
+    async function loadList() {
+      const list = await api("/api/quizzes");
+      const root = $("#quiz-list");
+      root.innerHTML = "";
+      if (!list.length) {
+        root.appendChild(el("div", { class: "muted small" }, "No quizzes yet."));
+        return;
+      }
+      for (const q of list) {
+        const isReady = q.status === "ready";
+        const badge = el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft");
+        const toggleBtn = isReady
+          ? el("button", { class: "ghost", onclick: () => unpublishQuiz(q.id) }, "Move to draft")
+          : el("button", { class: "primary", onclick: () => publishQuiz(q.id) }, "Mark as ready");
+        root.appendChild(el("div", { class: "quiz-row" },
+          el("div", { class: "spacer" },
+            el("strong", {}, q.title),
+            " ", badge,
+            el("span", { class: "muted small" }, ` · ${q.question_count} question(s)`)),
+          toggleBtn,
+          el("button", { onclick: () => openEditor(q.id) }, "Edit"),
+          el("button", { class: "danger ghost", onclick: () => removeQuiz(q.id) }, "Delete"),
+        ));
+      }
+    }
+
+    $("#create-quiz").addEventListener("click", async () => {
+      const title = $("#new-quiz-title").value.trim();
+      if (!title) return;
+      try {
+        const q = await api("/api/quizzes", { method: "POST", body: { title } });
+        $("#new-quiz-title").value = "";
+        await loadList();
+        openEditor(q.id);
+      } catch (e) { alert(e.message); }
+    });
+
+    async function removeQuiz(id) {
+      if (!confirm("Delete this quiz template?")) return;
+      try {
+        await api(`/api/quizzes/${id}`, { method: "DELETE" });
+        if (editingId === id) { editingId = null; $("#editor-card").style.display = "none"; }
+        loadList();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function publishQuiz(id) {
+      try {
+        await api(`/api/quizzes/${id}/publish`, { method: "POST" });
+        loadList();
+        if (editingId === id) openEditor(id);
+      } catch (e) { alert("Can't publish: " + e.message); }
+    }
+
+    async function unpublishQuiz(id) {
+      try {
+        await api(`/api/quizzes/${id}/unpublish`, { method: "POST" });
+        loadList();
+        if (editingId === id) openEditor(id);
+      } catch (e) { alert(e.message); }
+    }
+
+    async function openEditor(id) {
+      editingId = id;
+      editing = await api(`/api/quizzes/${id}?include_correct=true`);
+      $("#editor-card").style.display = "";
+      renderEditor();
+    }
+
+    function renderEditor() {
+      const root = $("#editor");
+      root.innerHTML = "";
+      const isReady = editing.status === "ready";
+      const badge = el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft");
+      const banner = isReady
+        ? el("div", { class: "info-banner" }, "This quiz is Ready. Any edit will move it back to Draft and you'll need to re-publish before launching it in new sessions.")
+        : null;
+      root.appendChild(el("div", { class: "row", style: "margin-bottom: 8px;" }, badge));
+      if (banner) root.appendChild(banner);
+
+      const titleInp = el("input", { value: editing.title });
+      titleInp.addEventListener("change", async () => {
+        const r = await api(`/api/quizzes/${editing.id}`, { method: "PATCH", body: { title: titleInp.value } });
+        editing.title = titleInp.value;
+        if (r && r.status) editing.status = r.status;
+        loadList();
+        renderEditor();
+      });
+      root.appendChild(el("div", { class: "row", style: "margin-bottom: 12px;" },
+        el("label", { class: "small muted" }, "Title:"), titleInp));
+
+      for (const qq of editing.questions) root.appendChild(renderQuestion(qq));
+
+      const addQBtn = el("button", { class: "primary", onclick: addQuestion }, "+ Add question");
+      root.appendChild(el("div", { style: "margin-top: 12px;" }, addQBtn));
+    }
+
+    function renderQuestion(qq) {
+      const textInp = el("textarea", {}, qq.text);
+      textInp.addEventListener("change", () => patchQuestion(qq.id, { text: textInp.value }));
+
+      const typeSel = el("select");
+      for (const t of ["single", "multi"]) {
+        const o = el("option", { value: t }, t === "single" ? "Single choice" : "Multiple choice");
+        if (qq.qtype === t) o.setAttribute("selected", "");
+        typeSel.appendChild(o);
+      }
+      typeSel.addEventListener("change", () => patchQuestion(qq.id, { qtype: typeSel.value }));
+
+      const imgWrap = el("div", { class: "row" });
+      if (qq.image_url) imgWrap.appendChild(el("img", { src: qq.image_url, style: "max-height: 80px; border-radius: 4px;" }));
+      const imgInp = el("input", { type: "file", accept: "image/*" });
+      imgInp.addEventListener("change", async () => {
+        if (!imgInp.files[0]) return;
+        const url = await uploadImage(imgInp.files[0]);
+        await patchQuestion(qq.id, { image_url: url });
+        openEditor(editingId);
+      });
+      const clearImgBtn = qq.image_url ? el("button", { class: "ghost", onclick: async () => {
+        await patchQuestion(qq.id, { image_url: null });
+        openEditor(editingId);
+      } }, "Clear image") : null;
+      imgWrap.appendChild(imgInp);
+      if (clearImgBtn) imgWrap.appendChild(clearImgBtn);
+
+      const opts = el("div");
+      for (const op of qq.options) opts.appendChild(renderOption(qq, op));
+      const addOpt = el("button", { onclick: async () => {
+        await api(`/api/quiz_questions/${qq.id}/options`, {
+          method: "POST", body: { text: "New option" },
+        });
+        openEditor(editingId);
+      } }, "+ Add option");
+
+      const delBtn = el("button", { class: "danger ghost", onclick: async () => {
+        if (!confirm("Delete this question?")) return;
+        await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" });
+        openEditor(editingId);
+      } }, "Delete question");
+
+      return el("div", { class: "editor-q" },
+        el("div", { class: "row", style: "margin-bottom: 8px;" },
+          el("strong", {}, `Q${qq.order_index + 1}`), typeSel,
+          el("div", { class: "spacer" }), delBtn,
+        ),
+        textInp,
+        el("div", { class: "small muted", style: "margin: 8px 0 4px;" }, "Image (optional):"),
+        imgWrap,
+        el("div", { class: "small muted", style: "margin: 12px 0 4px;" }, "Options:"),
+        opts, addOpt,
+      );
+    }
+
+    function renderOption(qq, op) {
+      const txt = el("input", { type: "text", value: op.text });
+      txt.addEventListener("change", () => patchOption(op.id, { text: txt.value }));
+
+      const correctBox = el("input", { type: "checkbox" });
+      if (op.is_correct) correctBox.setAttribute("checked", "");
+      correctBox.addEventListener("change", () => patchOption(op.id, { is_correct: correctBox.checked }));
+
+      const imgInp = el("input", { type: "file", accept: "image/*", style: "width: auto;" });
+      imgInp.addEventListener("change", async () => {
+        if (!imgInp.files[0]) return;
+        const url = await uploadImage(imgInp.files[0]);
+        await patchOption(op.id, { image_url: url });
+        openEditor(editingId);
+      });
+
+      const del = el("button", { class: "danger ghost", onclick: async () => {
+        await api(`/api/quiz_options/${op.id}`, { method: "DELETE" });
+        openEditor(editingId);
+      } }, "✕");
+
+      const row = el("div", { class: "editor-opt" },
+        el("label", { class: "small", title: "Mark correct" }, correctBox, " correct"),
+        txt,
+      );
+      if (op.image_url) row.appendChild(el("img", { src: op.image_url, style: "max-height: 40px; border-radius: 4px;" }));
+      row.appendChild(imgInp);
+      row.appendChild(del);
+      return row;
+    }
+
+    async function patchQuestion(id, body) {
+      try {
+        await api(`/api/quiz_questions/${id}`, { method: "PATCH", body });
+        editing.status = "draft";
+        loadList();
+        renderEditor();
+      } catch (e) { alert(e.message); }
+    }
+    async function patchOption(id, body) {
+      try {
+        await api(`/api/quiz_options/${id}`, { method: "PATCH", body });
+        editing.status = "draft";
+        loadList();
+        renderEditor();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function addQuestion() {
+      await api(`/api/quizzes/${editingId}/questions`, {
+        method: "POST",
+        body: { text: "New question", qtype: "single" },
+      });
+      openEditor(editingId);
+    }
+
+    async function uploadImage(file) {
+      const fd = new FormData(); fd.append("file", file);
+      const r = await fetch("/api/uploads", { method: "POST", body: fd, credentials: "same-origin" });
+      if (!r.ok) { alert("Upload failed"); return null; }
+      const j = await r.json();
+      return j.url;
+    }
+
+    loadList();
+  </script>
+</body>
+</html>
