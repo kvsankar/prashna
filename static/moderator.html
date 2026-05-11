@@ -12,6 +12,10 @@
     <div class="meta">
       <span id="code"></span>
       &nbsp;·&nbsp;
+      <span id="session-status" class="badge"></span>
+      &nbsp;·&nbsp;
+      <span id="live-count" class="small muted">— online</span>
+      &nbsp;·&nbsp;
       <a id="participant-link" href="">participant view</a>
       &nbsp;·&nbsp;
       <a id="projector-link" href="">projector</a>
@@ -19,50 +23,123 @@
   </header>
 
   <main class="wide">
-    <section class="card">
-      <h2>Quizzes</h2>
-      <p class="muted small" style="margin-top: -4px;">Launch a Ready quiz from your library. Each attached quiz has its own lifecycle: <strong>Start</strong> → walk through questions → <strong>Close</strong>.</p>
-      <div class="row" style="margin-bottom: 12px;">
-        <select id="quiz-select"></select>
-        <button id="add-quiz-btn">Launch quiz</button>
-        <div class="spacer"></div>
-        <a href="/quizzes" target="_blank">Edit quiz library →</a>
-      </div>
-      <div id="quiz-sessions"></div>
+    <section class="card" id="modkey-card" style="display:none;">
+      <div class="card-head"><h2>Moderator key required</h2></div>
+      <p class="muted small">Paste the moderator key for session <strong id="modkey-code"></strong>. (Find it in the moderator URL after <code>#k=</code> or via the <em>Moderator URL</em> button on the home page.)</p>
+      <div class="field"><input id="modkey-input" placeholder="e.g. a1b2c3d4e5f6g7h8"></div>
+      <button class="primary" id="modkey-submit">Continue</button>
     </section>
 
-    <section class="card">
-      <h2>Questions</h2>
+    <section class="card" id="lifecycle-card" style="display:none;">
+      <div class="card-head">
+        <h2>Session lifecycle</h2>
+        <div class="card-tools" id="lifecycle-actions"></div>
+      </div>
+      <p class="muted small" id="lifecycle-hint" style="margin: 0;"></p>
+    </section>
+
+    <section class="card" id="quizzes-card" style="display:none;">
+      <div class="card-head">
+        <h2>Quizzes</h2>
+        <div class="card-tools">
+          <select id="quiz-select" class="inline"></select>
+          <button class="primary small" id="add-quiz-btn">Add to session</button>
+          <a href="/quizzes" target="_blank" class="small">Edit library →</a>
+        </div>
+      </div>
+      <p class="muted small" style="margin: 0 0 10px;">Queue Ready quizzes, then <strong>Start</strong> one when the audience is ready.</p>
+      <div id="quiz-runs"></div>
+    </section>
+
+    <section class="card" id="questions-card" style="display:none;">
+      <div class="card-head"><h2>Questions</h2></div>
       <div id="questions"></div>
     </section>
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket } from "/static/common.js";
+    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast } from "/static/common.js";
 
     const CODE = pathCode();
 
-    // Pick up mod_key from URL hash on first visit
+    // Pick up mod_key from URL hash on first visit.
     if (location.hash.includes("k=")) {
       const k = new URLSearchParams(location.hash.slice(1)).get("k");
       if (k) { setModKey(k); history.replaceState(null, "", location.pathname); }
     }
-    if (!modKey()) {
-      const k = prompt("Enter moderator key for session " + CODE);
-      if (k) setModKey(k); else { alert("Moderator key required."); throw new Error("no mod key"); }
-    }
 
     let questions = [];
-    let quizSessions = [];
+    let quizRuns = [];
     let quizzes = [];
+    let sessionState = null;
+    let presenceTimer = null;
+
+    function showWorkSurfaces(visible) {
+      for (const id of ["lifecycle-card", "quizzes-card", "questions-card"]) $("#" + id).style.display = visible ? "" : "none";
+    }
+    function showKeyGate() {
+      $("#modkey-code").textContent = CODE;
+      $("#modkey-card").style.display = "";
+      showWorkSurfaces(false);
+      $("#modkey-input").focus();
+    }
+    async function trySubmitKey() {
+      const k = $("#modkey-input").value.trim();
+      if (!k) return;
+      setModKey(k);
+      $("#modkey-card").style.display = "none";
+      try { await boot(); } catch (e) { showKeyGate(); errorToast("Wrong key for this session."); }
+    }
+    $("#modkey-submit").addEventListener("click", trySubmitKey);
+    $("#modkey-input").addEventListener("keydown", e => { if (e.key === "Enter") trySubmitKey(); });
 
     async function loadSession() {
-      const s = await api(`/api/sessions/${CODE}`);
-      document.title = `Mod — ${s.title}`;
-      $("#title").textContent = s.title;
+      sessionState = await api(`/api/sessions/${CODE}`);
+      document.title = `Mod — ${sessionState.title}`;
+      $("#title").textContent = sessionState.title;
       $("#code").textContent = "Code " + CODE;
       $("#participant-link").href = `/s/${CODE}`;
       $("#projector-link").href = `/p/${CODE}`;
+      renderLifecycle();
+    }
+
+    function renderLifecycle() {
+      const status = sessionState.status;
+      $("#session-status").textContent = status;
+      $("#session-status").className = "badge badge-" + status;
+      const actions = $("#lifecycle-actions"); actions.innerHTML = "";
+      const hint = $("#lifecycle-hint");
+      if (status === "planning") {
+        hint.textContent = "Session is in planning. Start it when the audience is ready.";
+        const btn = el("button", { class: "primary small" }, "Start session");
+        btn.addEventListener("click", () => transition("start"));
+        actions.appendChild(btn);
+      } else if (status === "live") {
+        hint.textContent = "Session is live. End it when you're done.";
+        const btn = el("button", { class: "danger ghost small" }, "End session");
+        btn.addEventListener("click", async () => {
+          if (!confirm("End the session? Participants can no longer ask questions.")) return;
+          transition("end");
+        });
+        actions.appendChild(btn);
+      } else {
+        hint.textContent = "Session has ended. Read-only from here.";
+      }
+    }
+
+    async function transition(action) {
+      try {
+        await api(`/api/sessions/${CODE}/${action}`, { method: "POST", headers: modHeaders() });
+        await loadSession();
+        toast(`Session ${action}ed`);
+      } catch (e) { errorToast(e.message); }
+    }
+
+    async function loadPresence() {
+      try {
+        const r = await api(`/api/sessions/${CODE}/presence`);
+        $("#live-count").textContent = `${r.online} online`;
+      } catch {}
     }
 
     async function loadQuestions() {
@@ -74,10 +151,11 @@
       const root = $("#questions");
       root.innerHTML = "";
       if (!questions.length) {
-        root.appendChild(el("div", { class: "muted small" }, "No questions yet."));
+        root.appendChild(el("div", { class: "muted small" }, "No questions yet. Share the participant URL to invite questions."));
         return;
       }
       const sorted = [...questions].sort((a, b) => {
+        if (a.removed !== b.removed) return a.removed ? 1 : -1;
         if (a.answered !== b.answered) return a.answered ? 1 : -1;
         return b.vote_count - a.vote_count;
       });
@@ -85,32 +163,37 @@
     }
 
     function renderQuestion(q) {
-      const ansInput = el("textarea", { placeholder: "Type an answer to publish…" }, q.answer_text || "");
-      const markBtn = el("button", { class: "primary", onclick: async () => {
-        await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
-          method: "POST", headers: modHeaders(),
-          body: { answer_text: ansInput.value.trim(), answered: true },
-        });
-        loadQuestions();
-      } }, q.answered ? "Update answer" : "Mark answered");
-      const unmarkBtn = q.answered ? el("button", { onclick: async () => {
-        await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
-          method: "POST", headers: modHeaders(),
-          body: { answer_text: ansInput.value.trim(), answered: false },
-        });
-        loadQuestions();
-      } }, "Reopen") : null;
-      const hideBtn = el("button", { class: "ghost", onclick: async () => {
-        await api(`/api/sessions/${CODE}/questions/${q.id}/hide`, {
-          method: "POST", headers: modHeaders(), body: { hidden: !q.hidden },
-        });
-        loadQuestions();
-      } }, q.hidden ? "Unhide" : "Hide");
-      const delBtn = el("button", { class: "danger", onclick: async () => {
-        if (!confirm("Delete this question?")) return;
-        await api(`/api/sessions/${CODE}/questions/${q.id}`, { method: "DELETE", headers: modHeaders() });
-        loadQuestions();
-      } }, "Delete");
+      const ansInput = el("textarea", { placeholder: "Type an answer (optional — leave empty if you answered verbally)…" }, q.answer_text || "");
+      const answerBtn = el("button", { class: "primary small" }, q.answered ? "Update answer" : "Mark answered");
+      answerBtn.addEventListener("click", async () => {
+        try {
+          await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
+            method: "POST", headers: modHeaders(),
+            body: { answer_text: ansInput.value.trim(), answered: true },
+          });
+          loadQuestions();
+        } catch (e) { errorToast(e.message); }
+      });
+      const reopenBtn = q.answered ? el("button", { class: "ghost small" }, "Reopen") : null;
+      if (reopenBtn) reopenBtn.addEventListener("click", async () => {
+        try {
+          await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
+            method: "POST", headers: modHeaders(),
+            body: { answer_text: ansInput.value.trim(), answered: false },
+          });
+          loadQuestions();
+        } catch (e) { errorToast(e.message); }
+      });
+      const removeBtn = el("button", { class: "danger ghost small" }, q.removed ? "Restore" : "Remove");
+      removeBtn.addEventListener("click", async () => {
+        try {
+          await api(`/api/sessions/${CODE}/questions/${q.id}/remove`, {
+            method: "POST", headers: modHeaders(),
+            body: { removed: !q.removed },
+          });
+          loadQuestions();
+        } catch (e) { errorToast(e.message); }
+      });
       const voteBox = el("div", { class: "vote-btn" + (q.voted ? " voted" : "") },
         el("div", { class: "count" }, String(q.vote_count)),
         el("div", { class: "label" }, "votes"));
@@ -119,10 +202,10 @@
         q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
         el("div", { style: "margin-top: 10px;" }, ansInput),
         el("div", { class: "row", style: "margin-top: 8px; gap: 6px;" },
-          markBtn, unmarkBtn, hideBtn, el("div", { class: "spacer" }), delBtn,
+          answerBtn, reopenBtn, el("div", { class: "spacer" }), removeBtn,
         ),
       );
-      return el("div", { class: "question" + (q.answered ? " answered" : "") + (q.hidden ? " hidden-q" : "") }, voteBox, body);
+      return el("div", { class: "question" + (q.answered ? " answered" : "") + (q.removed ? " hidden-q" : "") }, voteBox, body);
     }
 
     async function loadQuizzes() {
@@ -132,42 +215,51 @@
       if (!quizzes.length) {
         sel.appendChild(el("option", { value: "" }, "No ready quizzes — publish one in the library"));
       } else {
-        for (const q of quizzes) sel.appendChild(el("option", { value: q.id }, `${q.title} (${q.question_count} q)`));
+        for (const q of quizzes) sel.appendChild(el("option", { value: q.id }, `${q.title} (${q.item_count} items)`));
       }
     }
 
-    async function loadQuizSessions() {
-      quizSessions = await api(`/api/sessions/${CODE}/quiz_sessions`, { headers: modHeaders() });
-      renderQuizSessions();
+    async function loadQuizRuns() {
+      quizRuns = await api(`/api/sessions/${CODE}/quiz_runs`, { headers: modHeaders() });
+      renderQuizRuns();
     }
 
-    function renderQuizSessions() {
-      const root = $("#quiz-sessions");
+    function renderQuizRuns() {
+      const root = $("#quiz-runs");
       root.innerHTML = "";
-      if (!quizSessions.length) {
-        root.appendChild(el("div", { class: "muted small" }, "No quizzes added yet."));
+      if (!quizRuns.length) {
+        root.appendChild(el("div", { class: "muted small" }, "No quizzes queued. Pick one above and click Add to session."));
         return;
       }
-      for (const qs of quizSessions) root.appendChild(renderQuizSession(qs));
+      for (const r of quizRuns) root.appendChild(renderQuizRun(r));
     }
 
-    function renderQuizSession(qs) {
-      const tag = el("span", { class: "tag " + qs.status }, qs.status);
-      const header = el("div", { class: "row", style: "margin-bottom: 8px;" },
-        el("strong", {}, qs.quiz_title), tag,
-        el("span", { class: "small muted" }, ` · q ${qs.current_question_idx + 1}/${qs.question_count}`),
+    function renderQuizRun(r) {
+      const tag = el("span", { class: "badge badge-" + r.status }, r.status);
+      const head = el("div", { class: "row", style: "margin-bottom: 8px; gap: 6px;" },
+        el("strong", {}, r.quiz_title),
+        el("span", { class: "small muted" }, ` v${r.version_no}`),
+        tag,
+        el("span", { class: "small muted" }, ` · item ${r.current_item_idx + 1}/${r.item_count}`),
         el("div", { class: "spacer" }),
-        qs.status === "draft" ? el("button", { class: "primary", onclick: () => act(qs.id, "start") }, "Launch") : null,
-        qs.status === "live" ? el("button", { onclick: () => advance(qs.id, "prev") }, "← Prev") : null,
-        qs.status === "live" ? el("button", { onclick: () => advance(qs.id, "next") }, "Next →") : null,
-        qs.status === "live" ? el("button", { onclick: () => reveal(qs.id, !qs.reveal_results) },
-          qs.reveal_results ? "Hide results" : "Reveal results") : null,
-        qs.status === "live" ? el("button", { class: "danger", onclick: () => act(qs.id, "close") }, "Close") : null,
-        el("button", { class: "danger ghost", onclick: () => del(qs.id) }, "✕"),
       );
-      const cur = qs.current_question;
-      const totals = qs.results?.totals || {};
-      const respondents = qs.results?.respondents || 0;
+      // Lifecycle verbs
+      if (r.status === "queued") {
+        head.appendChild(actBtn("primary", "Start", () => act(r.id, "start")));
+      }
+      if (r.status === "live") {
+        head.appendChild(actBtn("", "← Prev", () => advance(r.id, "prev")));
+        head.appendChild(actBtn("", "Next →", () => advance(r.id, "next")));
+        head.appendChild(actBtn("", r.reveal_current ? "Hide results" : "Reveal results",
+          () => reveal(r.id, !r.reveal_current)));
+        head.appendChild(actBtn("danger", "Close", () => act(r.id, "close")));
+      }
+      if (r.status !== "closed") {
+        head.appendChild(actBtn("danger ghost", "✕", () => del(r.id)));
+      }
+      const cur = r.current_item;
+      const totals = r.results?.totals || {};
+      const respondents = r.results?.respondents || 0;
       const detail = el("div");
       if (cur) {
         detail.appendChild(el("div", {}, el("strong", {}, cur.text)));
@@ -187,50 +279,78 @@
         }
         detail.appendChild(el("div", { class: "small muted" }, `${respondents} respondent(s)`));
       }
-      return el("section", { class: "card", style: "background: var(--panel-2);" }, header, detail);
+      return el("section", { class: "card", style: "background: var(--panel-2);" }, head, detail);
     }
 
-    async function act(qsId, action) {
-      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}/${action}`, { method: "POST", headers: modHeaders() });
-      loadQuizSessions();
+    function actBtn(cls, label, handler) {
+      const b = el("button", { class: cls + " small" }, label);
+      b.addEventListener("click", handler);
+      return b;
     }
-    async function advance(qsId, direction) {
-      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}/advance`, {
-        method: "POST", headers: modHeaders(), body: { direction },
-      });
-      loadQuizSessions();
+
+    async function act(id, verb) {
+      try {
+        await api(`/api/sessions/${CODE}/quiz_runs/${id}/${verb}`, { method: "POST", headers: modHeaders() });
+        await loadQuizRuns();
+        await loadSession();   // session may have auto-transitioned to live
+      } catch (e) { errorToast(e.message); }
     }
-    async function reveal(qsId, val) {
-      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}/reveal`, {
-        method: "POST", headers: modHeaders(), body: { reveal: val },
-      });
-      loadQuizSessions();
+    async function advance(id, direction) {
+      try {
+        await api(`/api/sessions/${CODE}/quiz_runs/${id}/advance`, {
+          method: "POST", headers: modHeaders(), body: { direction },
+        });
+        await loadQuizRuns();
+      } catch (e) { errorToast(e.message); }
     }
-    async function del(qsId) {
+    async function reveal(id, val) {
+      try {
+        await api(`/api/sessions/${CODE}/quiz_runs/${id}/reveal`, {
+          method: "POST", headers: modHeaders(), body: { reveal: val },
+        });
+        await loadQuizRuns();
+      } catch (e) { errorToast(e.message); }
+    }
+    async function del(id) {
       if (!confirm("Remove this quiz from the session?")) return;
-      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}`, { method: "DELETE", headers: modHeaders() });
-      loadQuizSessions();
+      try {
+        await api(`/api/sessions/${CODE}/quiz_runs/${id}`, { method: "DELETE", headers: modHeaders() });
+        await loadQuizRuns();
+      } catch (e) { errorToast(e.message); }
     }
 
     $("#add-quiz-btn").addEventListener("click", async () => {
       const quizId = parseInt($("#quiz-select").value, 10);
-      if (!quizId) return alert("Pick a quiz first.");
-      await api(`/api/sessions/${CODE}/quiz_sessions`, {
-        method: "POST", headers: modHeaders(), body: { quiz_id: quizId },
-      });
-      loadQuizSessions();
+      if (!quizId) { errorToast("Pick a quiz first."); return; }
+      try {
+        const r = await api(`/api/sessions/${CODE}/quiz_runs`, {
+          method: "POST", headers: modHeaders(), body: { quiz_id: quizId },
+        });
+        await loadQuizRuns();
+        toast(`Queued v${r.version_no}`);
+      } catch (e) { errorToast(e.message); }
     });
 
-    function refresh() { loadQuestions(); loadQuizSessions(); }
+    function refresh() { loadQuestions(); loadQuizRuns(); loadPresence(); }
 
-    (async function() {
-      try {
-        await loadSession();
-        await loadQuizzes();
-        refresh();
-        openLiveSocket(CODE, refresh);
-      } catch (e) { alert("Error: " + e.message); }
-    })();
+    async function boot() {
+      await loadSession();
+      await loadQuizzes();
+      refresh();
+      openLiveSocket(CODE, refresh);
+      if (presenceTimer) clearInterval(presenceTimer);
+      presenceTimer = setInterval(loadPresence, 15000);
+      showWorkSurfaces(true);
+    }
+
+    if (!modKey()) {
+      showKeyGate();
+    } else {
+      boot().catch(e => {
+        showKeyGate();
+        errorToast("Couldn't load session — re-enter the moderator key.");
+      });
+    }
   </script>
 </body>
 </html>

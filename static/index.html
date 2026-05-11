@@ -7,30 +7,78 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <div class="joincard">
+  <header class="top">
     <h1>Prashna</h1>
-    <p class="muted">Live Q&amp;A and quizzes for training sessions.</p>
+    <div class="meta" id="header-meta">
+      <span class="muted small">Live Q&amp;A and quizzes for training sessions.</span>
+    </div>
+  </header>
 
-    <section>
-      <h2>Join a session</h2>
+  <main>
+    <!-- Join card — visible only when relevant (uninit setup hides it; authed admin hides it). -->
+    <section class="card" id="join-card" style="display:none;">
+      <div class="card-head"><h2>Join a session</h2></div>
       <div id="bad-code-msg" class="error-banner" style="display:none;"></div>
       <div class="field">
-        <label>Session code</label>
+        <label for="join-code">Session code</label>
         <input id="join-code" placeholder="e.g. ABC123" autocapitalize="characters" autocomplete="off">
       </div>
       <button class="primary" id="join-btn">Join</button>
     </section>
 
-    <hr style="margin: 28px 0; border: none; border-top: 1px solid var(--border);">
-
-    <section id="admin-pane">
-      <div class="muted small">Loading…</div>
+    <section class="card" id="setup-card" style="display:none;">
+      <div class="card-head"><h2>Set up admin account</h2></div>
+      <p class="muted small">First run — create the admin who can host sessions and author quizzes.</p>
+      <div class="field"><label for="su-user">Username</label><input id="su-user" autocomplete="username"></div>
+      <div class="field"><label for="su-pass">Password</label><input id="su-pass" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="su-pass2">Confirm password</label><input id="su-pass2" type="password" autocomplete="new-password"></div>
+      <button class="primary" id="su-btn">Create admin</button>
+      <div class="small muted" style="margin-top: 8px;">Password must be at least 8 characters.</div>
     </section>
-  </div>
+
+    <section class="card" id="login-card" style="display:none;">
+      <div class="card-head"><h2>Admin login</h2></div>
+      <div class="field"><label for="li-user">Username</label><input id="li-user" autocomplete="username"></div>
+      <div class="field"><label for="li-pass">Password</label><input id="li-pass" type="password" autocomplete="current-password"></div>
+      <button class="primary" id="li-btn">Log in</button>
+    </section>
+
+    <!-- Admin work surfaces — visible only when authenticated. -->
+    <section class="card compact" id="sessions-card" style="display:none;">
+      <div class="card-head">
+        <h2>Your sessions</h2>
+        <div class="card-tools">
+          <input id="new-session-title" class="inline" placeholder="New session title">
+          <button class="primary small" id="new-session-btn">+ New session</button>
+        </div>
+      </div>
+      <table class="ctable">
+        <thead><tr>
+          <th>Title</th>
+          <th>Code</th>
+          <th>Status</th>
+          <th class="num">Qs</th>
+          <th class="num">Quiz runs</th>
+          <th>Created</th>
+          <th class="actions">Actions</th>
+        </tr></thead>
+        <tbody id="session-rows"><tr><td colspan="7" class="muted small">Loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section class="card compact" id="library-card" style="display:none;">
+      <div class="card-head">
+        <h2>Quiz library</h2>
+        <div class="card-tools"><a href="/quizzes" class="small">Open quiz authoring →</a></div>
+      </div>
+      <p class="muted small" style="margin: 0;">Reusable quiz templates that you can launch inside any session.</p>
+    </section>
+  </main>
 
   <script type="module">
-    import { $, api, escapeHtml } from "/static/common.js";
+    import { $, api, el, escapeHtml, toast, errorToast } from "/static/common.js";
 
+    // ----- bad code banner from /s/BOGUS redirect -----
     const bad = new URLSearchParams(location.search).get("bad_code");
     if (bad) {
       const msg = $("#bad-code-msg");
@@ -38,152 +86,141 @@
       msg.style.display = "";
       history.replaceState({}, "", "/");
     }
+    $("#join-code").addEventListener("input", () => { $("#bad-code-msg").style.display = "none"; });
 
-    $("#join-btn").addEventListener("click", () => {
-      const code = $("#join-code").value.trim().toUpperCase();
-      if (!code) return;
-      location.href = `/s/${code}`;
-    });
+    // ----- visibility helpers -----
+    const cards = {
+      join:     $("#join-card"),
+      setup:    $("#setup-card"),
+      login:    $("#login-card"),
+      sessions: $("#sessions-card"),
+      library:  $("#library-card"),
+    };
+    function show(...names) {
+      for (const k of Object.keys(cards)) cards[k].style.display = names.includes(k) ? "" : "none";
+    }
 
-    const pane = $("#admin-pane");
+    function setHeaderMeta(node) {
+      const meta = $("#header-meta");
+      meta.innerHTML = "";
+      meta.appendChild(node);
+    }
 
-    function render(html) { pane.innerHTML = html; }
-
+    // ----- state machine -----
     async function refresh() {
       const s = await api("/api/admin/status");
-      if (!s.initialized) return renderSetup();
-      if (!s.authenticated) return renderLogin();
-      return renderAuthed(s.username);
-    }
-
-    function renderSetup() {
-      render(`
-        <h2>Set up admin account</h2>
-        <p class="muted small">First run — create the admin who can host sessions and author quizzes.</p>
-        <div class="field"><label>Username</label><input id="su-user" autocomplete="username"></div>
-        <div class="field"><label>Password</label><input id="su-pass" type="password" autocomplete="new-password"></div>
-        <div class="field"><label>Confirm password</label><input id="su-pass2" type="password" autocomplete="new-password"></div>
-        <button class="primary" id="su-btn">Create admin</button>
-        <div class="small muted" style="margin-top: 8px;">Password must be at least 8 characters.</div>
-      `);
-      $("#su-btn").addEventListener("click", async () => {
-        const username = $("#su-user").value.trim();
-        const password = $("#su-pass").value;
-        const confirm = $("#su-pass2").value;
-        if (password !== confirm) return alert("Passwords don't match");
-        try {
-          await api("/api/admin/setup", { method: "POST", body: { username, password } });
-          refresh();
-        } catch (e) { alert(e.message); }
-      });
-    }
-
-    function renderLogin() {
-      render(`
-        <h2>Admin login</h2>
-        <div class="field"><label>Username</label><input id="li-user" autocomplete="username"></div>
-        <div class="field"><label>Password</label><input id="li-pass" type="password" autocomplete="current-password"></div>
-        <button class="primary" id="li-btn">Log in</button>
-      `);
-      const submit = async () => {
-        const username = $("#li-user").value.trim();
-        const password = $("#li-pass").value;
-        try {
-          await api("/api/admin/login", { method: "POST", body: { username, password } });
-          refresh();
-        } catch (e) { alert(e.message); }
-      };
-      $("#li-btn").addEventListener("click", submit);
-      $("#li-pass").addEventListener("keydown", e => { if (e.key === "Enter") submit(); });
-    }
-
-    function renderAuthed(username) {
-      render(`
-        <div class="row" style="align-items: baseline;">
-          <h2 style="margin: 0;">Moderator</h2>
-          <div class="spacer"></div>
-          <span class="small muted">Signed in as <strong>${escapeHtml(username)}</strong></span>
-          <button class="ghost small" id="logout-btn">Log out</button>
-        </div>
-
-        <h3 style="margin-top: 20px;">Start a new session</h3>
-        <div class="field">
-          <label>Session title</label>
-          <input id="new-title" placeholder="e.g. Module 3 — Patterns">
-        </div>
-        <button id="new-btn">Create session</button>
-        <div id="created" style="margin-top: 16px;"></div>
-
-        <h3 style="margin-top: 28px;">Your sessions</h3>
-        <div id="session-list" class="muted small">Loading…</div>
-
-        <hr style="margin: 28px 0; border: none; border-top: 1px solid var(--border);">
-        <h3>Quiz authoring</h3>
-        <p class="muted small">Manage reusable quiz templates that you can launch inside any session.</p>
-        <a href="/quizzes">Open quiz authoring →</a>
-      `);
-
-      $("#logout-btn").addEventListener("click", async () => {
+      if (!s.initialized) {
+        setHeaderMeta(el("span", { class: "muted small" }, "Initial setup"));
+        return show("setup");
+      }
+      if (!s.authenticated) {
+        setHeaderMeta(el("span", { class: "muted small" }, "Live Q&A and quizzes for training sessions."));
+        return show("join", "login");
+      }
+      // Authenticated admin
+      const meta = el("div", { class: "row gap" });
+      meta.appendChild(el("span", { class: "small muted" }, "Signed in as "));
+      meta.appendChild(el("strong", { class: "small" }, s.username));
+      const logoutBtn = el("button", { class: "ghost xsmall" }, "Log out");
+      logoutBtn.addEventListener("click", async () => {
         await api("/api/admin/logout", { method: "POST" });
         refresh();
       });
-
-      $("#new-btn").addEventListener("click", async () => {
-        const title = $("#new-title").value.trim() || "Untitled session";
-        try {
-          const s = await api("/api/sessions", { method: "POST", body: { title } });
-          $("#created").innerHTML = renderSessionCard(s, { highlight: true });
-          loadSessions();
-        } catch (e) { alert("Failed: " + e.message); }
-      });
-
+      meta.appendChild(logoutBtn);
+      setHeaderMeta(meta);
+      show("sessions", "library");
       loadSessions();
     }
 
-    function sessionLinks(s) {
-      const modUrl = `${location.origin}/m/${s.code}#k=${s.mod_key}`;
-      const partUrl = `${location.origin}/s/${s.code}`;
-      const projUrl = `${location.origin}/p/${s.code}`;
-      return { modUrl, partUrl, projUrl };
+    // ----- join -----
+    function submitJoin() {
+      const code = $("#join-code").value.trim().toUpperCase();
+      if (!code) return;
+      location.href = `/s/${code}`;
     }
+    $("#join-btn").addEventListener("click", submitJoin);
+    $("#join-code").addEventListener("keydown", e => { if (e.key === "Enter") submitJoin(); });
 
-    function renderSessionCard(s, { highlight = false } = {}) {
-      const { modUrl, partUrl, projUrl } = sessionLinks(s);
-      return `
-        <section class="card"${highlight ? ' style="border-color: var(--accent);"' : ""}>
-          <div><strong>${escapeHtml(s.title)}</strong> — code <code>${s.code}</code></div>
-          <div class="small muted" style="margin: 8px 0;">Save these links — the moderator URL contains a secret key.</div>
-          <div class="small"><strong>Participant:</strong> <a href="${partUrl}">${partUrl}</a></div>
-          <div class="small"><strong>Moderator:</strong> <a href="${modUrl}">${modUrl}</a></div>
-          <div class="small"><strong>Projector:</strong> <a href="${projUrl}">${projUrl}</a></div>
-        </section>`;
+    // ----- setup -----
+    async function submitSetup() {
+      const username = $("#su-user").value.trim();
+      const password = $("#su-pass").value;
+      const confirmPw = $("#su-pass2").value;
+      if (password !== confirmPw) { errorToast("Passwords don't match"); return; }
+      try {
+        await api("/api/admin/setup", { method: "POST", body: { username, password } });
+        refresh();
+      } catch (e) { errorToast(e.message); }
     }
+    $("#su-btn").addEventListener("click", submitSetup);
+    $("#su-pass2").addEventListener("keydown", e => { if (e.key === "Enter") submitSetup(); });
 
+    // ----- login -----
+    async function submitLogin() {
+      const username = $("#li-user").value.trim();
+      const password = $("#li-pass").value;
+      try {
+        await api("/api/admin/login", { method: "POST", body: { username, password } });
+        refresh();
+      } catch (e) { errorToast(e.message); }
+    }
+    $("#li-btn").addEventListener("click", submitLogin);
+    $("#li-pass").addEventListener("keydown", e => { if (e.key === "Enter") submitLogin(); });
+
+    // ----- sessions: create -----
+    async function createSession() {
+      const titleInp = $("#new-session-title");
+      const title = titleInp.value.trim() || "Untitled session";
+      try {
+        const s = await api("/api/sessions", { method: "POST", body: { title } });
+        titleInp.value = "";
+        toast(`Created "${s.title}" — code ${s.code}`);
+        loadSessions();
+      } catch (e) { errorToast(e.message); }
+    }
+    $("#new-session-btn").addEventListener("click", createSession);
+    $("#new-session-title").addEventListener("keydown", e => { if (e.key === "Enter") createSession(); });
+
+    // ----- sessions: list -----
     async function loadSessions() {
-      const root = $("#session-list");
-      if (!root) return;
+      const tbody = $("#session-rows");
       try {
         const rows = await api("/api/sessions");
         if (!rows.length) {
-          root.innerHTML = '<div class="muted small">No sessions yet.</div>';
+          tbody.innerHTML = `<tr><td colspan="7" class="muted small">No sessions yet. Add one using the title field above.</td></tr>`;
           return;
         }
-        root.innerHTML = rows.map(s => {
-          const { modUrl, partUrl } = sessionLinks(s);
+        tbody.innerHTML = "";
+        for (const s of rows) {
           const when = new Date(s.created_at).toLocaleString();
-          return `
-            <div class="session-row">
-              <div class="spacer">
-                <div><strong>${escapeHtml(s.title)}</strong> &middot; <code>${s.code}</code></div>
-                <div class="small muted">${when} &middot; ${s.question_count} question(s), ${s.quiz_session_count} quiz run(s)</div>
-              </div>
-              <a class="small" href="${modUrl}">Moderate</a>
-              &nbsp;·&nbsp;
-              <a class="small" href="${partUrl}">Participant</a>
-            </div>`;
-        }).join("");
+          const tr = el("tr");
+          tr.appendChild(el("td", {}, s.title));
+          tr.appendChild(el("td", {}, el("code", { class: "small" }, s.code)));
+          tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + s.status }, s.status)));
+          tr.appendChild(el("td", { class: "num muted" }, String(s.question_count)));
+          tr.appendChild(el("td", { class: "num muted" }, String(s.quiz_run_count)));
+          tr.appendChild(el("td", { class: "muted small" }, when));
+
+          const actions = el("td", { class: "actions" });
+          actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
+          actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
+          // Moderator link is built on-demand to avoid leaking mod_key into the DOM.
+          const modBtn = el("button", { class: "ghost xsmall" }, "Moderator URL");
+          modBtn.addEventListener("click", async () => {
+            const url = `${location.origin}/m/${s.code}#k=${s.mod_key}`;
+            try {
+              await navigator.clipboard.writeText(url);
+              toast("Moderator URL copied to clipboard");
+            } catch {
+              window.prompt("Copy the moderator URL:", url);
+            }
+          });
+          actions.appendChild(modBtn);
+          tr.appendChild(actions);
+          tbody.appendChild(tr);
+        }
       } catch (e) {
-        root.innerHTML = `<div class="error-banner">${escapeHtml(e.message)}</div>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="error-banner">${escapeHtml(e.message)}</td></tr>`;
       }
     }
 
