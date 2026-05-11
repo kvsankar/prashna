@@ -34,14 +34,14 @@
     $("#code").textContent = CODE;
 
     async function loadAll() {
-      const [s, qs, quizzes] = await Promise.all([
+      const [s, qs, runs] = await Promise.all([
         api(`/api/sessions/${CODE}`),
         api(`/api/sessions/${CODE}/questions`),
-        api(`/api/sessions/${CODE}/quiz_sessions`),
+        api(`/api/sessions/${CODE}/quiz_runs`),
       ]);
       $("#title").textContent = s.title;
       renderQuestions(qs);
-      renderQuiz(quizzes.find(q => q.status === "live") || quizzes.find(q => q.status === "closed"));
+      renderQuiz(runs.find(r => r.status === "live") || runs.find(r => r.status === "closed"));
     }
 
     function renderQuestions(qs) {
@@ -64,20 +64,20 @@
       }
     }
 
-    function renderQuiz(quiz) {
+    function renderQuiz(run) {
       const section = $("#quiz-section");
       const body = $("#quiz-body");
-      if (!quiz) { section.style.display = "none"; return; }
+      if (!run) { section.style.display = "none"; return; }
       section.style.display = "";
       body.innerHTML = "";
-      body.appendChild(el("div", { class: "muted" }, `${quiz.quiz_title} — q ${quiz.current_question_idx + 1}/${quiz.question_count}`));
-      const q = quiz.current_question;
+      body.appendChild(el("div", { class: "muted" }, `${run.quiz_title} — item ${run.current_item_idx + 1}/${run.item_count}`));
+      const q = run.current_item;
       if (!q) return;
       body.appendChild(el("h2", { style: "font-size: 32px; margin: 12px 0;" }, q.text));
       if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
-      const totals = quiz.results?.totals || {};
-      const respondents = quiz.results?.respondents || 0;
-      const showResults = !!quiz.results;
+      const totals = run.results?.totals || {};
+      const respondents = run.results?.respondents || 0;
+      const showResults = !!run.results;
       for (const op of q.options) {
         const opDiv = el("div", { class: "option disabled" + (showResults && op.is_correct ? " correct" : "") });
         if (showResults) {

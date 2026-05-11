@@ -77,8 +77,10 @@ export function openLiveSocket(code, onMessage) {
   return { close() { alive = false; ws && ws.close(); } };
 }
 
-export function toast(msg) {
-  const t = el("div", { class: "toast" }, msg);
+export function toast(msg, { error = false, duration = 2800 } = {}) {
+  const t = el("div", { class: "toast" + (error ? " toast-error" : "") }, msg);
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
+  setTimeout(() => t.remove(), duration);
 }
+
+export function errorToast(msg) { toast(msg, { error: true, duration: 4000 }); }

@@ -9,7 +9,12 @@
 <body>
   <header class="top">
     <h1 id="title">Loading…</h1>
-    <div class="meta"><span id="code"></span></div>
+    <div class="meta">
+      <span id="code"></span>
+      &nbsp;·&nbsp;
+      <span class="small muted">You: </span>
+      <input id="my-name" class="inline" placeholder="(anonymous)" maxlength="80">
+    </div>
   </header>
 
   <main>
@@ -20,12 +25,9 @@
 
     <section class="card">
       <h2>Ask a question</h2>
-      <div class="row" style="margin-bottom: 8px;">
-        <input id="author-name" placeholder="Your name (optional)" maxlength="80">
-      </div>
-      <textarea id="question-text" placeholder="Type your question…" maxlength="1000"></textarea>
+      <textarea id="question-text" placeholder="Type your question… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
       <div class="row" style="margin-top: 8px;">
-        <span class="muted small">Anonymous unless you add a name.</span>
+        <span class="muted small">Anonymous unless you set a name above.</span>
         <div class="spacer"></div>
         <button class="primary" id="ask-btn">Ask</button>
       </div>
@@ -38,13 +40,14 @@
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, pathCode, openLiveSocket } from "/static/common.js";
+    import { $, api, el, escapeHtml, pathCode, openLiveSocket, toast, errorToast } from "/static/common.js";
 
     const CODE = pathCode();
     let questions = [];
     let activeQuiz = null;
     let pendingSelection = new Set();
-    let lastQuestionId = null;
+    let lastItemId = null;
+    let me = { id: null, name: null };
 
     async function loadSession() {
       const s = await api(`/api/sessions/${CODE}`);
@@ -52,6 +55,19 @@
       $("#title").textContent = s.title;
       $("#code").textContent = "Code " + CODE;
     }
+
+    async function loadMe() {
+      me = await api(`/api/sessions/${CODE}/me`);
+      $("#my-name").value = me.name || "";
+    }
+
+    // Save name on blur (no Save button — direct manipulation per UX doc).
+    $("#my-name").addEventListener("change", async () => {
+      try {
+        me = await api(`/api/sessions/${CODE}/me`, { method: "PATCH", body: { name: $("#my-name").value } });
+        if (me.name) toast(`Name set to "${me.name}"`);
+      } catch (e) { errorToast(e.message); }
+    });
 
     async function loadQuestions() {
       questions = await api(`/api/sessions/${CODE}/questions`);
@@ -69,18 +85,14 @@
         if (a.answered !== b.answered) return a.answered ? 1 : -1;
         return b.vote_count - a.vote_count;
       });
-      for (const q of sorted) {
-        root.appendChild(renderQuestion(q));
-      }
+      for (const q of sorted) root.appendChild(renderQuestion(q));
     }
 
     function renderQuestion(q) {
-      const voteBtn = el(
-        "button",
-        {
-          class: "vote-btn" + (q.voted ? " voted" : ""),
-          onclick: () => toggleVote(q.id),
-        },
+      const voteBtn = el("button", {
+        class: "vote-btn" + (q.voted ? " voted" : ""),
+        onclick: () => toggleVote(q.id),
+      },
         el("div", { class: "count" }, String(q.vote_count)),
         el("div", { class: "label" }, q.voted ? "voted" : "vote"),
       );
@@ -91,39 +103,45 @@
           ? el("div", { class: "answer" }, el("strong", {}, "Answer: "), q.answer_text)
           : null,
       );
-      return el(
-        "div",
-        { class: "question" + (q.answered ? " answered" : "") + (q.hidden ? " hidden-q" : "") },
-        voteBtn,
-        body,
+      return el("div",
+        { class: "question" + (q.answered ? " answered" : "") },
+        voteBtn, body,
       );
     }
 
     async function toggleVote(qid) {
       try { await api(`/api/sessions/${CODE}/questions/${qid}/vote`, { method: "POST" }); }
-      catch (e) { alert(e.message); }
+      catch (e) { errorToast(e.message); }
       loadQuestions();
     }
 
-    $("#ask-btn").addEventListener("click", async () => {
+    async function askQuestion() {
       const text = $("#question-text").value.trim();
-      const name = $("#author-name").value.trim();
       if (!text) return;
       try {
-        await api(`/api/sessions/${CODE}/questions`, { method: "POST", body: { text, author_name: name } });
+        // Send name with the question so the participant row picks it up even on first interaction.
+        await api(`/api/sessions/${CODE}/questions`, {
+          method: "POST",
+          body: { text, author_name: $("#my-name").value || null },
+        });
         $("#question-text").value = "";
         loadQuestions();
-      } catch (e) { alert(e.message); }
+        toast("Question submitted");
+      } catch (e) { errorToast(e.message); }
+    }
+    $("#ask-btn").addEventListener("click", askQuestion);
+    $("#question-text").addEventListener("keydown", e => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); askQuestion(); }
     });
 
     async function loadQuiz() {
-      const rows = await api(`/api/sessions/${CODE}/quiz_sessions`);
+      const rows = await api(`/api/sessions/${CODE}/quiz_runs`);
       const live = rows.find(r => r.status === "live");
       const closed = rows.find(r => r.status === "closed");
       activeQuiz = live || closed || null;
-      if (activeQuiz && activeQuiz.current_question && activeQuiz.current_question.id !== lastQuestionId) {
+      if (activeQuiz && activeQuiz.current_item && activeQuiz.current_item.id !== lastItemId) {
         pendingSelection = new Set(activeQuiz.my_selections || []);
-        lastQuestionId = activeQuiz.current_question.id;
+        lastItemId = activeQuiz.current_item.id;
       } else if (activeQuiz) {
         pendingSelection = new Set(activeQuiz.my_selections || []);
       }
@@ -136,10 +154,10 @@
       if (!activeQuiz) { card.style.display = "none"; return; }
       card.style.display = "";
       body.innerHTML = "";
-      const q = activeQuiz.current_question;
+      const q = activeQuiz.current_item;
       const status = activeQuiz.status;
       body.appendChild(el("div", { class: "small muted" },
-        `${escapeHtml(activeQuiz.quiz_title)} — question ${activeQuiz.current_question_idx + 1} of ${activeQuiz.question_count}` +
+        `${escapeHtml(activeQuiz.quiz_title)} — item ${activeQuiz.current_item_idx + 1} of ${activeQuiz.item_count}` +
         (status === "closed" ? " (closed)" : "")
       ));
       if (!q) {
@@ -177,9 +195,8 @@
         body.appendChild(opDiv);
       }
       if (!locked) {
-        const submitBtn = el("button", { class: "primary",
-          onclick: submitQuizResponse,
-        }, submitted ? "Update answer" : "Submit");
+        const submitBtn = el("button", { class: "primary", onclick: submitQuizResponse },
+          submitted ? "Update answer" : "Submit");
         submitBtn.disabled = pendingSelection.size === 0;
         body.appendChild(el("div", { style: "margin-top: 12px;" }, submitBtn,
           submitted ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Your answer is recorded.") : null));
@@ -187,23 +204,24 @@
     }
 
     async function submitQuizResponse() {
-      if (!activeQuiz || !activeQuiz.current_question) return;
+      if (!activeQuiz || !activeQuiz.current_item) return;
       try {
-        await api(`/api/sessions/${CODE}/quiz_sessions/${activeQuiz.id}/respond`, {
+        await api(`/api/sessions/${CODE}/quiz_runs/${activeQuiz.id}/respond`, {
           method: "POST",
           body: {
-            question_id: activeQuiz.current_question.id,
+            item_id: activeQuiz.current_item.id,
             option_ids: [...pendingSelection],
           },
         });
         loadQuiz();
-      } catch (e) { alert(e.message); }
+      } catch (e) { errorToast(e.message); }
     }
 
     function refreshAll() { loadQuestions(); loadQuiz(); }
 
     (async function () {
       await loadSession();
+      await loadMe();
       refreshAll();
       openLiveSocket(CODE, refreshAll);
     })();
