@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — participant</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Loading…</h1>
+    <div class="meta"><span id="code"></span></div>
+  </header>
+
+  <main>
+    <section class="card" id="quiz-card" style="display:none;">
+      <h2>Live quiz</h2>
+      <div id="quiz-body"></div>
+    </section>
+
+    <section class="card">
+      <h2>Ask a question</h2>
+      <div class="row" style="margin-bottom: 8px;">
+        <input id="author-name" placeholder="Your name (optional)" maxlength="80">
+      </div>
+      <textarea id="question-text" placeholder="Type your question…" maxlength="1000"></textarea>
+      <div class="row" style="margin-top: 8px;">
+        <span class="muted small">Anonymous unless you add a name.</span>
+        <div class="spacer"></div>
+        <button class="primary" id="ask-btn">Ask</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Questions</h2>
+      <div id="questions"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { $, api, el, escapeHtml, pathCode, openLiveSocket } from "/static/common.js";
+
+    const CODE = pathCode();
+    let questions = [];
+    let activeQuiz = null;
+    let pendingSelection = new Set();
+    let lastQuestionId = null;
+
+    async function loadSession() {
+      const s = await api(`/api/sessions/${CODE}`);
+      document.title = `Prashna — ${s.title}`;
+      $("#title").textContent = s.title;
+      $("#code").textContent = "Code " + CODE;
+    }
+
+    async function loadQuestions() {
+      questions = await api(`/api/sessions/${CODE}/questions`);
+      renderQuestions();
+    }
+
+    function renderQuestions() {
+      const root = $("#questions");
+      root.innerHTML = "";
+      if (!questions.length) {
+        root.appendChild(el("div", { class: "muted small" }, "No questions yet. Be the first to ask."));
+        return;
+      }
+      const sorted = [...questions].sort((a, b) => {
+        if (a.answered !== b.answered) return a.answered ? 1 : -1;
+        return b.vote_count - a.vote_count;
+      });
+      for (const q of sorted) {
+        root.appendChild(renderQuestion(q));
+      }
+    }
+
+    function renderQuestion(q) {
+      const voteBtn = el(
+        "button",
+        {
+          class: "vote-btn" + (q.voted ? " voted" : ""),
+          onclick: () => toggleVote(q.id),
+        },
+        el("div", { class: "count" }, String(q.vote_count)),
+        el("div", { class: "label" }, q.voted ? "voted" : "vote"),
+      );
+      const body = el("div", { class: "body" },
+        el("div", { class: "text" }, q.text),
+        q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
+        q.answered && q.answer_text
+          ? el("div", { class: "answer" }, el("strong", {}, "Answer: "), q.answer_text)
+          : null,
+      );
+      return el(
+        "div",
+        { class: "question" + (q.answered ? " answered" : "") + (q.hidden ? " hidden-q" : "") },
+        voteBtn,
+        body,
+      );
+    }
+
+    async function toggleVote(qid) {
+      try { await api(`/api/sessions/${CODE}/questions/${qid}/vote`, { method: "POST" }); }
+      catch (e) { alert(e.message); }
+      loadQuestions();
+    }
+
+    $("#ask-btn").addEventListener("click", async () => {
+      const text = $("#question-text").value.trim();
+      const name = $("#author-name").value.trim();
+      if (!text) return;
+      try {
+        await api(`/api/sessions/${CODE}/questions`, { method: "POST", body: { text, author_name: name } });
+        $("#question-text").value = "";
+        loadQuestions();
+      } catch (e) { alert(e.message); }
+    });
+
+    async function loadQuiz() {
+      const rows = await api(`/api/sessions/${CODE}/quiz_sessions`);
+      const live = rows.find(r => r.status === "live");
+      const closed = rows.find(r => r.status === "closed");
+      activeQuiz = live || closed || null;
+      if (activeQuiz && activeQuiz.current_question && activeQuiz.current_question.id !== lastQuestionId) {
+        pendingSelection = new Set(activeQuiz.my_selections || []);
+        lastQuestionId = activeQuiz.current_question.id;
+      } else if (activeQuiz) {
+        pendingSelection = new Set(activeQuiz.my_selections || []);
+      }
+      renderQuiz();
+    }
+
+    function renderQuiz() {
+      const card = $("#quiz-card");
+      const body = $("#quiz-body");
+      if (!activeQuiz) { card.style.display = "none"; return; }
+      card.style.display = "";
+      body.innerHTML = "";
+      const q = activeQuiz.current_question;
+      const status = activeQuiz.status;
+      body.appendChild(el("div", { class: "small muted" },
+        `${escapeHtml(activeQuiz.quiz_title)} — question ${activeQuiz.current_question_idx + 1} of ${activeQuiz.question_count}` +
+        (status === "closed" ? " (closed)" : "")
+      ));
+      if (!q) {
+        body.appendChild(el("div", { class: "muted" }, "Waiting for moderator…"));
+        return;
+      }
+      body.appendChild(el("h3", {}, q.text));
+      if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
+      const submitted = (activeQuiz.my_selections || []).length > 0;
+      const showResults = !!activeQuiz.results;
+      const totals = showResults ? activeQuiz.results.totals : null;
+      const respondents = showResults ? Math.max(activeQuiz.results.respondents, 1) : 1;
+      const locked = status === "closed" || showResults;
+      for (const op of q.options) {
+        const selected = pendingSelection.has(op.id);
+        const pct = totals ? Math.round((totals[op.id] || 0) / respondents * 100) : 0;
+        const opDiv = el("div", {
+          class: "option" + (selected ? " selected" : "") + (locked ? " disabled" : "") +
+                 (showResults && op.is_correct === true ? " correct" : "") +
+                 (showResults && selected && op.is_correct === false ? " wrong" : ""),
+          onclick: locked ? null : () => {
+            if (q.qtype === "single") { pendingSelection = new Set([op.id]); }
+            else { pendingSelection.has(op.id) ? pendingSelection.delete(op.id) : pendingSelection.add(op.id); }
+            renderQuiz();
+          },
+        });
+        if (showResults) {
+          const bar = el("div", { class: "bar" });
+          bar.style.transform = `scaleX(${(totals[op.id] || 0) / respondents})`;
+          opDiv.appendChild(bar);
+        }
+        if (op.image_url) opDiv.appendChild(el("img", { class: "opt-img", src: op.image_url }));
+        opDiv.appendChild(el("div", { class: "opt-text" }, op.text));
+        if (showResults) opDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
+        body.appendChild(opDiv);
+      }
+      if (!locked) {
+        const submitBtn = el("button", { class: "primary",
+          onclick: submitQuizResponse,
+        }, submitted ? "Update answer" : "Submit");
+        submitBtn.disabled = pendingSelection.size === 0;
+        body.appendChild(el("div", { style: "margin-top: 12px;" }, submitBtn,
+          submitted ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Your answer is recorded.") : null));
+      }
+    }
+
+    async function submitQuizResponse() {
+      if (!activeQuiz || !activeQuiz.current_question) return;
+      try {
+        await api(`/api/sessions/${CODE}/quiz_sessions/${activeQuiz.id}/respond`, {
+          method: "POST",
+          body: {
+            question_id: activeQuiz.current_question.id,
+            option_ids: [...pendingSelection],
+          },
+        });
+        loadQuiz();
+      } catch (e) { alert(e.message); }
+    }
+
+    function refreshAll() { loadQuestions(); loadQuiz(); }
+
+    (async function () {
+      await loadSession();
+      refreshAll();
+      openLiveSocket(CODE, refreshAll);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — moderator</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Loading…</h1>
+    <div class="meta">
+      <span id="code"></span>
+      &nbsp;·&nbsp;
+      <a id="participant-link" href="">participant view</a>
+      &nbsp;·&nbsp;
+      <a id="projector-link" href="">projector</a>
+    </div>
+  </header>
+
+  <main class="wide">
+    <section class="card">
+      <h2>Quizzes</h2>
+      <p class="muted small" style="margin-top: -4px;">Launch a Ready quiz from your library. Each attached quiz has its own lifecycle: <strong>Start</strong> → walk through questions → <strong>Close</strong>.</p>
+      <div class="row" style="margin-bottom: 12px;">
+        <select id="quiz-select"></select>
+        <button id="add-quiz-btn">Launch quiz</button>
+        <div class="spacer"></div>
+        <a href="/quizzes" target="_blank">Edit quiz library →</a>
+      </div>
+      <div id="quiz-sessions"></div>
+    </section>
+
+    <section class="card">
+      <h2>Questions</h2>
+      <div id="questions"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket } from "/static/common.js";
+
+    const CODE = pathCode();
+
+    // Pick up mod_key from URL hash on first visit
+    if (location.hash.includes("k=")) {
+      const k = new URLSearchParams(location.hash.slice(1)).get("k");
+      if (k) { setModKey(k); history.replaceState(null, "", location.pathname); }
+    }
+    if (!modKey()) {
+      const k = prompt("Enter moderator key for session " + CODE);
+      if (k) setModKey(k); else { alert("Moderator key required."); throw new Error("no mod key"); }
+    }
+
+    let questions = [];
+    let quizSessions = [];
+    let quizzes = [];
+
+    async function loadSession() {
+      const s = await api(`/api/sessions/${CODE}`);
+      document.title = `Mod — ${s.title}`;
+      $("#title").textContent = s.title;
+      $("#code").textContent = "Code " + CODE;
+      $("#participant-link").href = `/s/${CODE}`;
+      $("#projector-link").href = `/p/${CODE}`;
+    }
+
+    async function loadQuestions() {
+      questions = await api(`/api/sessions/${CODE}/questions`, { headers: modHeaders() });
+      renderQuestions();
+    }
+
+    function renderQuestions() {
+      const root = $("#questions");
+      root.innerHTML = "";
+      if (!questions.length) {
+        root.appendChild(el("div", { class: "muted small" }, "No questions yet."));
+        return;
+      }
+      const sorted = [...questions].sort((a, b) => {
+        if (a.answered !== b.answered) return a.answered ? 1 : -1;
+        return b.vote_count - a.vote_count;
+      });
+      for (const q of sorted) root.appendChild(renderQuestion(q));
+    }
+
+    function renderQuestion(q) {
+      const ansInput = el("textarea", { placeholder: "Type an answer to publish…" }, q.answer_text || "");
+      const markBtn = el("button", { class: "primary", onclick: async () => {
+        await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
+          method: "POST", headers: modHeaders(),
+          body: { answer_text: ansInput.value.trim(), answered: true },
+        });
+        loadQuestions();
+      } }, q.answered ? "Update answer" : "Mark answered");
+      const unmarkBtn = q.answered ? el("button", { onclick: async () => {
+        await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
+          method: "POST", headers: modHeaders(),
+          body: { answer_text: ansInput.value.trim(), answered: false },
+        });
+        loadQuestions();
+      } }, "Reopen") : null;
+      const hideBtn = el("button", { class: "ghost", onclick: async () => {
+        await api(`/api/sessions/${CODE}/questions/${q.id}/hide`, {
+          method: "POST", headers: modHeaders(), body: { hidden: !q.hidden },
+        });
+        loadQuestions();
+      } }, q.hidden ? "Unhide" : "Hide");
+      const delBtn = el("button", { class: "danger", onclick: async () => {
+        if (!confirm("Delete this question?")) return;
+        await api(`/api/sessions/${CODE}/questions/${q.id}`, { method: "DELETE", headers: modHeaders() });
+        loadQuestions();
+      } }, "Delete");
+      const voteBox = el("div", { class: "vote-btn" + (q.voted ? " voted" : "") },
+        el("div", { class: "count" }, String(q.vote_count)),
+        el("div", { class: "label" }, "votes"));
+      const body = el("div", { class: "body" },
+        el("div", { class: "text" }, q.text),
+        q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
+        el("div", { style: "margin-top: 10px;" }, ansInput),
+        el("div", { class: "row", style: "margin-top: 8px; gap: 6px;" },
+          markBtn, unmarkBtn, hideBtn, el("div", { class: "spacer" }), delBtn,
+        ),
+      );
+      return el("div", { class: "question" + (q.answered ? " answered" : "") + (q.hidden ? " hidden-q" : "") }, voteBox, body);
+    }
+
+    async function loadQuizzes() {
+      quizzes = await api("/api/quizzes?ready_only=true");
+      const sel = $("#quiz-select");
+      sel.innerHTML = "";
+      if (!quizzes.length) {
+        sel.appendChild(el("option", { value: "" }, "No ready quizzes — publish one in the library"));
+      } else {
+        for (const q of quizzes) sel.appendChild(el("option", { value: q.id }, `${q.title} (${q.question_count} q)`));
+      }
+    }
+
+    async function loadQuizSessions() {
+      quizSessions = await api(`/api/sessions/${CODE}/quiz_sessions`, { headers: modHeaders() });
+      renderQuizSessions();
+    }
+
+    function renderQuizSessions() {
+      const root = $("#quiz-sessions");
+      root.innerHTML = "";
+      if (!quizSessions.length) {
+        root.appendChild(el("div", { class: "muted small" }, "No quizzes added yet."));
+        return;
+      }
+      for (const qs of quizSessions) root.appendChild(renderQuizSession(qs));
+    }
+
+    function renderQuizSession(qs) {
+      const tag = el("span", { class: "tag " + qs.status }, qs.status);
+      const header = el("div", { class: "row", style: "margin-bottom: 8px;" },
+        el("strong", {}, qs.quiz_title), tag,
+        el("span", { class: "small muted" }, ` · q ${qs.current_question_idx + 1}/${qs.question_count}`),
+        el("div", { class: "spacer" }),
+        qs.status === "draft" ? el("button", { class: "primary", onclick: () => act(qs.id, "start") }, "Launch") : null,
+        qs.status === "live" ? el("button", { onclick: () => advance(qs.id, "prev") }, "← Prev") : null,
+        qs.status === "live" ? el("button", { onclick: () => advance(qs.id, "next") }, "Next →") : null,
+        qs.status === "live" ? el("button", { onclick: () => reveal(qs.id, !qs.reveal_results) },
+          qs.reveal_results ? "Hide results" : "Reveal results") : null,
+        qs.status === "live" ? el("button", { class: "danger", onclick: () => act(qs.id, "close") }, "Close") : null,
+        el("button", { class: "danger ghost", onclick: () => del(qs.id) }, "✕"),
+      );
+      const cur = qs.current_question;
+      const totals = qs.results?.totals || {};
+      const respondents = qs.results?.respondents || 0;
+      const detail = el("div");
+      if (cur) {
+        detail.appendChild(el("div", {}, el("strong", {}, cur.text)));
+        if (cur.image_url) detail.appendChild(el("img", { class: "q-image", src: cur.image_url }));
+        for (const op of cur.options) {
+          const pct = respondents ? Math.round((totals[op.id] || 0) / respondents * 100) : 0;
+          const opDiv = el("div", {
+            class: "option disabled" + (op.is_correct ? " correct" : ""),
+          });
+          const bar = el("div", { class: "bar" });
+          bar.style.transform = `scaleX(${respondents ? (totals[op.id] || 0) / respondents : 0})`;
+          opDiv.appendChild(bar);
+          if (op.image_url) opDiv.appendChild(el("img", { class: "opt-img", src: op.image_url }));
+          opDiv.appendChild(el("div", { class: "opt-text" }, op.text + (op.is_correct ? "  ✓" : "")));
+          opDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[op.id] || 0} (${pct}%)`));
+          detail.appendChild(opDiv);
+        }
+        detail.appendChild(el("div", { class: "small muted" }, `${respondents} respondent(s)`));
+      }
+      return el("section", { class: "card", style: "background: var(--panel-2);" }, header, detail);
+    }
+
+    async function act(qsId, action) {
+      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}/${action}`, { method: "POST", headers: modHeaders() });
+      loadQuizSessions();
+    }
+    async function advance(qsId, direction) {
+      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}/advance`, {
+        method: "POST", headers: modHeaders(), body: { direction },
+      });
+      loadQuizSessions();
+    }
+    async function reveal(qsId, val) {
+      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}/reveal`, {
+        method: "POST", headers: modHeaders(), body: { reveal: val },
+      });
+      loadQuizSessions();
+    }
+    async function del(qsId) {
+      if (!confirm("Remove this quiz from the session?")) return;
+      await api(`/api/sessions/${CODE}/quiz_sessions/${qsId}`, { method: "DELETE", headers: modHeaders() });
+      loadQuizSessions();
+    }
+
+    $("#add-quiz-btn").addEventListener("click", async () => {
+      const quizId = parseInt($("#quiz-select").value, 10);
+      if (!quizId) return alert("Pick a quiz first.");
+      await api(`/api/sessions/${CODE}/quiz_sessions`, {
+        method: "POST", headers: modHeaders(), body: { quiz_id: quizId },
+      });
+      loadQuizSessions();
+    });
+
+    function refresh() { loadQuestions(); loadQuizSessions(); }
+
+    (async function() {
+      try {
+        await loadSession();
+        await loadQuizzes();
+        refresh();
+        openLiveSocket(CODE, refresh);
+      } catch (e) { alert("Error: " + e.message); }
+    })();
+  </script>
+</body>
+</html>

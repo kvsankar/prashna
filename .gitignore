@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+
+# SQLite DB and journals — contains user accounts, session data
+prashna.db
+prashna.db-journal
+*.db
+*.db-journal
+
+# User-uploaded files
+uploads/*
+!uploads/.gitkeep
+
+# Local env / IDE / tooling
+.env
+.env.*
+.idea/
+.vscode/
+.claude/
+.mcp.json

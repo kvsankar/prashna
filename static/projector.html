@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — projector</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <style>
+    body { background: #000; }
+    main.proj { max-width: none; }
+    .qa-list { max-height: 75vh; overflow: auto; }
+  </style>
+</head>
+<body>
+  <main class="proj">
+    <h1 id="title">Loading…</h1>
+    <div class="code-display">Join: <strong id="code"></strong> at <span id="origin"></span></div>
+
+    <section id="quiz-section" class="card" style="display:none;">
+      <div id="quiz-body"></div>
+    </section>
+
+    <section class="card">
+      <h2>Top questions</h2>
+      <div id="questions" class="qa-list"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { $, api, el, pathCode, openLiveSocket } from "/static/common.js";
+
+    const CODE = pathCode();
+    $("#origin").textContent = location.origin.replace(/^https?:\/\//, "");
+    $("#code").textContent = CODE;
+
+    async function loadAll() {
+      const [s, qs, quizzes] = await Promise.all([
+        api(`/api/sessions/${CODE}`),
+        api(`/api/sessions/${CODE}/questions`),
+        api(`/api/sessions/${CODE}/quiz_sessions`),
+      ]);
+      $("#title").textContent = s.title;
+      renderQuestions(qs);
+      renderQuiz(quizzes.find(q => q.status === "live") || quizzes.find(q => q.status === "closed"));
+    }
+
+    function renderQuestions(qs) {
+      const root = $("#questions");
+      root.innerHTML = "";
+      const top = qs.filter(q => !q.answered).sort((a, b) => b.vote_count - a.vote_count).slice(0, 8);
+      if (!top.length) {
+        root.appendChild(el("div", { class: "muted" }, "Waiting for questions…"));
+        return;
+      }
+      for (const q of top) {
+        root.appendChild(el("div", { class: "question" },
+          el("div", { class: "vote-btn" + (q.voted ? " voted" : "") },
+            el("div", { class: "count" }, String(q.vote_count)),
+            el("div", { class: "label" }, "votes")),
+          el("div", { class: "body" },
+            el("div", { class: "text" }, q.text),
+            q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null),
+        ));
+      }
+    }
+
+    function renderQuiz(quiz) {
+      const section = $("#quiz-section");
+      const body = $("#quiz-body");
+      if (!quiz) { section.style.display = "none"; return; }
+      section.style.display = "";
+      body.innerHTML = "";
+      body.appendChild(el("div", { class: "muted" }, `${quiz.quiz_title} — q ${quiz.current_question_idx + 1}/${quiz.question_count}`));
+      const q = quiz.current_question;
+      if (!q) return;
+      body.appendChild(el("h2", { style: "font-size: 32px; margin: 12px 0;" }, q.text));
+      if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
+      const totals = quiz.results?.totals || {};
+      const respondents = quiz.results?.respondents || 0;
+      const showResults = !!quiz.results;
+      for (const op of q.options) {
+        const opDiv = el("div", { class: "option disabled" + (showResults && op.is_correct ? " correct" : "") });
+        if (showResults) {
+          const bar = el("div", { class: "bar" });
+          bar.style.transform = `scaleX(${respondents ? (totals[op.id] || 0) / respondents : 0})`;
+          opDiv.appendChild(bar);
+        }
+        if (op.image_url) opDiv.appendChild(el("img", { class: "opt-img", src: op.image_url }));
+        opDiv.appendChild(el("div", { class: "opt-text" }, op.text));
+        if (showResults) {
+          const pct = respondents ? Math.round((totals[op.id] || 0) / respondents * 100) : 0;
+          opDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
+        }
+        body.appendChild(opDiv);
+      }
+      if (showResults) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
+    }
+
+    loadAll();
+    openLiveSocket(CODE, loadAll);
+  </script>
+</body>
+</html>
