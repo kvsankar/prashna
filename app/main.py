@@ -487,7 +487,11 @@ def list_sessions(db: DbSession = Depends(get_db), me: m.User = Depends(auth.cur
 
 @app.post("/api/sessions")
 def create_session(payload: dict, db: DbSession = Depends(get_db), me: m.User = Depends(auth.current_admin)):
-    title = (payload.get("title") or "").strip() or "Untitled session"
+    title = (payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "Session title is required")
+    if len(title) > 200:
+        raise HTTPException(400, "Session title is too long (max 200 chars)")
     code = gen_code()
     while db.scalar(select(m.Session).where(m.Session.code == code)):
         code = gen_code()
@@ -507,6 +511,31 @@ def get_session(code: str, db: DbSession = Depends(get_db)):
         "status": s.status,
         "created_at": s.created_at.isoformat(),
     }
+
+
+@app.delete("/api/sessions/{code}")
+def delete_session(
+    code: str,
+    payload: dict | None = None,
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    s = get_session_by_code(db, code)
+    require_session_owner(s, me)
+    if s.status == "live":
+        raise HTTPException(400, "End the session before deleting it")
+    # Has-data check: questions or quiz_runs.
+    has_data = bool(s.questions) or bool(s.quiz_runs)
+    if has_data:
+        confirm_title = (payload or {}).get("confirm_title", "")
+        if confirm_title != s.title:
+            raise HTTPException(
+                400,
+                "Type the session title exactly to confirm deletion",
+            )
+    db.delete(s)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/sessions/{code}/start")
