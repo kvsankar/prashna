@@ -73,6 +73,9 @@
     let quizzes = [];
     let sessionState = null;
     let presenceTimer = null;
+    // Per-question in-progress answer text. Survives WS-driven re-renders so
+    // the moderator never loses what they were typing.
+    const pendingAnswerText = new Map();
 
     function showWorkSurfaces(visible) {
       for (const id of ["lifecycle-card", "quizzes-card", "questions-card"]) $("#" + id).style.display = visible ? "" : "none";
@@ -163,7 +166,9 @@
     }
 
     function renderQuestion(q) {
-      const ansInput = el("textarea", { placeholder: "Type an answer (optional — leave empty if you answered verbally)…" }, q.answer_text || "");
+      const initial = pendingAnswerText.has(q.id) ? pendingAnswerText.get(q.id) : (q.answer_text || "");
+      const ansInput = el("textarea", { placeholder: "Type an answer (optional — leave empty if you answered verbally)…" }, initial);
+      ansInput.addEventListener("input", () => pendingAnswerText.set(q.id, ansInput.value));
       const answerBtn = el("button", { class: "primary small" }, q.answered ? "Update answer" : "Mark answered");
       answerBtn.addEventListener("click", async () => {
         try {
@@ -171,6 +176,7 @@
             method: "POST", headers: modHeaders(),
             body: { answer_text: ansInput.value.trim(), answered: true },
           });
+          pendingAnswerText.delete(q.id);
           loadQuestions();
         } catch (e) { errorToast(e.message); }
       });
@@ -181,6 +187,7 @@
             method: "POST", headers: modHeaders(),
             body: { answer_text: ansInput.value.trim(), answered: false },
           });
+          pendingAnswerText.delete(q.id);
           loadQuestions();
         } catch (e) { errorToast(e.message); }
       });

@@ -64,6 +64,7 @@
 
     let quizzes = [];
     let qsessions = [];
+    let editing = null;     // the loaded quiz tree currently in the editor card
     let editingId = null;   // quiz id currently shown in the editor card
     let resultsId = null;   // quiz_run id currently shown in the results card
 
@@ -194,7 +195,6 @@
 
     // ---------- quiz editor (inside detail pane) ----------
 
-    let editing = null;
     async function openQuizDetail(id) {
       try {
         editing = await api(`/api/quizzes/${id}?include_correct=true`);
