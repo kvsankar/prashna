@@ -19,12 +19,17 @@
 
   <main>
     <section class="card" id="quiz-card" style="display:none;">
-      <h2>Live quiz</h2>
+      <div class="card-head"><h2>Live quiz</h2></div>
       <div id="quiz-body"></div>
     </section>
 
-    <section class="card">
-      <h2>Ask a question</h2>
+    <section class="card" id="ended-card" style="display:none;">
+      <div class="card-head"><h2>Session ended</h2></div>
+      <p class="muted small" style="margin: 0;">This session has ended. You can still see what was asked, but you can't add new questions or vote.</p>
+    </section>
+
+    <section class="card" id="ask-card">
+      <div class="card-head"><h2>Ask a question</h2></div>
       <textarea id="question-text" placeholder="Type your question… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
       <div class="row" style="margin-top: 8px;">
         <span class="muted small">Anonymous unless you set a name above.</span>
@@ -34,12 +39,12 @@
     </section>
 
     <section class="card">
-      <h2>Questions</h2>
+      <div class="card-head"><h2>Questions</h2></div>
       <div id="questions"></div>
     </section>
 
     <section class="card" id="invite-card">
-      <h2>Invite others</h2>
+      <div class="card-head"><h2>Invite others</h2></div>
       <div class="row gap" style="align-items: center;">
         <div id="share-qr" style="width: 120px; min-width: 120px;"></div>
         <div class="small muted" style="flex:1;">
@@ -59,11 +64,15 @@
     let lastItemId = null;
     let me = { id: null, name: null };
 
+    let sessionEnded = false;
     async function loadSession() {
       const s = await api(`/api/sessions/${CODE}`);
       document.title = `Prashna — ${s.title}`;
       $("#title").textContent = s.title;
       $("#code").textContent = "Code " + CODE;
+      sessionEnded = s.status === "ended";
+      $("#ask-card").style.display = sessionEnded ? "none" : "";
+      $("#ended-card").style.display = sessionEnded ? "" : "none";
       const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
       try { await renderQR($("#share-qr"), `${base}/s/${s.code}`, { cellSize: 3, margin: 2 }); }
       catch {}
@@ -104,6 +113,8 @@
     function renderQuestion(q) {
       const voteBtn = el("button", {
         class: "vote-btn" + (q.voted ? " voted" : ""),
+        "aria-pressed": String(!!q.voted),
+        "aria-label": q.voted ? `Remove vote (currently ${q.vote_count})` : `Upvote (currently ${q.vote_count})`,
         onclick: () => toggleVote(q.id),
       },
         el("div", { class: "count" }, String(q.vote_count)),
@@ -239,7 +250,7 @@
       } catch (e) { errorToast(e.message); }
     }
 
-    function refreshAll() { loadQuestions(); loadQuiz(); }
+    function refreshAll() { loadSession(); loadQuestions(); loadQuiz(); }
 
     (async function () {
       await loadSession();

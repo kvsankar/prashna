@@ -16,9 +16,9 @@
       &nbsp;·&nbsp;
       <span id="live-count" class="small muted">— online</span>
       &nbsp;·&nbsp;
-      <a id="participant-link" href="">participant view</a>
+      <a id="participant-link" href="#">participant view</a>
       &nbsp;·&nbsp;
-      <a id="projector-link" href="">projector</a>
+      <a id="projector-link" href="#">projector</a>
     </div>
   </header>
 
@@ -45,7 +45,6 @@
       </p>
       <div class="field row gap">
         <input id="base-url" class="inline" style="flex:1;" placeholder="e.g. https://prashna.sankara.net">
-        <button id="base-url-save" class="small">Save</button>
         <button id="base-url-clear" class="ghost small">Use default</button>
       </div>
       <div class="row gap" style="align-items: flex-start;">
@@ -140,28 +139,21 @@
       catch (e) { $("#invite-qr").textContent = "QR unavailable"; }
     }
 
-    $("#base-url-save").addEventListener("click", async () => {
+    async function saveModBaseUrl(url) {
       try {
         await api(`/api/sessions/${CODE}/participant_base_url`, {
-          method: "POST", headers: modHeaders(), body: { url: $("#base-url").value },
+          method: "POST", headers: modHeaders(), body: { url },
         });
         await loadSession();
-        toast("Saved");
+        toast(url ? "Base URL saved" : "Reverted to default");
       } catch (e) { errorToast(e.message); }
-    });
-    $("#base-url-clear").addEventListener("click", async () => {
-      try {
-        await api(`/api/sessions/${CODE}/participant_base_url`, {
-          method: "POST", headers: modHeaders(), body: { url: "" },
-        });
-        await loadSession();
-        toast("Reverted to default");
-      } catch (e) { errorToast(e.message); }
-    });
+    }
+    $("#base-url").addEventListener("change", () => saveModBaseUrl($("#base-url").value));
+    $("#base-url-clear").addEventListener("click", () => { $("#base-url").value = ""; saveModBaseUrl(""); });
     $("#invite-copy").addEventListener("click", async () => {
       const url = $("#invite-url").textContent;
       try { await navigator.clipboard.writeText(url); toast("URL copied"); }
-      catch { window.prompt("Copy:", url); }
+      catch { errorToast("Couldn't copy — load over HTTPS for clipboard access."); }
     });
 
     function renderLifecycle() {
@@ -320,7 +312,9 @@
         head.appendChild(actBtn("danger", "Close", () => act(r.id, "close")));
       }
       if (r.status !== "closed") {
-        head.appendChild(actBtn("danger ghost", "✕", () => del(r.id)));
+        const x = actBtn("danger ghost", "✕", () => del(r.id));
+        x.setAttribute("aria-label", "Remove this quiz from the session");
+        head.appendChild(x);
       }
       const cur = r.current_item;
       const totals = r.results?.totals || {};

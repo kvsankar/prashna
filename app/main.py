@@ -515,6 +515,31 @@ def get_session(code: str, db: DbSession = Depends(get_db)):
     }
 
 
+@app.patch("/api/sessions/{code}")
+async def update_session(
+    code: str,
+    payload: dict,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    s = get_session_by_code(db, code)
+    is_owner = me is not None and s.owner_user_id == me.id
+    is_mod = bool(x_mod_key) and secrets.compare_digest(x_mod_key, s.mod_key)
+    if not (is_owner or is_mod):
+        raise HTTPException(403, "Not authorized")
+    if "title" in payload:
+        new_title = (payload.get("title") or "").strip()
+        if not new_title:
+            raise HTTPException(400, "Session title is required")
+        if len(new_title) > 200:
+            raise HTTPException(400, "Session title is too long (max 200 chars)")
+        s.title = new_title
+    db.commit()
+    await broadcast_session(s, "session_state")
+    return {"code": s.code, "title": s.title, "status": s.status}
+
+
 @app.post("/api/sessions/{code}/participant_base_url")
 async def set_participant_base_url(
     code: str,

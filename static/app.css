@@ -10,7 +10,11 @@
   --bad: #ef4444;
   --warn: #f59e0b;
   --border: #334155;
+  --proj-bg: #000;
+  --proj-hint: #888;
 }
+.field { margin: 8px 0; }
+.field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 body { min-height: 100vh; }

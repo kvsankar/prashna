@@ -6,7 +6,7 @@
   <title>Prashna — projector</title>
   <link rel="stylesheet" href="/static/app.css">
   <style>
-    body { background: #000; }
+    body { background: var(--proj-bg); }
     main.proj { max-width: none; }
     .qa-list { max-height: 75vh; overflow: auto; }
     #join-qr { cursor: zoom-in; }
@@ -22,8 +22,8 @@
     }
     .lightbox-inner svg { width: 100%; height: 100%; }
     .lightbox-hint {
-      position: fixed; bottom: 30px; left: 0; right: 0;
-      text-align: center; color: #888; font-size: 14px;
+      position: fixed; bottom: 28px; left: 0; right: 0;
+      text-align: center; color: var(--proj-hint); font-size: 13px;
     }
   </style>
 </head>
