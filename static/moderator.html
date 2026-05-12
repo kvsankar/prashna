@@ -70,9 +70,9 @@
       <div id="quiz-runs"></div>
     </section>
 
-    <section class="card" id="questions-card" style="display:none;">
-      <div class="card-head"><h2>Questions</h2></div>
-      <div id="questions"></div>
+    <section class="card" id="queries-card" style="display:none;">
+      <div class="card-head"><h2>Queries</h2></div>
+      <div id="queries"></div>
     </section>
   </main>
 
@@ -87,17 +87,17 @@
       if (k) { setModKey(k); history.replaceState(null, "", location.pathname); }
     }
 
-    let questions = [];
+    let queries = [];
     let quizRuns = [];
     let quizzes = [];
     let sessionState = null;
     let presenceTimer = null;
-    // Per-question in-progress answer text. Survives WS-driven re-renders so
+    // Per-query in-progress response text. Survives WS-driven re-renders so
     // the moderator never loses what they were typing.
-    const pendingAnswerText = new Map();
+    const pendingResponseText = new Map();
 
     function showWorkSurfaces(visible) {
-      for (const id of ["lifecycle-card", "invite-card", "quizzes-card", "questions-card"]) $("#" + id).style.display = visible ? "" : "none";
+      for (const id of ["lifecycle-card", "invite-card", "quizzes-card", "queries-card"]) $("#" + id).style.display = visible ? "" : "none";
     }
     function showKeyGate() {
       $("#modkey-code").textContent = CODE;
@@ -171,7 +171,7 @@
         hint.textContent = "Session is live. End it when you're done.";
         const btn = el("button", { class: "danger ghost small" }, "End session");
         btn.addEventListener("click", async () => {
-          if (!confirm("End the session? Participants can no longer ask questions.")) return;
+          if (!confirm("End the session? Participants can no longer ask queries.")) return;
           transition("end");
         });
         actions.appendChild(btn);
@@ -195,60 +195,60 @@
       } catch {}
     }
 
-    async function loadQuestions() {
-      questions = await api(`/api/sessions/${CODE}/questions`, { headers: modHeaders() });
-      renderQuestions();
+    async function loadQueries() {
+      queries = await api(`/api/sessions/${CODE}/queries`, { headers: modHeaders() });
+      renderQueries();
     }
 
-    function renderQuestions() {
-      const root = $("#questions");
+    function renderQueries() {
+      const root = $("#queries");
       root.innerHTML = "";
-      if (!questions.length) {
-        root.appendChild(el("div", { class: "muted small" }, "No questions yet. Share the participant URL to invite questions."));
+      if (!queries.length) {
+        root.appendChild(el("div", { class: "muted small" }, "No queries yet. Share the participant URL to invite queries."));
         return;
       }
-      const sorted = [...questions].sort((a, b) => {
+      const sorted = [...queries].sort((a, b) => {
         if (a.removed !== b.removed) return a.removed ? 1 : -1;
-        if (a.answered !== b.answered) return a.answered ? 1 : -1;
+        if (a.responded !== b.responded) return a.responded ? 1 : -1;
         return b.vote_count - a.vote_count;
       });
-      for (const q of sorted) root.appendChild(renderQuestion(q));
+      for (const q of sorted) root.appendChild(renderQuery(q));
     }
 
-    function renderQuestion(q) {
-      const initial = pendingAnswerText.has(q.id) ? pendingAnswerText.get(q.id) : (q.answer_text || "");
-      const ansInput = el("textarea", { placeholder: "Type an answer (optional — leave empty if you answered verbally)…" }, initial);
-      ansInput.addEventListener("input", () => pendingAnswerText.set(q.id, ansInput.value));
-      const answerBtn = el("button", { class: "primary small" }, q.answered ? "Update answer" : "Mark answered");
-      answerBtn.addEventListener("click", async () => {
+    function renderQuery(q) {
+      const initial = pendingResponseText.has(q.id) ? pendingResponseText.get(q.id) : (q.response_text || "");
+      const respInput = el("textarea", { placeholder: "Type a response (optional — leave empty if you answered verbally)…" }, initial);
+      respInput.addEventListener("input", () => pendingResponseText.set(q.id, respInput.value));
+      const respondBtn = el("button", { class: "primary small" }, q.responded ? "Update response" : "Mark responded");
+      respondBtn.addEventListener("click", async () => {
         try {
-          await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
+          await api(`/api/sessions/${CODE}/queries/${q.id}/respond`, {
             method: "POST", headers: modHeaders(),
-            body: { answer_text: ansInput.value.trim(), answered: true },
+            body: { response_text: respInput.value.trim(), responded: true },
           });
-          pendingAnswerText.delete(q.id);
-          loadQuestions();
+          pendingResponseText.delete(q.id);
+          loadQueries();
         } catch (e) { errorToast(e.message); }
       });
-      const reopenBtn = q.answered ? el("button", { class: "ghost small" }, "Reopen") : null;
+      const reopenBtn = q.responded ? el("button", { class: "ghost small" }, "Reopen") : null;
       if (reopenBtn) reopenBtn.addEventListener("click", async () => {
         try {
-          await api(`/api/sessions/${CODE}/questions/${q.id}/answer`, {
+          await api(`/api/sessions/${CODE}/queries/${q.id}/respond`, {
             method: "POST", headers: modHeaders(),
-            body: { answer_text: ansInput.value.trim(), answered: false },
+            body: { response_text: respInput.value.trim(), responded: false },
           });
-          pendingAnswerText.delete(q.id);
-          loadQuestions();
+          pendingResponseText.delete(q.id);
+          loadQueries();
         } catch (e) { errorToast(e.message); }
       });
       const removeBtn = el("button", { class: "danger ghost small" }, q.removed ? "Restore" : "Remove");
       removeBtn.addEventListener("click", async () => {
         try {
-          await api(`/api/sessions/${CODE}/questions/${q.id}/remove`, {
+          await api(`/api/sessions/${CODE}/queries/${q.id}/remove`, {
             method: "POST", headers: modHeaders(),
             body: { removed: !q.removed },
           });
-          loadQuestions();
+          loadQueries();
         } catch (e) { errorToast(e.message); }
       });
       const voteBox = el("div", { class: "vote-btn" + (q.voted ? " voted" : "") },
@@ -257,12 +257,12 @@
       const body = el("div", { class: "body" },
         el("div", { class: "text" }, q.text),
         q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
-        el("div", { style: "margin-top: 10px;" }, ansInput),
+        el("div", { style: "margin-top: 10px;" }, respInput),
         el("div", { class: "row", style: "margin-top: 8px; gap: 6px;" },
-          answerBtn, reopenBtn, el("div", { class: "spacer" }), removeBtn,
+          respondBtn, reopenBtn, el("div", { class: "spacer" }), removeBtn,
         ),
       );
-      return el("div", { class: "question" + (q.answered ? " answered" : "") + (q.removed ? " hidden-q" : "") }, voteBox, body);
+      return el("div", { class: "question" + (q.responded ? " answered" : "") + (q.removed ? " hidden-q" : "") }, voteBox, body);
     }
 
     async function loadQuizzes() {
@@ -272,7 +272,7 @@
       if (!quizzes.length) {
         sel.appendChild(el("option", { value: "" }, "No ready quizzes — publish one in the library"));
       } else {
-        for (const q of quizzes) sel.appendChild(el("option", { value: q.id }, `${q.title} (${q.item_count} items)`));
+        for (const q of quizzes) sel.appendChild(el("option", { value: q.id }, `${q.title} (${q.question_count} questions)`));
       }
     }
 
@@ -297,7 +297,7 @@
         el("strong", {}, r.quiz_title),
         el("span", { class: "small muted" }, ` v${r.version_no}`),
         tag,
-        el("span", { class: "small muted" }, ` · item ${r.current_item_idx + 1}/${r.item_count}`),
+        el("span", { class: "small muted" }, ` · q ${r.current_question_idx + 1}/${r.question_count}`),
         el("div", { class: "spacer" }),
       );
       // Lifecycle verbs
@@ -316,25 +316,25 @@
         x.setAttribute("aria-label", "Remove this quiz from the session");
         head.appendChild(x);
       }
-      const cur = r.current_item;
+      const cur = r.current_question;
       const totals = r.results?.totals || {};
       const respondents = r.results?.respondents || 0;
       const detail = el("div");
       if (cur) {
         detail.appendChild(el("div", {}, el("strong", {}, cur.text)));
         if (cur.image_url) detail.appendChild(el("img", { class: "q-image", src: cur.image_url }));
-        for (const op of cur.options) {
-          const pct = respondents ? Math.round((totals[op.id] || 0) / respondents * 100) : 0;
-          const opDiv = el("div", {
-            class: "option disabled" + (op.is_correct ? " correct" : ""),
+        for (const a of cur.answers) {
+          const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
+          const aDiv = el("div", {
+            class: "option disabled" + (a.is_correct ? " correct" : ""),
           });
           const bar = el("div", { class: "bar" });
-          bar.style.transform = `scaleX(${respondents ? (totals[op.id] || 0) / respondents : 0})`;
-          opDiv.appendChild(bar);
-          if (op.image_url) opDiv.appendChild(el("img", { class: "opt-img", src: op.image_url }));
-          opDiv.appendChild(el("div", { class: "opt-text" }, op.text + (op.is_correct ? "  ✓" : "")));
-          opDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[op.id] || 0} (${pct}%)`));
-          detail.appendChild(opDiv);
+          bar.style.transform = `scaleX(${respondents ? (totals[a.id] || 0) / respondents : 0})`;
+          aDiv.appendChild(bar);
+          if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
+          aDiv.appendChild(el("div", { class: "opt-text" }, a.text + (a.is_correct ? "  ✓" : "")));
+          aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
+          detail.appendChild(aDiv);
         }
         detail.appendChild(el("div", { class: "small muted" }, `${respondents} respondent(s)`));
       }
@@ -390,7 +390,7 @@
       } catch (e) { errorToast(e.message); }
     });
 
-    function refresh() { loadQuestions(); loadQuizRuns(); loadPresence(); }
+    function refresh() { loadQueries(); loadQuizRuns(); loadPresence(); }
 
     async function boot() {
       await loadSession();

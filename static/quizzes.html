@@ -23,7 +23,7 @@
       </div>
       <table class="ctable" id="quiz-table">
         <thead><tr>
-          <th>Title</th><th>Status</th><th class="num">Items</th><th class="actions">Actions</th>
+          <th>Title</th><th>Status</th><th class="num">Questions</th><th class="actions">Actions</th>
         </tr></thead>
         <tbody id="quiz-rows"><tr><td colspan="4" class="muted small">Loading…</td></tr></tbody>
       </table>
@@ -84,7 +84,7 @@
         tr.appendChild(el("td", {}, q.title));
         tr.appendChild(el("td", {},
           el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft")));
-        tr.appendChild(el("td", { class: "num muted" }, String(q.item_count)));
+        tr.appendChild(el("td", { class: "num muted" }, String(q.question_count)));
         const actions = el("td", { class: "actions" });
         const toggleBtn = isReady
           ? el("button", { class: "ghost xsmall", onclick: ev => { ev.stopPropagation(); unpublishQuiz(q.id); } }, "Unpublish")
@@ -115,7 +115,7 @@
           el("code", { class: "small" }, r.session_code)));
         tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + r.status }, r.status)));
         const progress = r.status === "queued" ? "—"
-          : `${Math.min(r.current_item_idx + 1, r.item_count)}/${r.item_count}`;
+          : `${Math.min(r.current_question_idx + 1, r.question_count)}/${r.question_count}`;
         tr.appendChild(el("td", { class: "num muted" }, progress));
         tr.appendChild(el("td", { class: "num muted" }, String(r.respondent_count)));
         tr.appendChild(el("td", { class: "muted small" }, new Date(r.created_at).toLocaleString()));
@@ -227,17 +227,17 @@
       body.appendChild(el("div", { class: "row gap field-row" },
         el("label", { class: "small muted" }, "Title"), titleInp));
 
-      for (const it of editing.items) body.appendChild(renderItem(it));
+      for (const it of editing.questions) body.appendChild(renderQuestion(it));
 
       body.appendChild(el("div", { class: "row gap", style: "margin-top: 10px;" },
-        el("button", { class: "primary small", onclick: addItem }, "+ Add item")));
+        el("button", { class: "primary small", onclick: addQuestion }, "+ Add question")));
     }
 
-    function renderItem(qq) {
+    function renderQuestion(qq) {
       const wrap = el("div", { class: "editor-q compact" });
 
       const textInp = el("textarea", { rows: 2 }, qq.text);
-      textInp.addEventListener("change", () => patchItem(qq.id, { text: textInp.value }));
+      textInp.addEventListener("change", () => patchQuestion(qq.id, { text: textInp.value }));
 
       const typeSel = el("select", { class: "inline narrow" });
       for (const t of ["single", "multi"]) {
@@ -245,13 +245,13 @@
         if (qq.qtype === t) o.setAttribute("selected", "");
         typeSel.appendChild(o);
       }
-      typeSel.addEventListener("change", () => patchItem(qq.id, { qtype: typeSel.value }));
+      typeSel.addEventListener("change", () => patchQuestion(qq.id, { qtype: typeSel.value }));
 
       const head = el("div", { class: "row gap" },
         el("strong", {}, `Q${qq.order_index + 1}`), typeSel, el("div", { class: "spacer" }),
         el("button", { class: "danger ghost xsmall", onclick: async () => {
           if (!confirm("Delete this question?")) return;
-          await api(`/api/quiz_items/${qq.id}`, { method: "DELETE" });
+          await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" });
           openQuizDetail(editing.id);
         } }, "Delete"));
       wrap.appendChild(head);
@@ -264,80 +264,80 @@
       imgInp.addEventListener("change", async () => {
         if (!imgInp.files[0]) return;
         const url = await uploadImage(imgInp.files[0]);
-        if (url) { await patchItem(qq.id, { image_url: url }); openQuizDetail(editing.id); }
+        if (url) { await patchQuestion(qq.id, { image_url: url }); openQuizDetail(editing.id); }
       });
       imgRow.appendChild(imgInp);
       if (qq.image_url) imgRow.appendChild(el("button", { class: "ghost xsmall", onclick: async () => {
-        await patchItem(qq.id, { image_url: null }); openQuizDetail(editing.id);
+        await patchQuestion(qq.id, { image_url: null }); openQuizDetail(editing.id);
       } }, "Clear"));
       wrap.appendChild(imgRow);
 
       // options
       const opts = el("div", { class: "options" });
-      for (const op of qq.options) opts.appendChild(renderOption(qq, op));
+      for (const op of qq.answers) opts.appendChild(renderAnswer(qq, op));
       wrap.appendChild(opts);
       wrap.appendChild(el("button", { class: "ghost xsmall", style: "margin-top: 4px;",
         onclick: async () => {
-          await api(`/api/quiz_items/${qq.id}/options`, { method: "POST", body: { text: "New option" } });
+          await api(`/api/quiz_questions/${qq.id}/answers`, { method: "POST", body: { text: "New answer" } });
           openQuizDetail(editing.id);
-        } }, "+ Option"));
+        } }, "+ Answer"));
       return wrap;
     }
 
-    function renderOption(qq, op) {
+    function renderAnswer(qq, op) {
       const row = el("div", { class: "editor-opt" });
       const correctBox = el("input", { type: "checkbox" });
       if (op.is_correct) correctBox.setAttribute("checked", "");
-      correctBox.addEventListener("change", () => patchOption(op.id, { is_correct: correctBox.checked }));
+      correctBox.addEventListener("change", () => patchAnswer(op.id, { is_correct: correctBox.checked }));
       const txt = el("input", { type: "text", value: op.text, class: "inline" });
-      txt.addEventListener("change", () => patchOption(op.id, { text: txt.value }));
+      txt.addEventListener("change", () => patchAnswer(op.id, { text: txt.value }));
       row.appendChild(el("label", { class: "small", title: "Correct" }, correctBox));
       row.appendChild(txt);
       if (op.image_url) row.appendChild(el("img", { src: op.image_url, class: "thumb-sm", alt: "" }));
       // Image upload / clear, mirroring the item-level affordance.
       const imgInp = el("input", { type: "file", accept: "image/*", class: "inline",
-                                   "aria-label": "Set option image",
+                                   "aria-label": "Set answer image",
                                    style: "width: auto; max-width: 140px;" });
       imgInp.addEventListener("change", async () => {
         if (!imgInp.files[0]) return;
         const url = await uploadImage(imgInp.files[0]);
-        if (url) { await patchOption(op.id, { image_url: url }); openQuizDetail(editing.id); }
+        if (url) { await patchAnswer(op.id, { image_url: url }); openQuizDetail(editing.id); }
       });
       row.appendChild(imgInp);
       if (op.image_url) {
         row.appendChild(el("button", { class: "ghost xsmall",
-          "aria-label": "Clear option image",
+          "aria-label": "Clear answer image",
           onclick: async () => {
-            await patchOption(op.id, { image_url: null });
+            await patchAnswer(op.id, { image_url: null });
             openQuizDetail(editing.id);
           } }, "Clear"));
       }
       row.appendChild(el("button", { class: "danger ghost xsmall",
-        "aria-label": "Delete option",
+        "aria-label": "Delete answer",
         onclick: async () => {
-          await api(`/api/quiz_options/${op.id}`, { method: "DELETE" });
+          await api(`/api/quiz_answers/${op.id}`, { method: "DELETE" });
           openQuizDetail(editing.id);
         } }, "✕"));
       return row;
     }
 
-    async function patchItem(id, body) {
+    async function patchQuestion(id, body) {
       try {
-        await api(`/api/quiz_items/${id}`, { method: "PATCH", body });
+        await api(`/api/quiz_questions/${id}`, { method: "PATCH", body });
         // Edits no longer change status (versioning happens at Launch).
         loadQuizzes();
       } catch (e) { errorToast(e.message); }
     }
-    async function patchOption(id, body) {
+    async function patchAnswer(id, body) {
       try {
-        await api(`/api/quiz_options/${id}`, { method: "PATCH", body });
+        await api(`/api/quiz_answers/${id}`, { method: "PATCH", body });
         loadQuizzes();
       } catch (e) { errorToast(e.message); }
     }
-    async function addItem() {
+    async function addQuestion() {
       try {
-        await api(`/api/quizzes/${editing.id}/items`, {
-          method: "POST", body: { text: "New item", qtype: "single" },
+        await api(`/api/quizzes/${editing.id}/questions`, {
+          method: "POST", body: { text: "New question", qtype: "single" },
         });
         openQuizDetail(editing.id);
       } catch (e) { errorToast(e.message); }
@@ -372,12 +372,12 @@
         el("a", { href: `/m/${r.session_code}`, target: "_blank", class: "small" }, "Open moderator →"));
       body.appendChild(head);
 
-      if (!r.items.length) {
+      if (!r.questions.length) {
         body.appendChild(el("div", { class: "muted small", style: "margin-top: 12px;" }, "Quiz has no questions."));
         return;
       }
-      for (let i = 0; i < r.items.length; i++) {
-        const q = r.items[i];
+      for (let i = 0; i < r.questions.length; i++) {
+        const q = r.questions[i];
         const max = Math.max(1, q.respondents);
         const card = el("div", { class: "result-q" });
         card.appendChild(el("div", { class: "row gap" },
@@ -386,7 +386,7 @@
           el("div", { class: "spacer" }),
           el("span", { class: "small muted" }, `${q.respondents} respondent${q.respondents === 1 ? "" : "s"}`)));
         if (q.image_url) card.appendChild(el("img", { src: q.image_url, class: "thumb", style: "margin-top: 6px;" }));
-        for (const op of q.options) {
+        for (const op of q.answers) {
           const pct = Math.round((op.count / max) * 100);
           const cls = "result-opt" + (op.is_correct ? " correct" : "");
           const optRow = el("div", { class: cls });
