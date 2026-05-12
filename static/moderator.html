@@ -93,6 +93,10 @@
     let quizzes = [];
     let sessionState = null;
     let presenceTimer = null;
+    // True when the page is opened by the admin owner (cookie present).
+    // Delegated mod-key visitors see a narrower surface — owner-only
+    // controls (Base URL editor, etc.) stay hidden for them.
+    let isOwner = false;
     // Per-query in-progress response text. Survives WS-driven re-renders so
     // the moderator never loses what they were typing.
     const pendingResponseText = new Map();
@@ -136,6 +140,10 @@
       const url = participantUrlFor(sessionState);
       $("#base-url").value = sessionState.participant_base_url || "";
       $("#invite-url").textContent = url;
+      // Owner-only controls: Base URL editor needs admin cookie.
+      // Delegates see the QR + URL but can't change the base.
+      const baseField = $("#base-url").closest(".field");
+      if (baseField) baseField.style.display = isOwner ? "" : "none";
       try { await renderQR($("#invite-qr"), url, { cellSize: 4, margin: 2 }); }
       catch (e) { $("#invite-qr").textContent = "QR unavailable"; }
     }
@@ -323,14 +331,17 @@
         x.setAttribute("aria-label", "Remove this quiz from the session");
         head.appendChild(x);
       }
-      // Per-run "show live counts" toggle (works in any status; only meaningful while live).
-      const lc = el("label", { class: "small muted", style: "margin-left: 12px;" });
-      const lcBox = el("input", { type: "checkbox" });
-      if (r.show_live_counts) lcBox.setAttribute("checked", "");
-      lcBox.addEventListener("change", () => toggleLiveCounts(r.id, lcBox.checked));
-      lc.appendChild(lcBox);
-      lc.appendChild(document.createTextNode(" live counts"));
-      head.appendChild(lc);
+      // Per-run "show live counts" toggle. Closed runs are historical, so
+      // the toggle is hidden (backend would 400 anyway).
+      if (r.status !== "closed") {
+        const lc = el("label", { class: "small muted", style: "margin-left: 12px;" });
+        const lcBox = el("input", { type: "checkbox" });
+        if (r.show_live_counts) lcBox.setAttribute("checked", "");
+        lcBox.addEventListener("change", () => toggleLiveCounts(r.id, lcBox.checked));
+        lc.appendChild(lcBox);
+        lc.appendChild(document.createTextNode(" live counts"));
+        head.appendChild(lc);
+      }
       const cur = r.current_question;
       const totals = r.results?.totals || {};
       const respondents = r.results?.respondents || 0;
@@ -426,6 +437,12 @@
     function refresh() { loadSession(); loadQueries(); loadQuizRuns(); loadPresence(); }
 
     async function boot() {
+      // Detect admin-owner context up-front so renderInvite() can hide
+      // owner-only controls from delegated moderators.
+      try {
+        const st = await api("/api/admin/status");
+        isOwner = !!(st && st.authenticated);
+      } catch { isOwner = false; }
       await loadSession();
       await loadQuizzes();
       refresh();

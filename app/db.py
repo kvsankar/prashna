@@ -47,3 +47,25 @@ def get_db():
 def init_db():
     from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    _apply_additive_migrations()
+
+
+def _apply_additive_migrations():
+    """Bridge gap between `create_all()` and additive column changes.
+
+    Prashna intentionally has no Alembic. `create_all` only creates
+    missing tables, not missing columns. For each additive column we
+    introduce post-launch, add an `ALTER TABLE … ADD COLUMN` here so
+    operators don't have to delete `prashna.db` on every model change.
+    """
+    additive = [
+        # (table, column, ddl-snippet)
+        ("users", "session_version", "INTEGER NOT NULL DEFAULT 1"),
+    ]
+    with engine.begin() as conn:
+        for table, column, ddl in additive:
+            cols = {row[1] for row in conn.exec_driver_sql(
+                f"PRAGMA table_info({table})").fetchall()}
+            if column not in cols:
+                conn.exec_driver_sql(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
