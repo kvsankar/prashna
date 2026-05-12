@@ -51,6 +51,20 @@ setup form for the first visitor to claim admin.
 - **And** passwords shorter than 8 chars return `400` with a length
   message
 
+**Tests (API)**
+- `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null}`. Auth: none.
+- `POST /api/admin/setup` with `{"username": "alice", "password": "longenough"}` → `200 {username: "alice"}` and sets `admin_session` cookie. Auth: none.
+- `GET /api/admin/status` immediately after setup (with cookie) → `200 {initialized: true, authenticated: true, username: "alice"}`.
+- `POST /api/admin/setup` a second time → `409 "Admin already initialized"`.
+- `POST /api/admin/setup` with `{"username": "alice", "password": "short"}` → `400 "password must be at least 8 characters"`.
+- `POST /api/admin/setup` with `{"username": "", "password": "longenough"}` → `400 "username required"`.
+
+**Tests (UI)**
+- On `/` with no admin, `#setup-card` is visible; `#login-card` and `#sessions-card` are hidden.
+- Filling `#su-user`, `#su-pass`, `#su-pass2` (matching) and clicking `#su-btn` swaps the page to the authed view (`#sessions-card` visible).
+- Mismatched `#su-pass`/`#su-pass2` shows an error toast without an API call.
+- A password shorter than 8 chars surfaces a `400` toast and leaves `#setup-card` visible.
+
 ### UC-A-02: Login / Logout
 
 - **Given** an admin exists and the visitor is logged out
@@ -62,6 +76,20 @@ setup form for the first visitor to claim admin.
   login view
 - **And** invalid credentials return `401 Invalid username or password`
 - **And** Enter on the password field submits the form
+
+**Tests (API)**
+- `POST /api/admin/login` with valid `{username, password}` → `200 {username}` and sets `admin_session` cookie. Auth: none.
+- `POST /api/admin/login` with wrong password → `401 "Invalid username or password"`.
+- `POST /api/admin/login` with unknown username → `401 "Invalid username or password"`.
+- `POST /api/admin/logout` → `200 {ok: true}` and clears the `admin_session` cookie.
+- `GET /api/admin/status` after logout → `200 {initialized: true, authenticated: false}`.
+
+**Tests (UI)**
+- On `/` with an admin existing and no session cookie, `#login-card` is visible.
+- Filling `#li-user` and `#li-pass`, clicking `#li-btn`, swaps to the authed view (`#sessions-card` visible).
+- Pressing Enter inside `#li-pass` submits (same effect as clicking `#li-btn`).
+- Invalid credentials produce an error toast "Invalid username or password" and `#login-card` stays visible.
+- Clicking the logout control returns the page to the `#login-card` view.
 
 ### UC-A-03: Create a session
 
@@ -75,6 +103,20 @@ setup form for the first visitor to claim admin.
   is required`
 - **And** the new row appears in the list with a `Planning` badge
 
+**Tests (API)**
+- `POST /api/sessions` with `{"title": "Test"}` → `200 {code, title: "Test", mod_key, status: "planning"}`. Auth: admin cookie.
+- `POST /api/sessions` with `{"title": ""}` → `400 "Session title is required"`.
+- `POST /api/sessions` with `{"title": "   "}` → `400 "Session title is required"`.
+- `POST /api/sessions` with `{"title": "a"*201}` → `400 "Session title is too long (max 200 chars)"`.
+- `POST /api/sessions` with no admin cookie → `401`.
+- Two consecutive creates → both succeed with distinct `code` values.
+
+**Tests (UI)**
+- On `/` (authed), typing a title in `#new-session-title` and clicking `#new-session-btn` adds a row to `#session-rows` with `.badge-planning`.
+- Pressing Enter in `#new-session-title` submits.
+- Empty title shows an error toast "Session title is required" and the input keeps focus.
+- The new row appears at the top of `#session-rows`.
+
 ### UC-A-04: See my sessions
 
 - **Given** the admin owns sessions
@@ -82,6 +124,16 @@ setup form for the first visitor to claim admin.
 - **Then** they see only sessions where `owner_user_id = me.id`,
   ordered by `created_at desc`, with status, query count, quiz-run
   count, mod_key, and participant_base_url
+
+**Tests (API)**
+- `GET /api/sessions` → `200 [{code, title, status, mod_key, participant_base_url, created_at, started_at, ended_at, query_count, quiz_run_count}, ...]`. Auth: admin cookie.
+- Rows include only sessions where `owner_user_id = me.id` (a second admin's session is not returned).
+- Order is `created_at desc` — the most recently created session appears first.
+- `GET /api/sessions` with no admin cookie → `401`.
+
+**Tests (UI)**
+- On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
+- Most-recently-created session appears at the top.
 
 ### UC-A-05: Edit session title
 
@@ -91,6 +143,18 @@ setup form for the first visitor to claim admin.
   the list reflects the change
 - **And** an empty new title returns `400` and the input reverts to
   the old value
+
+**Tests (API)**
+- `PATCH /api/sessions/{code}` with `{"title": "New"}` → `200 {code, title: "New", status}`. Auth: mod-key OR admin cookie.
+- `PATCH /api/sessions/{code}` with `{"title": ""}` → `400 "Session title is required"`.
+- `PATCH /api/sessions/{code}` with `{"title": "a"*201}` → `400 "Session title is too long (max 200 chars)"`.
+- `PATCH /api/sessions/{code}` with no auth → `403 "Not authorized — moderator key or admin login required"`.
+- After success, a WebSocket `{type: "session_state"}` is broadcast on `session:{code}`.
+
+**Tests (UI)**
+- On `/` (authed), opening a session detail card shows `#sd-session-title` populated with current title.
+- Editing `#sd-session-title` and blurring updates the row title in `#session-rows`.
+- Blurring with an empty value shows error toast and reverts `#sd-session-title` to the prior title.
 
 ### UC-A-06: Set per-session participant base URL
 
@@ -103,6 +167,19 @@ setup form for the first visitor to claim admin.
   `400`
 - **And** an empty submission (or Use default click) sets the field to
   `null` and the frontend falls back to `location.origin`
+
+**Tests (API)**
+- `POST /api/sessions/{code}/participant_base_url` with `{"url": "https://example.com/"}` → `200 {participant_base_url: "https://example.com"}` (trailing slash stripped). Auth: mod-key OR admin cookie.
+- `POST /api/sessions/{code}/participant_base_url` with `{"url": "ftp://x"}` → `400 "URL must start with http:// or https://"`.
+- `POST /api/sessions/{code}/participant_base_url` with `{"url": "http://" + "a"*600}` → `400 "URL is too long"`.
+- `POST /api/sessions/{code}/participant_base_url` with `{"url": ""}` → `200 {participant_base_url: null}`.
+- `POST /api/sessions/{code}/participant_base_url` with no auth → `403`.
+- After success, broadcasts `{type: "session_state"}`.
+
+**Tests (UI)**
+- On `/` (authed) detail card, typing into `#sd-base-url` and blurring updates `#sd-url` text and re-renders `#sd-qr`.
+- Clicking `#sd-clear` clears `#sd-base-url`, and the page falls back to `location.origin` for the QR/URL widgets.
+- Entering an invalid URL (no `http(s)://`) shows an error toast.
 
 ### UC-A-07: Delete a session
 
@@ -117,6 +194,23 @@ setup form for the first visitor to claim admin.
 - **Then** on success, the session is removed; cascade-deletes its
   queries, votes, participants, quiz_runs, and submissions.
   QuizVersions are NOT touched (they belong to Quiz templates).
+
+**Tests (API)**
+- `DELETE /api/sessions/{code}` on a `planning` session with 0 queries/quiz_runs (no body) → `200 {ok: true}`. Auth: admin cookie.
+- `DELETE /api/sessions/{code}` on a `live` session → `400 "End the session before deleting it"`.
+- `DELETE /api/sessions/{code}` on a session with queries/quiz_runs but missing `confirm_title` → `400 "Type the session title exactly to confirm deletion"`.
+- `DELETE /api/sessions/{code}` with `{"confirm_title": "Wrong"}` → `400 "Type the session title exactly to confirm deletion"`.
+- `DELETE /api/sessions/{code}` with `{"confirm_title": <exact title>}` → `200 {ok: true}`; cascade removes Queries, QueryVotes, Participants, QuizRuns, QuizSubmissions; QuizVersions for the underlying Quiz remain.
+- `DELETE /api/sessions/{code}` by a non-owner admin → `403 "Not your session"`.
+- `DELETE /api/sessions/{code}` with no auth → `401`.
+
+**Tests (UI)**
+- On `/`, clicking Delete on a `live` row shows toast "End the session before deleting it" and no row is removed.
+- Clicking Delete on a `planning` row with no data fires a native `confirm()`; accepting removes the row from `#session-rows`.
+- Clicking Delete on a row with data opens `#confirm-delete-card` below the table with the warning text in `#cd-warn`.
+- `#cd-go` is disabled until `#cd-confirm` exactly matches `session.title`.
+- Typing the exact title enables `#cd-go`; clicking it removes the row.
+- `#cd-cancel` closes the confirm card without deleting.
 
 ### UC-A-08: Inline session moderation from the landing page
 
@@ -134,6 +228,18 @@ to do basic moderation on their own sessions.
   loads the full moderator surface without a key gate (admin owners
   authenticate via cookie)
 
+**Tests (API)**
+- `POST /api/sessions/{code}/start` with admin cookie on a `planning` session → `200 {status: "live"}`; sets `started_at`. Auth: mod-key OR admin cookie.
+- `POST /api/sessions/{code}/end` with admin cookie → `200 {status: "ended"}`; sets `ended_at`.
+- `POST /api/sessions/{code}/start` on an `ended` session → `400 "Session has ended"`.
+
+**Tests (UI)**
+- On `/` (authed), opening a session detail card shows `#sd-status` badge matching session status.
+- For a `planning` session, `#sd-lifecycle-actions` contains a Start button; clicking it flips `#sd-status` to `.badge-live`.
+- For a `live` session, `#sd-lifecycle-actions` contains an End button; clicking it (after native confirm) flips `#sd-status` to `.badge-ended`.
+- `#sd-open-mod` link href is `/m/<code>`; navigating there loads the moderator surface with no `#modkey-card` gate (admin cookie present).
+- Clicking `#sd-share-mod` copies the moderator URL (with `#k=<mod_key>` fragment) to clipboard and toasts confirmation.
+
 ---
 
 **Quiz authoring** (UC-A-09 through UC-A-22). Each operation gets its
@@ -146,6 +252,15 @@ own use case so tests and PRs can cite one ID per behavior.
 - **Then** a Quiz is created with `owner_user_id = me.id`, status =
   `draft`, `last_edited_at = now`; the new quiz opens in the editor
 
+**Tests (API)**
+- `POST /api/quizzes` with `{"title": "Trivia"}` → `200 {id, title: "Trivia", status: "draft"}`. Auth: admin cookie.
+- `POST /api/quizzes` with `{"title": ""}` → `200 {id, title: "Untitled quiz", status: "draft"}` (default applied).
+- `POST /api/quizzes` with no auth → `401`.
+
+**Tests (UI)**
+- On `/quizzes` (authed), typing a title in `#new-quiz-title` and clicking `#create-quiz` adds a row to `#quiz-rows` and opens `#editor-card` with that quiz.
+- Pressing Enter in `#new-quiz-title` submits.
+
 ### UC-A-10: Browse the quiz library
 
 - **Given** the admin is on `/quizzes`
@@ -155,6 +270,16 @@ own use case so tests and PRs can cite one ID per behavior.
 - **And** moderator dropdowns use `ready_only=true`; the quiz library
   table uses the full list
 
+**Tests (API)**
+- `GET /api/quizzes` → `200 [{id, title, status, question_count}, ...]` ordered `created_at desc`. Auth: admin cookie.
+- A quiz owned by another admin is not in the response.
+- `GET /api/quizzes?ready_only=true` returns only quizzes with `status: "ready"`.
+- `GET /api/quizzes` with no auth → `401`.
+
+**Tests (UI)**
+- On `/quizzes` (authed), `#quiz-rows` contains a row per owned quiz with title, status badge, and question count.
+- Order: most recently created first.
+
 ### UC-A-11: Open a quiz for editing
 
 - **Given** the admin clicks a row in the library
@@ -163,6 +288,16 @@ own use case so tests and PRs can cite one ID per behavior.
   per-answer correctness
 - **And** the route returns `404` for a non-owner (no read access
   across owners)
+
+**Tests (API)**
+- `GET /api/quizzes/{id}?include_correct=true` → `200 {id, title, status, questions: [{id, text, image_url, qtype, order_index, answers: [{id, text, image_url, order_index, is_correct}]}]}`. Auth: admin cookie.
+- `include_correct=false` (default) omits `is_correct` from answer objects.
+- `GET /api/quizzes/{id}` for a quiz owned by another admin → `404`.
+- `GET /api/quizzes/{id}` for a non-existent id → `404`.
+- `GET /api/quizzes/{id}` with no auth → `404`.
+
+**Tests (UI)**
+- On `/quizzes`, clicking a row in `#quiz-rows` opens `#editor-card`, populates `#editor-title`, and `#editor-body` lists each question with its answers and a correctness marker per answer.
 
 ### UC-A-12: Rename a quiz
 
@@ -174,6 +309,15 @@ own use case so tests and PRs can cite one ID per behavior.
 - **And** status does **not** auto-revert from `ready` → `draft`
   (versioning protects history)
 
+**Tests (API)**
+- `PATCH /api/quizzes/{id}` with `{"title": "New"}` → `200 {ok: true, status}` and updates `title` + `last_edited_at`. Auth: admin cookie.
+- `PATCH /api/quizzes/{id}` with `{"title": ""}` → `200`; title stays unchanged (whitespace ignored).
+- After PATCH on a `ready` quiz, `GET /api/quizzes/{id}` still returns `status: "ready"`.
+- `PATCH /api/quizzes/{id}` for a non-owner quiz → `404`.
+
+**Tests (UI)**
+- In `#editor-card`, editing the title input and blurring updates the row's title in `#quiz-rows`.
+
 ### UC-A-13: Delete a quiz template
 
 - **Given** the admin clicks Delete on a quiz row
@@ -184,6 +328,15 @@ own use case so tests and PRs can cite one ID per behavior.
   used in a session run and cannot be deleted` (preserves session
   data)
 
+**Tests (API)**
+- `DELETE /api/quizzes/{id}` for an unused quiz → `200 {ok: true}`; cascade deletes Questions, Answers, and any QuizVersions. Auth: admin cookie.
+- `DELETE /api/quizzes/{id}` for a quiz with at least one QuizRun → `400 "Quiz has been used in a session run and cannot be deleted"`.
+- `DELETE /api/quizzes/{id}` for a non-owner quiz → `404`.
+
+**Tests (UI)**
+- On `/quizzes`, clicking Delete on a row in `#quiz-rows` (after native confirm) removes the row.
+- Clicking Delete on a quiz that has been run shows an error toast and the row stays.
+
 ### UC-A-14: Add a quiz question
 
 - **Given** the admin clicks **+ Add question** in the editor
@@ -192,6 +345,15 @@ own use case so tests and PRs can cite one ID per behavior.
   with default `text = "New question"` and `qtype = "single"`; parent's
   `last_edited_at` advances
 - **And** a `qtype` not in `("single", "multi")` returns `400`
+
+**Tests (API)**
+- `POST /api/quizzes/{id}/questions` with `{}` → `200 {id}`; new Question appended with `order_index = max+1`, default `qtype = "single"`, parent `last_edited_at` advances. Auth: admin cookie.
+- `POST /api/quizzes/{id}/questions` with `{"qtype": "multi"}` → `200`; created with `qtype: "multi"`.
+- `POST /api/quizzes/{id}/questions` with `{"qtype": "bogus"}` → `400 "qtype must be single or multi"`.
+- For a non-owner quiz → `404`.
+
+**Tests (UI)**
+- In `#editor-body`, clicking `+ Add question` appends a new question row with default text "New question".
 
 ### UC-A-15: Edit a quiz question
 
@@ -202,12 +364,31 @@ own use case so tests and PRs can cite one ID per behavior.
 - **And** invalid `qtype` returns `400`; non-int `order_index`
   returns `400`
 
+**Tests (API)**
+- `PATCH /api/quiz_questions/{qid}` with `{"text": "Why?"}` → `200 {ok: true}` and updates text + parent `last_edited_at`. Auth: admin cookie.
+- With `{"qtype": "multi"}` → updates qtype.
+- With `{"qtype": "bogus"}` → `400 "qtype must be single or multi"`.
+- With `{"order_index": "x"}` → `400 "order_index must be an integer"`.
+- With `{"image_url": null}` → clears image_url; with `{"image_url": "/uploads/x.png"}` → sets it.
+- For a question whose quiz is owned by another admin → `404`.
+
+**Tests (UI)**
+- In `#editor-body`, blurring a question text input PATCHes and updates the editor state.
+- Switching the qtype dropdown PATCHes and re-renders the answer list constraints (single vs multi correctness UI).
+
 ### UC-A-16: Delete a quiz question
 
 - **Given** the admin clicks Delete on a question (with `confirm()`)
 - **When** `DELETE /api/quiz_questions/{id}` is called
 - **Then** the question and its answers are removed via cascade; parent
   quiz `last_edited_at` advances
+
+**Tests (API)**
+- `DELETE /api/quiz_questions/{qid}` → `200 {ok: true}`; cascade deletes its Answers; parent quiz `last_edited_at` advances. Auth: admin cookie.
+- For a question whose quiz is owned by another admin → `404`.
+
+**Tests (UI)**
+- In `#editor-body`, clicking Delete on a question (after native confirm) removes its row.
 
 ### UC-A-17: Add an answer to a question
 
@@ -217,6 +398,13 @@ own use case so tests and PRs can cite one ID per behavior.
   `text = "New answer"`, `is_correct = false`; parent quiz
   `last_edited_at` advances
 
+**Tests (API)**
+- `POST /api/quiz_questions/{qid}/answers` with `{}` → `200 {id}`; new Answer at `order_index = max+1`, `is_correct: false`; parent quiz `last_edited_at` advances. Auth: admin cookie.
+- For a question owned by another admin → `404`.
+
+**Tests (UI)**
+- In `#editor-body`, clicking `+ Answer` under a question appends an answer row with default text "New answer" and unchecked correctness.
+
 ### UC-A-18: Edit an answer
 
 - **Given** the admin changes an answer's text, correctness, image,
@@ -225,12 +413,29 @@ own use case so tests and PRs can cite one ID per behavior.
 - **Then** the fields update; parent quiz `last_edited_at` advances
 - **And** non-int `order_index` returns `400`
 
+**Tests (API)**
+- `PATCH /api/quiz_answers/{aid}` with `{"text": "Right"}` → `200 {ok: true}`. Auth: admin cookie.
+- With `{"is_correct": true}` → updates flag.
+- With `{"order_index": "x"}` → `400 "order_index must be an integer"`.
+- With `{"image_url": "/uploads/x.png"}` → sets image_url; `{"image_url": null}` → clears.
+- For an answer in a non-owner quiz → `404`.
+
+**Tests (UI)**
+- In `#editor-body`, blurring an answer text input PATCHes; toggling the correct checkbox PATCHes.
+
 ### UC-A-19: Delete an answer
 
 - **Given** the admin clicks ✕ on an answer
 - **When** `DELETE /api/quiz_answers/{id}` is called
 - **Then** the answer is removed; parent quiz `last_edited_at`
   advances
+
+**Tests (API)**
+- `DELETE /api/quiz_answers/{aid}` → `200 {ok: true}`; parent quiz `last_edited_at` advances. Auth: admin cookie.
+- For an answer in a non-owner quiz → `404`.
+
+**Tests (UI)**
+- In `#editor-body`, clicking ✕ on an answer removes its row.
 
 ### UC-A-20: Upload an image
 
@@ -245,6 +450,19 @@ Used by question and answer editors to set `image_url`.
 - **And** the calling page then `PATCH`es the question or answer with
   the new `image_url`
 
+**Tests (API)**
+- `POST /api/uploads` (multipart `file`) with a valid `.png` ≤ 5 MB → `200 {url: "/uploads/<uuid>.png"}`. Auth: admin cookie.
+- `.jpg`, `.jpeg`, `.gif`, `.webp` are also accepted.
+- `.svg` → `400 "unsupported image type"`.
+- `.exe` or no extension → `400 "unsupported image type"`.
+- 6 MB file (Content-Length header set) → `400 "max 5MB"`.
+- 6 MB streamed payload (no Content-Length) → `400 "max 5MB"`.
+- `POST /api/uploads` with no auth → `401`.
+
+**Tests (UI)**
+- In `#editor-body`, picking an image file via the question's file input uploads, then PATCHes the question with the new `image_url`, then re-renders the thumbnail.
+- Same flow under each answer row updates its thumbnail.
+
 ### UC-A-21: Publish a quiz
 
 - **Given** a Draft quiz
@@ -257,6 +475,20 @@ Used by question and answer editors to set `image_url`.
 - **And** on fail, returns `400` with the specific failing rule
   message ("Question 2 (single choice) needs exactly one correct answer")
 
+**Tests (API)**
+- `POST /api/quizzes/{id}/publish` on a quiz with ≥ 1 question, each having text, ≥ 2 answers, valid correctness, and non-empty answers → `200 {status: "ready"}`. Auth: admin cookie.
+- On a quiz with 0 questions → `400 "Quiz needs at least one question"`.
+- Question 1 with empty text → `400 "Question 1 is missing text"`.
+- Question 1 with 1 answer → `400 "Question 1 needs at least 2 answers"`.
+- `single` question with 0 or 2 correct answers → `400 "Question N (single choice) needs exactly one correct answer"`.
+- `multi` question with 0 correct answers → `400 "Question N (multiple choice) needs at least one correct answer"`.
+- Answer with empty text and no `image_url` → `400 "Question N, answer M is empty"`.
+- For a non-owner quiz → `404`.
+
+**Tests (UI)**
+- In `#editor-card`, clicking Publish on a valid draft quiz flips its status badge in `#quiz-rows` to `.badge-ready`.
+- Clicking Publish on an invalid quiz surfaces an error toast with the exact failing-rule message and status stays `draft`.
+
 ### UC-A-22: Unpublish a quiz
 
 - **Given** a Ready quiz
@@ -264,6 +496,14 @@ Used by question and answer editors to set `image_url`.
 - **Then** status → `draft`
 - **And** quiz versions already captured for prior runs are NOT
   affected (history preserved)
+
+**Tests (API)**
+- `POST /api/quizzes/{id}/unpublish` on a `ready` quiz → `200 {status: "draft"}`. Auth: admin cookie.
+- Pre-existing QuizVersion rows for this quiz are unchanged afterward.
+- For a non-owner quiz → `404`.
+
+**Tests (UI)**
+- In `#editor-card`, clicking Unpublish flips status badge in `#quiz-rows` from `.badge-ready` to `.badge-draft`.
 
 ---
 
@@ -277,6 +517,15 @@ Used by question and answer editors to set `image_url`.
   via owner), with quiz title, version number, session code, status,
   progress, respondent count, and created time
 
+**Tests (API)**
+- `GET /api/quiz_runs` → `200 [{id, status, session_code, session_title, quiz_id, quiz_title, version_no, current_question_idx, question_count, respondent_count, created_at, started_at, closed_at}, ...]`. Auth: admin cookie.
+- Rows from another admin's sessions are excluded.
+- Order is `created_at desc`.
+- `GET /api/quiz_runs` with no auth → `401`.
+
+**Tests (UI)**
+- On `/quizzes`, `#qs-rows` shows one row per QuizRun across owned sessions, with quiz title, version, session code, status badge, progress, and respondents.
+
 ### UC-A-24: View one quiz-run's results
 
 - **Given** the admin clicks a row in the Quiz runs table
@@ -285,6 +534,15 @@ Used by question and answer editors to set `image_url`.
   correctness markers, and respondent count; uses the snapshotted
   `quiz_title` + `version_no` so historical reports survive later
   edits to the template
+
+**Tests (API)**
+- `GET /api/quiz_runs/{id}/results` → `200 {id, status, session_code, session_title, quiz_title, version_no, current_question_idx, questions: [{id, text, qtype, answers: [{id, text, image_url, is_correct, count}], respondents}]}`. Auth: admin cookie.
+- Renaming the source Quiz after the run does NOT change `quiz_title` in this response (snapshotted).
+- For a run on another admin's session → `404`.
+
+**Tests (UI)**
+- On `/quizzes`, clicking a row in `#qs-rows` opens `#results-card`; `#results-body` shows per-question answer counts with correctness markers.
+- `#results-close` closes the pane.
 
 ### UC-A-25: Change admin password
 
@@ -302,6 +560,21 @@ Used by question and answer editors to set `image_url`.
   an error toast (no API call)
 - **And** a new password shorter than 8 characters returns `400`
 - **And** Escape closes the card without saving
+
+**Tests (API)**
+- `POST /api/admin/change_password` with valid `{current_password, new_password}` (≥ 8 chars) → `200 {ok: true}`; re-issues `admin_session` cookie; bcrypt-verifies new password. Auth: admin cookie.
+- With wrong `current_password` → `401 "Current password is incorrect"`.
+- With `new_password` shorter than 8 chars → `400 "new password must be at least 8 characters"`.
+- With no auth → `401`.
+
+**Tests (UI)**
+- On `/` (authed), clicking Change password opens `#change-pw-card`.
+- Submitting `#cp-current`, `#cp-new`, `#cp-new2` (matching) via `#cp-submit` toasts "Password updated" and closes the card.
+- Mismatched `#cp-new`/`#cp-new2` shows an error toast and makes no API call.
+- Wrong current password shows toast "Current password is incorrect" and the card stays open.
+- A new password shorter than 8 chars shows a `400` toast.
+- Pressing Escape inside `#change-pw-card` closes it without submitting.
+- `#cp-close` closes the card without submitting.
 
 ---
 
@@ -324,6 +597,19 @@ Used by question and answer editors to set `image_url`.
   re-prompts with a "Couldn't load — re-enter the moderator key"
   toast
 
+**Tests (API)**
+- Any `mod-or-owner` route (e.g., `PATCH /api/sessions/{code}` with `{"title":"x"}`) with valid `X-Mod-Key` header → `200`. Auth: mod-key.
+- Same with admin owner cookie and no mod_key → `200`.
+- With no auth and no mod_key → `403 "Not authorized — moderator key or admin login required"`.
+- With wrong mod_key and no admin cookie → `403`.
+- `GET /m/<code>` for an unknown code → `303` redirect to `/?bad_code=<code>`.
+
+**Tests (UI)**
+- Opening `/m/<code>` as the admin owner (cookie present) does NOT render `#modkey-card`; the moderator surface loads.
+- Opening `/m/<code>#k=<mod_key>` as a delegate stores the key in `localStorage` under the session code and strips `#k=` from the address bar.
+- Opening `/m/<code>` with neither cookie nor stored key renders `#modkey-card`; submitting `#modkey-input` via `#modkey-submit` boots the surface.
+- Opening `/m/<code>` with a wrong stored key renders `#modkey-card` with toast "Couldn't load — re-enter the moderator key".
+
 ### UC-M-02: Session lifecycle: Start → End
 
 - **Given** the moderator is on `/m/<code>` and the session is
@@ -341,6 +627,20 @@ Used by question and answer editors to set `image_url`.
 - **And** the `/end` route accepts a request on any non-ended status
   — there's no requirement to have first transitioned to `live`
 
+**Tests (API)**
+- `POST /api/sessions/{code}/start` on a `planning` session → `200 {status: "live"}` and sets `started_at`. Auth: mod-key OR admin cookie.
+- `POST /api/sessions/{code}/start` on a `live` session → `200 {status: "live"}` (idempotent, no changes).
+- `POST /api/sessions/{code}/start` on an `ended` session → `400 "Session has ended"`.
+- `POST /api/sessions/{code}/end` on a `live` session → `200 {status: "ended"}` and sets `ended_at`.
+- `POST /api/sessions/{code}/end` on a `planning` session → `200 {status: "ended"}` (allowed without first going live).
+- `POST /api/sessions/{code}/end` on an `ended` session → `200` (no-op).
+- Each successful state change broadcasts `{type: "session_state"}`.
+- With no auth → `403`.
+
+**Tests (UI)**
+- On `/m/<code>`, when status is `planning`, `#lifecycle-actions` contains Start session; clicking it flips `#session-status` to `.badge-live`.
+- When status is `live`, `#lifecycle-actions` contains End session; clicking triggers native `confirm()`, then on OK flips `#session-status` to `.badge-ended`.
+
 ### UC-M-03: Queue a quiz onto the session
 
 - **Given** the moderator picks a Ready quiz from the dropdown (drafts
@@ -354,6 +654,21 @@ Used by question and answer editors to set `image_url`.
 - **And** queueing a Draft quiz returns `400`
 - **And** queueing on an ended session returns `400`
 
+**Tests (API)**
+- `POST /api/sessions/{code}/quiz_runs` with `{"quiz_id": <ready_id>}` → `200 {id, version_no, status: "queued"}`. Auth: mod-key OR admin cookie.
+- Two consecutive queues on an unedited quiz → both runs point to the same `version_no`.
+- After PATCHing the quiz (edit between queues), next queue creates a new `version_no = prev+1` and the new run points to it.
+- `POST /api/sessions/{code}/quiz_runs` with a `draft` quiz_id → `400 "Quiz is still a draft — publish it first"`.
+- `POST /api/sessions/{code}/quiz_runs` with an unknown quiz_id → `404 "quiz not found"`.
+- Quiz owned by another admin → `404 "quiz not found"`.
+- `POST /api/sessions/{code}/quiz_runs` on an `ended` session → `400 "Session has ended"`.
+- With no auth → `403`.
+- Success broadcasts `{type: "quiz_run_new"}`.
+
+**Tests (UI)**
+- On `/m/<code>`, `#quiz-select` lists only ready quizzes (drafts filtered).
+- Selecting a quiz and clicking `#add-quiz-btn` appends a queued row to `#quiz-runs` with `.badge-queued`.
+
 ### UC-M-04: Start a queued quiz run
 
 - **Given** a QuizRun is `queued`
@@ -364,6 +679,19 @@ Used by question and answer editors to set `image_url`.
 - **And** if another QuizRun is already `live` in the same Session,
   the start returns `409 Another quiz is already live — close it
   first` (enforced by the `uq_session_live_run` partial unique index)
+
+**Tests (API)**
+- `POST /api/sessions/{code}/quiz_runs/{id}/start` on a `queued` run → `200 {ok: true}`; sets `status: "live"`, `current_question_idx: 0`, `reveal_current: false`, `started_at`. Auth: mod-key OR admin cookie.
+- Starting on a `planning` Session auto-advances it to `live` and sets `started_at`.
+- Starting a run while another run on the same Session is already `live` → `409 "Another quiz is already live — close it first."`.
+- Starting a run that's not `queued` (e.g., `live`, `closed`) → `400 "Cannot start from status: <status>"`.
+- For a non-existent run id (or wrong session) → `404`.
+- With no auth → `403`.
+- Success broadcasts `{type: "quiz_run_update"}`.
+
+**Tests (UI)**
+- In `#quiz-runs` on `/m/<code>`, clicking Start on a `.badge-queued` row flips the row to `.badge-live` and reveals the Next/Reveal control.
+- With one run already live, clicking Start on a second queued row toasts the 409 error.
 
 ### UC-M-05: Walk through questions
 
@@ -397,6 +725,23 @@ recognizes which phase the current question is in.
   `/reveal` (`{reveal: bool}`), `/close`, `/live_counts`. All POST,
   all mod-or-owner auth.
 
+**Tests (API)**
+- `POST /api/sessions/{code}/quiz_runs/{id}/reveal` with `{"reveal": true}` → `200 {ok: true}`; `reveal_current` is true. Auth: mod-key OR admin cookie.
+- `POST /api/sessions/{code}/quiz_runs/{id}/advance` with `{"direction": "next"}` → `200 {ok: true}`; `current_question_idx` increments by 1 (capped at `len-1`); `reveal_current` resets to false.
+- `{"direction": "prev"}` → decrements idx (floored at 0); resets `reveal_current`.
+- `{"direction": "to", "index": 2}` → sets idx to 2 (clamped to `[0, len-1]`).
+- `{"direction": "to", "index": "x"}` → `400 "index must be an integer"`.
+- `POST /api/sessions/{code}/quiz_runs/{id}/live_counts` with `{"show": true}` → `200 {show_live_counts: true}`; with `{"show": false}` → `{show_live_counts: false}`.
+- Each route broadcasts `{type: "quiz_run_update"}`.
+- With no auth → `403`.
+
+**Tests (UI)**
+- On `/m/<code>` with a live run in answering phase (`reveal_current=false`), the primary control reads "Reveal results →"; clicking it flips the row to results phase.
+- In results phase on a non-last question, the control reads "Next question →"; clicking advances `current_question_idx` and resets to answering phase for the next question.
+- In results phase on the last question, the control reads "Close →"; clicking closes the run (see UC-M-06).
+- A Prev control moves backwards through questions.
+- A "live counts" checkbox per quiz-run row toggles `show_live_counts`; default is off.
+
 ### UC-M-06: Close a quiz run
 
 - **Given** a live QuizRun
@@ -409,6 +754,16 @@ recognizes which phase the current question is in.
 - **And** participants who already submitted keep their selections;
   no new responses are accepted
 
+**Tests (API)**
+- `POST /api/sessions/{code}/quiz_runs/{id}/close` on a live run → `200 {ok: true}`; sets `status: "closed"`, `reveal_current: true`, `closed_at`. Auth: mod-key OR admin cookie.
+- After close, `POST .../submit` for this run → `404 "Quiz not live"`.
+- Broadcasts `{type: "quiz_run_update"}`.
+- With no auth → `403`.
+
+**Tests (UI)**
+- In `#quiz-runs`, after Close the row's badge flips to `.badge-closed` and the ✕ Delete control disappears.
+- The participant page (in another tab) refreshes via WS and continues to show the last question with results.
+
 ### UC-M-07: Remove a quiz run (only when queued / live)
 
 - **Given** a queued or live QuizRun
@@ -417,6 +772,17 @@ recognizes which phase the current question is in.
   run and its responses
 - **And** a closed run returns `400 Closed quiz runs are historical
   and cannot be deleted`
+
+**Tests (API)**
+- `DELETE /api/sessions/{code}/quiz_runs/{id}` on a `queued` run → `200 {ok: true}`; cascade removes QuizSubmissions. Auth: mod-key OR admin cookie.
+- On a `live` run → `200 {ok: true}` and similar cleanup.
+- On a `closed` run → `400 "Closed quiz runs are historical and cannot be deleted"`.
+- Broadcasts `{type: "quiz_run_deleted"}`.
+- With no auth → `403`.
+
+**Tests (UI)**
+- In `#quiz-runs`, clicking ✕ on a queued/live row (after native confirm) removes the row.
+- No ✕ control is rendered on `.badge-closed` rows.
 
 ### UC-M-08: Respond to a query
 
@@ -429,6 +795,18 @@ recognizes which phase the current question is in.
 - **And** the moderator can Reopen an answered question, clearing
   `responded_at`
 
+**Tests (API)**
+- `POST /api/sessions/{code}/queries/{qid}/respond` with `{"response_text": "see docs"}` → `200 {ok: true}`; sets `responded_at` and `response_text`. Auth: mod-key OR admin cookie.
+- `POST .../respond` with `{}` → marks responded with `response_text: null` (verbal-only).
+- `POST .../respond` with `{"responded": false}` → clears `responded_at` (Reopen).
+- `POST .../respond` for a non-existent or cross-session qid → `404`.
+- Broadcasts `{type: "query_responded"}`.
+- With no auth → `403`.
+
+**Tests (UI)**
+- In moderator `#queries`, clicking Mark responded on a query moves it into the answered section.
+- Reopen on an answered query moves it back to the unanswered section.
+
 ### UC-M-09: Remove / Restore a query
 
 - **Given** any question (e.g., spam / off-topic / duplicate)
@@ -438,6 +816,18 @@ recognizes which phase the current question is in.
   moderator with a Restore action
 - **And** votes on a removed question return `404`
 
+**Tests (API)**
+- `POST /api/sessions/{code}/queries/{qid}/remove` with `{}` → `200 {ok: true}` and sets `removed_at`. Auth: mod-key OR admin cookie.
+- `POST .../remove` with `{"removed": false}` → clears `removed_at` (Restore).
+- After removal, `GET /api/sessions/{code}/queries` as a participant excludes the removed query; as moderator, includes it with `removed: true`.
+- `POST .../vote` on a removed query (as participant) → `404`.
+- Broadcasts `{type: "query_removed"}`.
+- With no auth → `403`.
+
+**Tests (UI)**
+- In moderator `#queries`, clicking Remove on a query marks it visually removed (still visible to moderator) with a Restore action.
+- Participant tab refreshes via WS and the query disappears from their list.
+
 ### UC-M-10: Live participant count
 
 - **Given** participants are interacting with the session
@@ -445,6 +835,14 @@ recognizes which phase the current question is in.
   WebSocket-driven refresh)
 - **Then** the count of participants whose `last_seen_at` falls within
   the last 30 seconds is shown
+
+**Tests (API)**
+- `GET /api/sessions/{code}/presence` → `200 {online: <int>}` counting Participants with `last_seen_at >= now-30s`. Auth: none (cookie issued on first call).
+- After one participant calls a participant route, `online` returns ≥ 1.
+- After waiting > 30s without further requests, `online` decrements back to 0.
+
+**Tests (UI)**
+- On `/m/<code>`, `#live-count` shows "N online" and updates after WS-driven refreshes.
 
 ### UC-M-11: Invite participants
 
@@ -454,6 +852,14 @@ recognizes which phase the current question is in.
   `<base>/s/<code>`, renders a QR, and updates the copy-URL text
 - **And** clicking Use default clears the override and the page falls
   back to `location.origin`
+
+**Tests (API)**
+- Same surface as UC-A-06: `POST /api/sessions/{code}/participant_base_url`. Auth: mod-key OR admin cookie.
+
+**Tests (UI)**
+- On `/m/<code>`, typing into `#base-url` and blurring updates `#invite-url` and re-renders `#invite-qr` encoding `<base>/s/<code>`.
+- Clicking `#base-url-clear` clears the override; the QR/URL fall back to `location.origin`.
+- Clicking `#invite-copy` copies `#invite-url` text to clipboard.
 
 ---
 
@@ -469,6 +875,17 @@ recognizes which phase the current question is in.
 - **And** an unknown code redirects to `/?bad_code=XXX` showing a red
   banner "Session 'XXX' does not exist."
 
+**Tests (API)**
+- `GET /api/sessions/{code}` for an existing code → `200 {code, title, status, created_at, participant_base_url}`. Auth: none (public read).
+- `GET /api/sessions/{code}` for an unknown code → `404 "Session not found"`.
+- `GET /s/{code}` for a valid code → serves `participant.html`.
+- `GET /s/{code}` for an unknown code → `303` redirect to `/?bad_code=<code>`.
+
+**Tests (UI)**
+- On `/`, typing a valid code into `#join-code` and clicking `#join-btn` (or pressing Enter) navigates to `/s/<CODE>`.
+- `/s/<CODE>` shows `#title`, `#code`, `#my-name`, `#ask-card`, `#queries-card`, `#invite-card`.
+- Typing an unknown code redirects to `/?bad_code=XXX`; `#bad-code-msg` shows "Session 'XXX' does not exist." in red.
+
 ### UC-P-02: Anonymous identity per session
 
 - **Given** the participant has never visited this session
@@ -479,6 +896,17 @@ recognizes which phase the current question is in.
 - **And** `last_seen_at` is updated at most once per 5 seconds per
   request
 
+**Tests (API)**
+- `GET /api/sessions/{code}/me` with no cookie → `200 {id, name: null}` and `Set-Cookie: voter_token=<token>` (non-HttpOnly, SameSite=Lax). Auth: none (cookie issued on first call).
+- A second call with the cookie reuses the same Participant row (same `id`).
+- Two distinct cookies for the same session create two distinct Participants (unique on `(session_id, voter_token)`).
+- Two consecutive participant calls within 5s update `last_seen_at` only once (throttled).
+- A call > 5s later updates `last_seen_at` again.
+
+**Tests (UI)**
+- Loading `/s/<CODE>` in a fresh browser context sets a `voter_token` cookie (readable in JS — non-HttpOnly).
+- Reloading the page keeps the same `voter_token`; subsequent calls flag the participant's own questions with `mine: true`.
+
 ### UC-P-03: Set display name
 
 - **Given** the participant types in the name input in the header
@@ -487,6 +915,16 @@ recognizes which phase the current question is in.
   Participant row; their name appears beside every question / vote /
   response of theirs going forward
 - **And** name is optional; blank = anonymous
+
+**Tests (API)**
+- `PATCH /api/sessions/{code}/me` with `{"name": "Alice"}` → `200 {id, name: "Alice"}`. Auth: none (cookie issued on first call).
+- With `{"name": ""}` → `200 {id, name: null}` (blank = anonymous).
+- With a name > 80 chars → name is truncated to 80 chars.
+- Broadcasts `{type: "participant"}` on success.
+
+**Tests (UI)**
+- On `/s/<CODE>`, typing into `#my-name` and blurring PATCHes and persists the name.
+- After saving a name, a query the participant asks shows that name beside it; with blank name, queries show as anonymous.
 
 ### UC-P-04: Ask
 
@@ -498,6 +936,20 @@ recognizes which phase the current question is in.
 - **And** an `ended` session refuses with `400 Session has ended` and
   the Ask card is hidden from the UI
 
+**Tests (API)**
+- `POST /api/sessions/{code}/queries` with `{"text": "Hi?"}` on a `planning` or `live` session → `200 {id, text, author_name, response_text: null, responded: false, removed: false, vote_count: 0, voted: false, mine: true, created_at}`. Auth: none (cookie issued on first call).
+- With `{"text": ""}` → `400 "text required"`.
+- With `{"text": "   "}` → `400 "text required"`.
+- With `{"text": "a"*1001}` → `400 "text too long"`.
+- With `{"author_name": "Bob"}` → also updates participant name.
+- On an `ended` session → `400 "Session has ended"`.
+- Success broadcasts `{type: "query_new"}`.
+
+**Tests (UI)**
+- On `/s/<CODE>` (planning/live), typing into `#query-text` and clicking `#ask-btn` adds the query to `#queries` and toasts confirmation.
+- Cmd/Ctrl+Enter in `#query-text` submits.
+- On an `ended` session, `#ask-card` is hidden and `#ended-card` is visible.
+
 ### UC-P-05: Vote on a query
 
 - **Given** a non-removed question on a non-ended session
@@ -505,6 +957,19 @@ recognizes which phase the current question is in.
 - **Then** `POST .../questions/{qid}/vote` toggles their vote; vote
   count refreshes; aria-pressed updates
 - **And** removed queries return `404`; ended sessions return `400`
+
+**Tests (API)**
+- `POST /api/sessions/{code}/queries/{qid}/vote` first call → `200 {voted: true, vote_count: 1}`. Auth: none (cookie issued on first call).
+- Same participant calls again → `200 {voted: false, vote_count: 0}` (toggle off).
+- Same participant calling twice in quick succession can never increment past 1 (unique on `(query_id, participant_id)`).
+- Vote on a removed query → `404`.
+- Vote on a non-existent qid or cross-session qid → `404`.
+- Vote on an `ended` session → `400 "Session has ended"`.
+- Broadcasts `{type: "query_vote"}`.
+
+**Tests (UI)**
+- On `/s/<CODE>`, clicking the vote button on a query increments the displayed vote count and sets `aria-pressed="true"`.
+- Clicking again decrements and sets `aria-pressed="false"`.
 
 ### UC-P-06: See queries sorted
 
@@ -515,6 +980,16 @@ recognizes which phase the current question is in.
 - **And** their own queries are flagged `mine: true` and the
   questions they voted on are flagged `voted: true`
 
+**Tests (API)**
+- `GET /api/sessions/{code}/queries` as a participant → `200 [{id, text, author_name, response_text, responded, removed: false, vote_count, voted, mine, created_at}, ...]`. Auth: none (cookie issued on first call).
+- Removed queries are excluded for participants but included for moderators (with `removed: true`).
+- Sort: unresponded first, then by descending vote_count (UI-side sort consistent with prose).
+- A query the caller asked has `mine: true`; a query the caller voted on has `voted: true`.
+
+**Tests (UI)**
+- On `/s/<CODE>`, `#queries` lists visible (non-removed) queries; unresponded appear above responded, ties broken by vote count desc.
+- The participant's own queries are styled with a "you" marker; voted queries are visually highlighted.
+
 ### UC-P-07: See live quiz
 
 - **Given** a QuizRun is `live`
@@ -523,6 +998,15 @@ recognizes which phase the current question is in.
   and the participant's prior selections (if any)
 - **And** when status flips to `closed`, the card stays visible
   showing results
+
+**Tests (API)**
+- `GET /api/sessions/{code}/quiz_runs` as a participant → only runs in `live` or `closed` status are returned (queued runs filtered). Auth: none (cookie issued on first call).
+- The serialized run includes `current_question` (id, text, qtype, answers without `is_correct` unless revealed/closed) and `my_selections`.
+- For a `closed` run, `is_correct` and `results` are included.
+
+**Tests (UI)**
+- On `/s/<CODE>` with a live run, `#quiz-card` is visible and `#quiz-body` renders the current question with its answers and the participant's prior selections.
+- When status flips to `closed` via WS, `#quiz-card` stays visible and now shows results bars and correctness markers.
 
 ### UC-P-08: Submit an answer to the current question
 
@@ -540,6 +1024,23 @@ recognizes which phase the current question is in.
 - **And** single-type cannot have > 1 `answer_id`; returns `400`
 - **And** an ended session refuses with `400 "Session has ended"`
 
+**Tests (API)**
+- `POST /api/sessions/{code}/quiz_runs/{id}/submit` with `{"question_id": <current_vq_id>, "answer_ids": [<aid>]}` → `200 {ok: true}` and replaces any prior submissions for this voter+question. Auth: none (cookie issued on first call).
+- Resubmitting with a different answer replaces; old QuizSubmission rows are gone, new ones inserted.
+- `answer_ids` referencing an answer not in the current question → `400 "Invalid answer"`.
+- `answer_ids` not a list → `400 "answer_ids must be a list"`; non-int entries → `400 "answer_ids must be integers"`.
+- `question_id` belonging to a different run's version → `404 "Question not in this quiz run"`.
+- `question_id` valid but not the current one → `400 "Not the current question"`.
+- `single`-type with `len(answer_ids) > 1` → `400 "Only one answer allowed"`.
+- Run not `live` (queued/closed) → `404 "Quiz not live"`.
+- Session `ended` → `400 "Session has ended"`.
+- Broadcasts `{type: "quiz_submission"}` on success.
+
+**Tests (UI)**
+- On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive and Submit becomes enabled; clicking Submit POSTs and toasts.
+- With multi-choice, clicking answers toggles each independently.
+- After moderator reveals, the answer inputs become disabled.
+
 ### UC-P-09: See results when revealed or closed
 
 - **Given** the moderator has clicked Reveal or Close
@@ -548,6 +1049,14 @@ recognizes which phase the current question is in.
   shown, and the participant's selected option is marked correct or
   wrong as appropriate
 
+**Tests (API)**
+- After `/reveal` with `{"reveal": true}`, `GET .../quiz_runs/{id}` for a participant returns answers with `is_correct` and a `results: {question_id, respondents, totals: {<aid>: <count>}}` payload.
+- After `/close`, same payload behavior persists (run status `closed`, `reveal_current: true`).
+
+**Tests (UI)**
+- On `/s/<CODE>`, after reveal `#quiz-body` shows each answer with a bar scaled to vote share and a correctness marker.
+- The participant's selected answer is visually marked correct or wrong.
+
 ### UC-P-10: Share QR with neighbor
 
 - **Given** the participant page is open
@@ -555,12 +1064,26 @@ recognizes which phase the current question is in.
 - **Then** a QR encodes the same participant URL the moderator
   configured (or `location.origin` fallback)
 
+**Tests (UI)**
+- On `/s/<CODE>`, `#invite-card` is visible and `#share-qr` renders a QR encoding `<base>/s/<CODE>` (base = `participant_base_url` or `location.origin`).
+- Changing the participant_base_url server-side and triggering a WS refresh updates the QR.
+
 ### UC-P-11: Ended session is read-only
 
 - **Given** session.status flips to `ended` via WS broadcast
 - **When** the participant view refreshes (via the broadcast)
 - **Then** the Ask card disappears, a "Session ended" card appears,
   and existing queries / quiz results remain visible
+
+**Tests (API)**
+- After `POST .../end`, `POST .../queries` → `400 "Session has ended"`.
+- After `POST .../end`, `POST .../queries/{qid}/vote` → `400 "Session has ended"`.
+- After `POST .../end`, `POST .../quiz_runs/{id}/submit` → `400 "Session has ended"`.
+- `GET .../queries` still returns the existing list.
+
+**Tests (UI)**
+- On `/s/<CODE>`, after the moderator ends the session, the participant view (via WS) hides `#ask-card` and shows `#ended-card` with the "Session ended" message.
+- Existing queries in `#queries` and the last quiz state in `#quiz-card` remain visible.
 
 ### UC-P-12: Live answer counts during voting
 
@@ -575,6 +1098,15 @@ Participant-side counterpart of UC-D-08.
   Submit is enabled
 - **And** when `show_live_counts = false` (default), the answering
   phase shows only the question and answers (no bars, no counts)
+
+**Tests (API)**
+- With `show_live_counts=true` and run live in answering phase, `GET .../quiz_runs/{id}` returns `results: {totals, respondents}` but answers do NOT include `is_correct`.
+- With `show_live_counts=false` (default), `results` is `null` in the answering phase.
+
+**Tests (UI)**
+- On `/s/<CODE>` with live counts on, the answering phase shows running vote-share bars and percentages per answer; no correctness markers.
+- Voting remains enabled — clicking still toggles selection and Submit is enabled.
+- With live counts off (default), the answering phase shows only question + answer texts.
 
 ---
 
@@ -595,6 +1127,17 @@ session.
 - **And** an invalid `code` redirects to `/?bad_code=…` (same 303
   pattern used by participant/moderator pages)
 
+**Tests (API)**
+- `GET /p/<code>` for an existing code → `200` and serves `projector.html`.
+- `GET /p/<code>` for an unknown code → `303` redirect to `/?bad_code=<code>`.
+- `GET /api/sessions/{code}` (used by projector boot) requires no auth.
+
+**Tests (UI)**
+- On `/p/<CODE>`, `#title` shows session title, `#code` shows the join code in large type, `#origin` shows the participant URL host, `#join-qr` renders the full participant URL.
+- `#queries` shows up to ~8 unanswered queries sorted by vote desc.
+- Live or closed quiz question appears in `#quiz-section` (`#quiz-body`).
+- The page has no `#ask-card`, no `#login-card`, no `#sessions-card` (no chrome).
+
 ### UC-D-02: QR lightbox
 
 - **Given** the projector page
@@ -603,6 +1146,12 @@ session.
   smaller viewport dimension; Esc, click anywhere, or the
   `cursor: zoom-out` area dismisses it
 
+**Tests (UI)**
+- On `/p/<CODE>`, clicking `#join-qr` opens `#qr-lightbox` (display flips from `none`).
+- Pressing Tab to focus `#join-qr` then pressing Enter or Space opens the lightbox.
+- Pressing Escape closes `#qr-lightbox`.
+- Clicking anywhere inside `#qr-lightbox` (the zoom-out area) closes it.
+
 ### UC-D-03: Live updates via WebSocket
 
 - **Given** the projector is connected to `/ws/sessions/{CODE}`
@@ -610,6 +1159,13 @@ session.
 - **Then** the projector re-fetches session / queries / quiz_runs and
   re-renders without needing a page reload (see UC-X-01 for the full
   broadcast contract)
+
+**Tests (API)**
+- Connecting to `/ws/sessions/{CODE}` with matching Origin/Host header → upgrade accepted; any state change on the session emits `{type: "..."}` frames to the client.
+
+**Tests (UI)**
+- On `/p/<CODE>`, after a participant in another tab adds a query, the projector's `#queries` updates within ~1s without manual reload.
+- After moderator advances quiz, projector's `#quiz-body` re-renders the new current question.
 
 ### UC-D-04: Session lifecycle reactions
 
@@ -622,6 +1178,12 @@ session.
 - **And** in `ended` → queries and the last quiz result remain
   visible read-only; no new queries can arrive
 
+**Tests (UI)**
+- On `/p/<CODE>` for a `planning` session, `#join-qr` and `#code` render but `#queries` is empty and `#quiz-section` is hidden.
+- After moderator starts the session and a participant asks, `#queries` populates.
+- After moderator starts a quiz run, `#quiz-section` becomes visible.
+- After moderator ends the session, no new queries appear; the last quiz state remains visible.
+
 ### UC-D-05: Reconnect on long sessions
 
 - **Given** the projector has been left on for a long session and
@@ -629,6 +1191,10 @@ session.
 - **Then** `openLiveSocket` retries with exponential backoff (capped
   ~32s); when it reconnects, the next broadcast prompts a refetch
   and the projector recovers without operator intervention
+
+**Tests (UI)**
+- On `/p/<CODE>`, simulating a WS server restart causes the client to retry with exponential backoff (delays approximately 1s, 2s, 4s, 8s, 16s, capped near 32s).
+- After the WS becomes available again, the next broadcast triggers a refetch and `#queries` / `#quiz-body` reflect the latest state.
 
 ### UC-D-06: Quiz states on the projector
 
@@ -649,6 +1215,15 @@ hidden entirely.
 - **A QuizRun is `closed`** → the projector keeps the last question
   visible with final tallies and correctness — the permanent record.
 
+**Tests (UI)**
+- On `/p/<CODE>` with no runs, `#quiz-section` is hidden.
+- With one `queued` run and no others, `#quiz-section` shows the lobby (UC-D-07).
+- With one `live` run in answering phase, `#quiz-body` shows the current question + answers; no correctness markers, no counts (default).
+- With `show_live_counts=true` in answering phase, vote-share bars appear but no correctness markers.
+- After reveal (results phase), bars + correctness markers appear.
+- With a single `closed` run and no live/queued, `#quiz-body` keeps the last question with final tallies and correctness.
+- Priority: when both `live` and `closed` runs exist, the live one wins; when both `queued` and `closed` exist (no live), the queued one wins (lobby).
+
 ### UC-D-07: Quiz lobby state
 
 - **Given** a QuizRun is `queued` and none is `live`
@@ -657,6 +1232,10 @@ hidden entirely.
   the participant URL QR
 - **And** when the moderator clicks Start, the projector flips to
   UC-D-06 answering phase via WebSocket broadcast
+
+**Tests (UI)**
+- On `/p/<CODE>` with a `queued` run and no `live` run, `#quiz-body` shows "Next up:", the quiz title in display type, and a prompt to scan the participant URL QR.
+- After moderator starts the run, `#quiz-body` transitions (via WS) to the answering phase (UC-D-06).
 
 ### UC-D-08: Live answer counts variant
 
@@ -672,6 +1251,13 @@ Configurable per QuizRun via `show_live_counts` (default off).
 - **And** when counts are off (default), the answering phase shows
   only the question and answer texts; counts and correctness appear
   only after reveal
+
+**Tests (API)**
+- See UC-M-05 tests for `POST .../live_counts`.
+
+**Tests (UI)**
+- On `/p/<CODE>` with `show_live_counts=true`, the answering phase in `#quiz-body` shows running totals (bars + percentages) per answer without correctness markers.
+- Toggling live counts off on the moderator UI triggers a WS refresh; the projector reverts to bare question + answers.
 
 ---
 
@@ -694,6 +1280,19 @@ are the rules every user-facing UC silently relies on.
 - **And** the client auto-reconnects with exponential backoff if the
   socket drops
 
+**Tests (API)**
+- Connect WS to `/ws/sessions/{CODE}` with matching `Origin`/`Host`; perform `PATCH /api/sessions/{code}` → WS receives `{"type": "session_state"}`.
+- `POST .../queries` → frame `{"type": "query_new"}`.
+- `POST .../queries/{qid}/vote` → frame `{"type": "query_vote"}`.
+- `POST .../queries/{qid}/respond` → frame `{"type": "query_responded"}`.
+- `POST .../queries/{qid}/remove` → frame `{"type": "query_removed"}`.
+- `DELETE .../queries/{qid}` → frame `{"type": "query_deleted"}`.
+- `POST .../quiz_runs` → frame `{"type": "quiz_run_new"}`.
+- `POST .../quiz_runs/{id}/{start|advance|reveal|close|live_counts}` → frame `{"type": "quiz_run_update"}`.
+- `DELETE .../quiz_runs/{id}` → frame `{"type": "quiz_run_deleted"}`.
+- `POST .../quiz_runs/{id}/submit` → frame `{"type": "quiz_submission"}`.
+- `PATCH .../me` → frame `{"type": "participant"}`.
+
 ### UC-X-02: WebSocket upgrade rejections
 
 - **Given** a browser sends an `Origin` header that doesn't match
@@ -701,6 +1300,11 @@ are the rules every user-facing UC silently relies on.
 - **Then** the WS upgrade is closed with code **4403** (cross-origin)
 - **Given** the URL's `{code}` does not match any Session
 - **Then** the WS upgrade is closed with code **4404** (no session)
+
+**Tests (API)**
+- Connect WS to `/ws/sessions/{CODE}` with `Origin: https://evil.example`, `Host: localhost:8000` → server closes with code `4403`.
+- Connect WS to `/ws/sessions/NOSUCH` with matching Origin/Host → server closes with code `4404`.
+- Connect WS with no Origin header (curl-style client) → upgrade succeeds (matching skipped when Origin absent).
 
 ### UC-X-03: Static asset security headers
 
@@ -710,6 +1314,13 @@ are the rules every user-facing UC silently relies on.
   `Cross-Origin-Resource-Policy: same-origin` — defense in depth in
   case a file slips past the extension check
 
+**Tests (API)**
+- After a `POST /api/uploads` returning `/uploads/<uuid>.png`, `GET /uploads/<uuid>.png` returns the bytes with:
+  - `X-Content-Type-Options: nosniff`
+  - `Content-Security-Policy: default-src 'none'; sandbox`
+  - `Cross-Origin-Resource-Policy: same-origin`
+- `GET /static/app.css` (non-uploads path) does NOT carry these headers.
+
 ### UC-X-04: Image upload constraints
 
 - **Given** the admin uploads an image
@@ -717,6 +1328,12 @@ are the rules every user-facing UC silently relies on.
   `.gif`, `.webp` (SVG is explicitly excluded); enforces 5 MB caps
   on both Content-Length and streaming; stores under a fresh UUID
   filename
+
+**Tests (API)**
+- See UC-A-20 tests; in addition:
+- `POST /api/uploads` with `.svg` → `400 "unsupported image type"`.
+- `POST /api/uploads` two times with the same source file → two distinct UUID filenames on disk.
+- Stored filename matches `^[0-9a-f]{32}\.(png|jpg|jpeg|gif|webp)$`.
 
 ### UC-X-05: Storage-level invariants
 
@@ -728,6 +1345,13 @@ are the rules every user-facing UC silently relies on.
 | At most one `QuizSubmission` per `(run, question, answer, participant)` | UNIQUE constraint                         |
 | One `Participant` per `(session, voter_token)`                         | UNIQUE constraint                          |
 
+**Tests (DB)**
+- Insert two `QuizRun` rows with `status="live"` for the same Session → second insert raises `IntegrityError` (partial unique index `uq_session_live_run`).
+- Insert two `QuizVersion` rows with the same `(quiz_id, version_no)` → raises `IntegrityError`.
+- Insert two `QueryVote` rows for the same `(query_id, participant_id)` → raises `IntegrityError`.
+- Insert two `QuizSubmission` rows for the same `(quiz_run_id, question_id, answer_id, participant_id)` → raises `IntegrityError`.
+- Insert two `Participant` rows with the same `(session_id, voter_token)` → raises `IntegrityError`.
+
 ### UC-X-06: Versioning lazy capture
 
 - **Given** Quiz Q has versions v1, v2 already
@@ -738,6 +1362,12 @@ are the rules every user-facing UC silently relies on.
 - **And** when two requests race and both try to create version N+1,
   the UNIQUE constraint causes one to lose; the loser catches
   `IntegrityError`, re-reads the latest, and returns it
+
+**Tests (API)**
+- With Quiz Q published (v1 exists), `POST /api/sessions/{code}/quiz_runs` with `{"quiz_id": Q.id}` → run points to v1.
+- Two consecutive queues with no edit in between → both runs point to the same `version_no` (v1).
+- After `PATCH /api/quiz_questions/{qid}` (which advances `last_edited_at`), next queue produces `version_no = 2`.
+- Simulate concurrent queue attempts (two threads) → both succeed; one creates v2, the other catches `IntegrityError` and returns the already-created v2.
 
 ### UC-X-07: PRASHNA_SECRET_KEY lifecycle
 
@@ -754,6 +1384,11 @@ signing key is read from `PRASHNA_SECRET_KEY` at process start.
 - **Operational rule:** production deployments **must** set
   `PRASHNA_SECRET_KEY` to a long random string and keep it stable.
   Rotating it is a deliberate "invalidate all sessions" action.
+
+**Tests (API)**
+- Start app with `PRASHNA_SECRET_KEY=abc...` env var, log in (admin cookie issued); restart app with same env var → `GET /api/admin/status` with the old cookie still returns `authenticated: true`.
+- Start app with `PRASHNA_SECRET_KEY` unset, log in; restart app without setting the env var → old cookie now fails to verify and `GET /api/admin/status` returns `authenticated: false`.
+- Start app with one value of `PRASHNA_SECRET_KEY`, log in; restart with a different value → old cookie fails to verify (rotation invalidates sessions).
 
 ---
 
