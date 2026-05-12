@@ -108,16 +108,6 @@ Docker install + nginx + TLS + container on the Hetzner VPS.
 exposes via ngrok for now; full VPS deploy is not the current
 distribution path. Revisit when SaaS hosting is on the table.
 
-### First-run setup: full DB-level singleton — DEFERRED
-*Source:* round-2 critical-code-review.
-The same-username concurrent setup race is handled (IntegrityError +
-post-commit check), but two concurrent setups with *different*
-usernames can still both succeed momentarily. Per the localhost+ngrok
-workflow, no public setup window exists today, so this is parked
-with the broader D5 "secure first-run flow" decision. The proper
-fix when SaaS hosting goes live is a DB-level singleton (singleton
-row + UNIQUE constraint, or `BEGIN IMMEDIATE` serialization).
-
 ### Backward-compat cookie shim — CLEANUP
 *Source:* this branch.
 `auth._parse_cookie` still accepts legacy uid-only cookies (no

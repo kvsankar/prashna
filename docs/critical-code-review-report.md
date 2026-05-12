@@ -16,9 +16,9 @@ I verified the checked-out local `prashna.db` still has no `users.session_versio
 
 Recommendation: either add a one-time startup migration/backfill for this pre-launch SQLite app, for example `ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1` when missing, or explicitly require deleting/recreating `prashna.db` for this commit and remove the transitional-cookie compatibility claim. Add a regression test that boots against an old `users` schema and validates admin auth/status still works.
 
-### High: First-run admin setup race is only partially fixed — **DEFERRED**
+### High: First-run admin setup race is only partially fixed — **DONE**
 
-**Reason:** The remaining race (two concurrent setups with *different* usernames) requires real concurrent setup traffic against a publicly reachable instance. Per [[project_local_plus_ngrok]] the operator runs Prashna on localhost and exposes it via ngrok *after* completing setup, so the public-setup window doesn't exist in the current workflow. A proper DB-level singleton (singleton-row table + UNIQUE constraint, or `BEGIN IMMEDIATE` serialization) is the right long-term fix and is folded into the broader D5 "secure first-run flow" open item — to be decided together with the public-claim story.
+**Fix:** Process-wide `threading.Lock` (`_setup_lock` in `app/main.py`) serializes the check+insert. Prashna is single-process (per CLAUDE.md), so this is a real bootstrap invariant — not advisory. Two concurrent setups with different usernames now produce exactly one `200` and one `409`; the post-commit cleanup step was removed as redundant. Test: `test_uc_a_01_concurrent_setup_different_usernames` exercises the race with a `threading.Barrier` to maximize overlap.
 
 
 
