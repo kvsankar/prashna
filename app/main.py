@@ -124,6 +124,31 @@ def require_mod(session: m.Session, mod_key: str | None) -> None:
         raise HTTPException(403, "Moderator key required")
 
 
+def is_admin_owner(session: m.Session, user: m.User | None) -> bool:
+    return user is not None and session.owner_user_id == user.id
+
+
+def is_mod_authed(session: m.Session, mod_key: str | None) -> bool:
+    return bool(mod_key) and secrets.compare_digest(mod_key, session.mod_key)
+
+
+def require_mod_or_owner(
+    session: m.Session,
+    mod_key: str | None,
+    user: m.User | None,
+) -> None:
+    """Authorize a session-moderation action.
+
+    Admin owners reach moderator routes via their admin cookie without
+    needing the mod_key URL fragment. The mod_key path remains so the
+    owner can share moderation with a delegate (TA, co-host) who does
+    not have an admin account.
+    """
+    if is_admin_owner(session, user) or is_mod_authed(session, mod_key):
+        return
+    raise HTTPException(403, "Not authorized — moderator key or admin login required")
+
+
 def require_session_owner(session: m.Session, user: m.User) -> None:
     if session.owner_user_id != user.id:
         raise HTTPException(403, "Not your session")
@@ -524,10 +549,7 @@ async def update_session(
     me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    is_owner = me is not None and s.owner_user_id == me.id
-    is_mod = bool(x_mod_key) and secrets.compare_digest(x_mod_key, s.mod_key)
-    if not (is_owner or is_mod):
-        raise HTTPException(403, "Not authorized")
+    require_mod_or_owner(s, x_mod_key, me)
     if "title" in payload:
         new_title = (payload.get("title") or "").strip()
         if not new_title:
@@ -549,11 +571,7 @@ async def set_participant_base_url(
     me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    # Accept either the session owner (logged-in admin) or the mod_key holder.
-    is_owner = me is not None and s.owner_user_id == me.id
-    is_mod = bool(x_mod_key) and secrets.compare_digest(x_mod_key, s.mod_key)
-    if not (is_owner or is_mod):
-        raise HTTPException(403, "Not authorized")
+    require_mod_or_owner(s, x_mod_key, me)
     url = (payload.get("url") or "").strip()
     if url:
         # Light validation: must be a plausible URL. Strip trailing slash so
@@ -601,9 +619,10 @@ async def start_session(
     code: str,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    require_mod(s, x_mod_key)
+    require_mod_or_owner(s, x_mod_key, me)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
     if s.status == "planning":
@@ -619,9 +638,10 @@ async def end_session(
     code: str,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    require_mod(s, x_mod_key)
+    require_mod_or_owner(s, x_mod_key, me)
     if s.status != "ended":
         s.status = "ended"
         s.ended_at = datetime.utcnow()
@@ -689,9 +709,10 @@ def list_questions(
     voter_token: Annotated[str | None, Cookie()] = None,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    is_mod = bool(x_mod_key) and secrets.compare_digest(x_mod_key, s.mod_key)
+    is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
     p = current_participant(s, request, response, voter_token, db)
     qs = db.scalars(
         select(m.Question)
@@ -778,9 +799,10 @@ async def answer_question(
     payload: dict,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    require_mod(s, x_mod_key)
+    require_mod_or_owner(s, x_mod_key, me)
     q = db.get(m.Question, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
@@ -798,10 +820,11 @@ async def remove_question(
     payload: dict,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     """Soft-remove: hides from participants but keeps the row for audit."""
     s = get_session_by_code(db, code)
-    require_mod(s, x_mod_key)
+    require_mod_or_owner(s, x_mod_key, me)
     q = db.get(m.Question, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
@@ -820,10 +843,11 @@ async def delete_question(
     qid: int,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     """Hard delete: admin escape hatch. Not on the standard moderator UI."""
     s = get_session_by_code(db, code)
-    require_mod(s, x_mod_key)
+    require_mod_or_owner(s, x_mod_key, me)
     q = db.get(m.Question, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
@@ -1216,9 +1240,10 @@ def list_quiz_runs(
     voter_token: Annotated[str | None, Cookie()] = None,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    is_mod = bool(x_mod_key) and secrets.compare_digest(x_mod_key, s.mod_key)
+    is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
     p = current_participant(s, request, response, voter_token, db)
     rows = db.scalars(
         select(m.QuizRun).where(m.QuizRun.session_id == s.id)
@@ -1235,6 +1260,7 @@ async def create_quiz_run(
     payload: dict,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     """Queue a quiz onto a session.
 
@@ -1242,7 +1268,7 @@ async def create_quiz_run(
     then creates a QuizRun (status=queued) pointing at that version.
     """
     s = get_session_by_code(db, code)
-    require_mod(s, x_mod_key)
+    require_mod_or_owner(s, x_mod_key, me)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
     quiz_id = payload.get("quiz_id")
@@ -1260,9 +1286,15 @@ async def create_quiz_run(
     return {"id": run.id, "version_no": version.version_no, "status": run.status}
 
 
-def _get_run_mod(db: DbSession, code: str, run_id: int, mod_key: str | None) -> tuple[m.Session, m.QuizRun]:
+def _get_run_mod(
+    db: DbSession,
+    code: str,
+    run_id: int,
+    mod_key: str | None,
+    user: m.User | None,
+) -> tuple[m.Session, m.QuizRun]:
     s = get_session_by_code(db, code)
-    require_mod(s, mod_key)
+    require_mod_or_owner(s, mod_key, user)
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id:
         raise HTTPException(404)
@@ -1275,8 +1307,9 @@ async def start_quiz_run(
     run_id: int,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
-    s, run = _get_run_mod(db, code, run_id, x_mod_key)
+    s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     if run.status != "queued":
         raise HTTPException(400, f"Cannot start from status: {run.status}")
     # Auto-advance Session: planning → live the first time a quiz starts.
@@ -1306,8 +1339,9 @@ async def advance_quiz_run(
     payload: dict,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
-    s, run = _get_run_mod(db, code, run_id, x_mod_key)
+    s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     direction = payload.get("direction", "next")
     total = len(run.quiz_version.items)
     if direction == "next":
@@ -1333,8 +1367,9 @@ async def reveal_quiz_run(
     payload: dict,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
-    s, run = _get_run_mod(db, code, run_id, x_mod_key)
+    s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     run.reveal_current = bool(payload.get("reveal", True))
     db.commit()
     await broadcast_session(s, "quiz_run_update")
@@ -1347,8 +1382,9 @@ async def close_quiz_run(
     run_id: int,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
-    s, run = _get_run_mod(db, code, run_id, x_mod_key)
+    s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     run.status = "closed"
     run.reveal_current = True
     run.closed_at = datetime.utcnow()
@@ -1363,8 +1399,9 @@ async def delete_quiz_run(
     run_id: int,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
-    s, run = _get_run_mod(db, code, run_id, x_mod_key)
+    s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     if run.status == "closed":
         raise HTTPException(400, "Closed quiz runs are historical and cannot be deleted")
     db.delete(run)
@@ -1382,9 +1419,10 @@ def get_quiz_run(
     voter_token: Annotated[str | None, Cookie()] = None,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
 ):
     s = get_session_by_code(db, code)
-    is_mod = bool(x_mod_key) and secrets.compare_digest(x_mod_key, s.mod_key)
+    is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
     p = current_participant(s, request, response, voter_token, db)
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id:

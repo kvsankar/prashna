@@ -75,6 +75,19 @@
         <label class="small muted" for="sd-session-title" style="min-width: 110px;">Title</label>
         <input id="sd-session-title" class="inline" style="flex:1;" maxlength="200">
       </div>
+      <div class="field row gap" id="sd-lifecycle">
+        <label class="small muted" style="min-width: 110px;">Lifecycle</label>
+        <span id="sd-status" class="badge"></span>
+        <span id="sd-lifecycle-hint" class="small muted"></span>
+        <div class="spacer"></div>
+        <span id="sd-lifecycle-actions"></span>
+      </div>
+      <div class="field row gap">
+        <label class="small muted" style="min-width: 110px;">Moderator</label>
+        <a id="sd-open-mod" class="small" href="#">Open moderator →</a>
+        <button id="sd-share-mod" class="ghost xsmall">Share moderator URL</button>
+        <span class="small muted">(use this to delegate moderation to someone without an admin account)</span>
+      </div>
       <p class="muted small" style="margin: 12px 0 8px;">
         Participants join at the URL shown below. Override the base URL if this server is reached via a different public address (LAN IP, reverse proxy, tunnel, vanity domain). Leave blank to use whatever address you're currently browsing from.
       </p>
@@ -249,21 +262,9 @@
           const actions = el("td", { class: "actions" });
           // Stop the row click from firing when an action is clicked.
           actions.addEventListener("click", e => e.stopPropagation());
+          actions.appendChild(el("a", { class: "small", href: `/m/${s.code}` }, "Moderate"));
           actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
           actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
-          // Moderator link is built on-demand to avoid leaking mod_key into the DOM.
-          const modBtn = el("button", { class: "ghost xsmall" }, "Moderator URL");
-          modBtn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            const url = `${location.origin}/m/${s.code}#k=${s.mod_key}`;
-            try {
-              await navigator.clipboard.writeText(url);
-              toast("Moderator URL copied to clipboard");
-            } catch {
-              errorToast("Couldn't copy automatically — load over HTTPS for clipboard access.");
-            }
-          });
-          actions.appendChild(modBtn);
           const delBtn = el("button", { class: "danger ghost xsmall" }, "Delete");
           delBtn.addEventListener("click", () => startDeleteFlow(s));
           actions.appendChild(delBtn);
@@ -289,11 +290,57 @@
       $("#sd-title").textContent = `Session: ${s.title}`;
       $("#sd-session-title").value = s.title;
       $("#sd-base-url").value = s.participant_base_url || "";
+      $("#sd-status").textContent = s.status;
+      $("#sd-status").className = "badge badge-" + s.status;
+      renderLifecycleActions(s);
+      $("#sd-open-mod").href = `/m/${s.code}`;
       const url = participantUrlFor(s);
       $("#sd-url").textContent = url;
       try { await renderQR($("#sd-qr"), url, { cellSize: 4, margin: 2 }); }
       catch { $("#sd-qr").textContent = "QR unavailable"; }
     }
+
+    function renderLifecycleActions(s) {
+      const hint = $("#sd-lifecycle-hint");
+      const actions = $("#sd-lifecycle-actions");
+      actions.innerHTML = "";
+      if (s.status === "planning") {
+        hint.textContent = "Not yet started.";
+        const btn = el("button", { class: "primary xsmall" }, "Start session");
+        btn.addEventListener("click", () => transitionSession("start"));
+        actions.appendChild(btn);
+      } else if (s.status === "live") {
+        hint.textContent = "Live now.";
+        const btn = el("button", { class: "danger ghost xsmall" }, "End session");
+        btn.addEventListener("click", async () => {
+          if (!confirm("End the session? Participants can no longer ask or vote.")) return;
+          transitionSession("end");
+        });
+        actions.appendChild(btn);
+      } else {
+        hint.textContent = "Ended — read-only.";
+      }
+    }
+
+    async function transitionSession(action) {
+      if (!currentDetailData) return;
+      try {
+        await api(`/api/sessions/${currentDetailData.code}/${action}`, { method: "POST" });
+        toast(`Session ${action === "start" ? "started" : "ended"}`);
+        await refreshDetail();
+      } catch (e) { errorToast(e.message); }
+    }
+
+    $("#sd-share-mod").addEventListener("click", async () => {
+      if (!currentDetailData) return;
+      const url = `${location.origin}/m/${currentDetailData.code}#k=${currentDetailData.mod_key}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast("Moderator URL copied — share with delegates only.");
+      } catch {
+        errorToast("Couldn't copy — load over HTTPS for clipboard access.");
+      }
+    });
 
     async function openSessionDetail(s) {
       currentDetail = s.code;
