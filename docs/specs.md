@@ -109,13 +109,13 @@ setup form for the first visitor to claim admin.
 - **Given** the admin clicks Delete on a session row
 - **When** the session is `live` → the action is refused with
   "End the session before deleting it" (toast)
-- **And** the session has 0 questions and 0 quiz runs → a native
+- **And** the session has 0 queries and 0 quiz runs → a native
   `confirm()` followed by `DELETE` deletes it
 - **And** the session has data → a confirm card opens below the table
   warning what will be lost (counts), with a typed-title input that
   must match `session.title` exactly to enable the Delete button
 - **Then** on success, the session is removed; cascade-deletes its
-  questions, votes, participants, quiz_runs, and responses.
+  queries, votes, participants, quiz_runs, and submissions.
   QuizVersions are NOT touched (they belong to Quiz templates).
 
 ### UC-A-08: Inline session moderation from the landing page
@@ -159,8 +159,8 @@ own use case so tests and PRs can cite one ID per behavior.
 
 - **Given** the admin clicks a row in the library
 - **When** `GET /api/quizzes/{id}?include_correct=true` is called
-- **Then** the editor pane shows the title, items, options, and
-  per-option correctness
+- **Then** the editor pane shows the title, questions, answers, and
+  per-answer correctness
 - **And** the route returns `404` for a non-owner (no read access
   across owners)
 
@@ -285,6 +285,23 @@ Used by question and answer editors to set `image_url`.
   correctness markers, and respondent count; uses the snapshotted
   `quiz_title` + `version_no` so historical reports survive later
   edits to the template
+
+### UC-A-25: Change admin password
+
+- **Given** the admin is logged in and clicks **Change password** in
+  the header bar on `/`
+- **Then** a card appears with **Current password**, **New password**,
+  **Confirm new password** fields
+- **When** the admin submits with the current password correct, the
+  two new-password fields matching, and the new password ≥ 8 chars
+- **Then** `POST /api/admin/change_password` updates `password_hash`
+  (bcrypt-rehashed), re-issues the admin session cookie, and the UI
+  toasts "Password updated"; the card closes
+- **And** an incorrect `current_password` returns `401`
+- **And** mismatched new-password fields are blocked client-side with
+  an error toast (no API call)
+- **And** a new password shorter than 8 characters returns `400`
+- **And** Escape closes the card without saving
 
 ---
 
@@ -477,35 +494,35 @@ recognizes which phase the current question is in.
   count refreshes; aria-pressed updates
 - **And** removed queries return `404`; ended sessions return `400`
 
-### UC-P-06: See questions sorted
+### UC-P-06: See queries sorted
 
 - **Given** any participant viewing the session
-- **When** `GET .../questions` returns
+- **When** `GET .../queries` returns
 - **Then** removed queries are filtered out; remaining are sorted
-  unanswered-first, then by descending vote count
-- **And** their own questions are flagged `mine: true` and the
+  unresponded-first, then by descending vote count
+- **And** their own queries are flagged `mine: true` and the
   questions they voted on are flagged `voted: true`
 
 ### UC-P-07: See live quiz
 
 - **Given** a QuizRun is `live`
 - **When** the participant page loads (or refreshes via WS)
-- **Then** the Live quiz card surfaces the current item, its options,
+- **Then** the Live quiz card surfaces the current question, its answers,
   and the participant's prior selections (if any)
 - **And** when status flips to `closed`, the card stays visible
   showing results
 
-### UC-P-08: Respond to the current item
+### UC-P-08: Submit an answer to the current question
 
-- **Given** the current item is live and the participant hasn't been
+- **Given** the current question is live and the participant hasn't been
   served `reveal_current=true`
-- **When** they click options (single → exclusive; multi → toggle)
+- **When** they click answers (single → exclusive; multi → toggle)
   and click Submit
-- **Then** `POST .../quiz_runs/{id}/respond` replaces their prior
-  responses for that item with the new ones (last-write-wins)
-- **And** options must belong to the current item; mismatch returns
+- **Then** `POST .../quiz_runs/{id}/submit` replaces their prior
+  submissions for that question with the new ones (last-write-wins)
+- **And** answers must belong to the current question; mismatch returns
   `400`
-- **And** single-type cannot have > 1 option_id; returns `400`
+- **And** single-type cannot have > 1 answer_id; returns `400`
 - **And** an ended session refuses with `400`
 
 ### UC-P-09: See results when revealed or closed
@@ -522,6 +539,20 @@ recognizes which phase the current question is in.
 - **When** they look at the Invite others card
 - **Then** a QR encodes the same participant URL the moderator
   configured (or `location.origin` fallback)
+
+### UC-P-12: Live answer counts during voting
+
+Participant-side counterpart of UC-D-08.
+
+- **Given** a QuizRun is `live` with `show_live_counts = true`
+- **When** the participant view renders the current question's
+  answering phase
+- **Then** each answer shows a running vote-share bar and percentage
+  **without** correctness markers
+- **And** voting remains open — clicking still toggles selection and
+  Submit is enabled
+- **And** when `show_live_counts = false` (default), the answering
+  phase shows only the question and answers (no bars, no counts)
 
 ### UC-P-11: Ended session is read-only
 
@@ -680,6 +711,22 @@ are the rules every user-facing UC silently relies on.
 | At most one `QuizSubmission` per `(run, question, answer, participant)` | UNIQUE constraint                         |
 | One `Participant` per `(session, voter_token)`                         | UNIQUE constraint                          |
 
+### UC-X-07: PRASHNA_SECRET_KEY lifecycle
+
+The admin session cookie is signed (HMAC) by `itsdangerous`. The
+signing key is read from `PRASHNA_SECRET_KEY` at process start.
+
+- **Given** `PRASHNA_SECRET_KEY` is set in the environment
+- **Then** the signer uses that value; cookies survive process
+  restarts and admins stay logged in
+- **Given** `PRASHNA_SECRET_KEY` is **unset**
+- **Then** the process generates a random key once and uses it for
+  the process lifetime; all admin sessions are invalidated on every
+  restart (admins must re-login)
+- **Operational rule:** production deployments **must** set
+  `PRASHNA_SECRET_KEY` to a long random string and keep it stable.
+  Rotating it is a deliberate "invalidate all sessions" action.
+
 ### UC-X-06: Versioning lazy capture
 
 - **Given** Quiz Q has versions v1, v2 already
@@ -690,3 +737,45 @@ are the rules every user-facing UC silently relies on.
 - **And** when two requests race and both try to create version N+1,
   the UNIQUE constraint causes one to lose; the loser catches
   `IntegrityError`, re-reads the latest, and returns it
+
+---
+
+## Deferred (decision needed)
+
+Items that came up during design but were deliberately not specced as
+use cases because they need a product call before they have shape.
+
+- **Reopen an ended session** — no backend support; UI has no
+  affordance. Today `ended` is one-way. Likely a real product need
+  once sessions are recurring.
+- **Reopen a closed QuizRun** — no backend support. Today `closed`
+  is one-way; mods who close by mistake must delete and re-launch
+  (losing submissions).
+- **Per-question timer / auto-advance** — no schema, no UI. Adds
+  scoring-pressure semantics; common in Kahoot-style products.
+- **Hard-delete query UI** — the `DELETE /api/sessions/{c}/queries/{qid}`
+  route exists for admin escapes but has no standard UI affordance.
+- **Logout from `/quizzes`, `/m`, `/p`** — currently only on the
+  landing page.
+- **Image upload content-sniff** — today only the extension is
+  validated; SVG is excluded by extension allowlist. A malformed
+  file with a legit extension is accepted. Cheap to add
+  (Pillow `verify`).
+- **`image_url` server-side validation** — admin can set any URL on
+  an item or option via PATCH. Limiting to `/uploads/<uuid>.<ext>`
+  would harden against external-URL injection.
+- **Rate limiting** on session-code enumeration and login attempts.
+- **Multi-moderator audit columns** — who responded/removed/started/
+  closed. Useful once delegate moderators are real.
+- **CHECK constraints** on status enums (`session.status`,
+  `quiz.status`, `quizrun.status`, `quiz_question.qtype`).
+- **Image-only answers** — render correctly today, but publish
+  validation accepts them; results UI shows blank cells if no text.
+- **`PRASHNA_SECRET_KEY` not warning when unset** — process boots
+  silently with a random key.
+- **Reverse-proxy `secure` cookie flag** — currently derived from
+  `request.url.scheme`; behind TLS termination without
+  `ProxyHeadersMiddleware`, the flag is wrong.
+
+Each becomes its own UC when the product decision lands; the route /
+column / verb names can stay stable until then.
