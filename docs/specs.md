@@ -33,6 +33,32 @@ UI seamlessly; the mod_key path stays available for delegates.
 
 ---
 
+## Conventions used by the Tests blocks
+
+To avoid repeating the same auth-error bullet on every UC, the
+following standard responses apply across all routes of a given auth
+class. Individual UC tests only assert per-route specifics on top of
+these.
+
+| Route auth class               | No / invalid auth → response                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `auth.current_admin` (admin)   | `401 "Not authenticated"`                                                      |
+| `auth.optional_admin` (optional) | route handler decides (usually returns 404 to non-owners on owned reads)     |
+| `require_mod_or_owner`         | `403 "Not authorized — moderator key or admin login required"` when neither    |
+| Owner-only (`require_session_owner`) | `401 "Not authenticated"` if no cookie; `403 "Not your session"` if logged in but wrong owner |
+| Participant (cookie-issued)    | Never errors on auth — a fresh `voter_token` is created on first interaction   |
+
+Selectors cited in `**Tests (UI)**` blocks are real IDs / classes in
+`static/*.html`. Some elements are JS-rendered (badges, quiz-run rows,
+query rows); test authors should rely on the documented class names
+(`.badge-live`, `.question`, etc.) and text content rather than DOM
+positions.
+
+When a bullet writes `"a"*201` or similar, it's Python `str * int`
+notation (a 201-character string).
+
+---
+
 ## Admin
 
 ### UC-A-01: First-run admin setup
@@ -310,8 +336,9 @@ own use case so tests and PRs can cite one ID per behavior.
   (versioning protects history)
 
 **Tests (API)**
-- `PATCH /api/quizzes/{id}` with `{"title": "New"}` → `200 {ok: true, status}` and updates `title` + `last_edited_at`. Auth: admin cookie.
-- `PATCH /api/quizzes/{id}` with `{"title": ""}` → `200`; title stays unchanged (whitespace ignored).
+- `PATCH /api/quizzes/{id}` with `{"title": "New"}` (different from current) → `200 {ok: true, status}`; updates `title` and advances `last_edited_at`. Auth: admin cookie.
+- `PATCH /api/quizzes/{id}` with `{"title": ""}` → `200`; title stays unchanged AND `last_edited_at` does NOT advance (the no-op branch skips `_mark_quiz_edited`).
+- `PATCH /api/quizzes/{id}` with `{"title": "<same as current>"}` → `200`; same no-op behavior (no change, no edit bump).
 - After PATCH on a `ready` quiz, `GET /api/quizzes/{id}` still returns `status: "ready"`.
 - `PATCH /api/quizzes/{id}` for a non-owner quiz → `404`.
 
@@ -341,19 +368,18 @@ own use case so tests and PRs can cite one ID per behavior.
 
 - **Given** the admin clicks **+ Add question** in the editor
 - **When** `POST /api/quizzes/{id}/questions` is called
-- **Then** a `Question` is added at the end (`order_index = max + 1`)
-  with default `text = "New question"` and `qtype = "single"`; parent's
-  `last_edited_at` advances
+- **Then** a `Question` is added at the end (`order_index = max + 1`);
+  parent's `last_edited_at` advances
 - **And** a `qtype` not in `("single", "multi")` returns `400`
 
 **Tests (API)**
-- `POST /api/quizzes/{id}/questions` with `{}` → `200 {id}`; new Question appended with `order_index = max+1`, default `qtype = "single"`, parent `last_edited_at` advances. Auth: admin cookie.
-- `POST /api/quizzes/{id}/questions` with `{"qtype": "multi"}` → `200`; created with `qtype: "multi"`.
+- `POST /api/quizzes/{id}/questions` with `{}` → `200 {id}`; new Question appended with `order_index = max+1`, `text = ""` (empty), `qtype = "single"`, parent `last_edited_at` advances. Auth: admin cookie. Note: the **backend** defaults `text` to empty string; the UI passes `{"text": "New question"}` so users see a sensible placeholder, but that string is a frontend choice.
+- `POST /api/quizzes/{id}/questions` with `{"text": "X", "qtype": "multi"}` → `200`; created with `text: "X"`, `qtype: "multi"`.
 - `POST /api/quizzes/{id}/questions` with `{"qtype": "bogus"}` → `400 "qtype must be single or multi"`.
 - For a non-owner quiz → `404`.
 
 **Tests (UI)**
-- In `#editor-body`, clicking `+ Add question` appends a new question row with default text "New question".
+- In `#editor-body`, clicking `+ Add question` appends a new question row. The frontend submits `{"text": "New question", "qtype": "single"}`, so the new row's text input shows "New question" as the editable starting value.
 
 ### UC-A-15: Edit a quiz question
 
@@ -392,18 +418,17 @@ own use case so tests and PRs can cite one ID per behavior.
 
 ### UC-A-17: Add an answer to a question
 
-- **Given** the admin clicks **+ Answer** under an item
+- **Given** the admin clicks **+ Answer** under a question
 - **When** `POST /api/quiz_questions/{id}/answers` is called
-- **Then** a `Answer` is added at the end with default
-  `text = "New answer"`, `is_correct = false`; parent quiz
-  `last_edited_at` advances
+- **Then** an `Answer` is added at the end with
+  `is_correct = false`; parent quiz `last_edited_at` advances
 
 **Tests (API)**
-- `POST /api/quiz_questions/{qid}/answers` with `{}` → `200 {id}`; new Answer at `order_index = max+1`, `is_correct: false`; parent quiz `last_edited_at` advances. Auth: admin cookie.
+- `POST /api/quiz_questions/{qid}/answers` with `{}` → `200 {id}`; new Answer at `order_index = max+1`, `text = ""` (empty), `is_correct: false`; parent quiz `last_edited_at` advances. Auth: admin cookie. Note: backend default `text` is empty string; the UI passes `"New answer"` as a sensible starting value.
 - For a question owned by another admin → `404`.
 
 **Tests (UI)**
-- In `#editor-body`, clicking `+ Answer` under a question appends an answer row with default text "New answer" and unchecked correctness.
+- In `#editor-body`, clicking `+ Answer` under a question appends an answer row. The frontend submits `{"text": "New answer"}`, so the row shows "New answer" as the editable starting value and the correctness checkbox is unchecked.
 
 ### UC-A-18: Edit an answer
 
@@ -563,9 +588,9 @@ Used by question and answer editors to set `image_url`.
 
 **Tests (API)**
 - `POST /api/admin/change_password` with valid `{current_password, new_password}` (≥ 8 chars) → `200 {ok: true}`; re-issues `admin_session` cookie; bcrypt-verifies new password. Auth: admin cookie.
-- With wrong `current_password` → `401 "Current password is incorrect"`.
+- With wrong `current_password` (but valid cookie) → `401 "Current password is incorrect"`.
 - With `new_password` shorter than 8 chars → `400 "new password must be at least 8 characters"`.
-- With no auth → `401`.
+- With no cookie at all → `401 "Not authenticated"` (from `auth.current_admin`, before the handler runs). Two distinct 401 paths.
 
 **Tests (UI)**
 - On `/` (authed), clicking Change password opens `#change-pw-card`.
@@ -796,12 +821,12 @@ recognizes which phase the current question is in.
   `responded_at`
 
 **Tests (API)**
-- `POST /api/sessions/{code}/queries/{qid}/respond` with `{"response_text": "see docs"}` → `200 {ok: true}`; sets `responded_at` and `response_text`. Auth: mod-key OR admin cookie.
+- `POST /api/sessions/{code}/queries/{qid}/respond` with `{"response_text": "see docs"}` → `200 {ok: true}`; sets `responded_at` and `response_text = "see docs"`. Auth: mod-key OR admin cookie.
 - `POST .../respond` with `{}` → marks responded with `response_text: null` (verbal-only).
-- `POST .../respond` with `{"responded": false}` → clears `responded_at` (Reopen).
+- `POST .../respond` with `{"responded": false}` → clears `responded_at` (Reopen). Note: the handler always writes `response_text` from the payload — so omitting `response_text` on Reopen also **wipes** any prior text (handler does `q.response_text = (payload.get("response_text") or "").strip() or None`). Tests should assert this side effect.
 - `POST .../respond` for a non-existent or cross-session qid → `404`.
 - Broadcasts `{type: "query_responded"}`.
-- With no auth → `403`.
+- With no auth → `403` (see Conventions).
 
 **Tests (UI)**
 - In moderator `#queries`, clicking Mark responded on a query moves it into the answered section.
@@ -975,20 +1000,21 @@ recognizes which phase the current question is in.
 
 - **Given** any participant viewing the session
 - **When** `GET .../queries` returns
-- **Then** removed queries are filtered out; remaining are sorted
-  unresponded-first, then by descending vote count
-- **And** their own queries are flagged `mine: true` and the
-  questions they voted on are flagged `voted: true`
+- **Then** removed queries are filtered out from the **API response**;
+  the **frontend** re-sorts the returned list with unresponded-first,
+  then by descending vote count
+- **And** their own queries are flagged `mine: true` and the queries
+  they voted on are flagged `voted: true`
 
 **Tests (API)**
 - `GET /api/sessions/{code}/queries` as a participant → `200 [{id, text, author_name, response_text, responded, removed: false, vote_count, voted, mine, created_at}, ...]`. Auth: none (cookie issued on first call).
+- Server order: `created_at DESC` (newest first). The unresponded-first / votes-desc sort is **UI-applied**, not server-applied — API tests should NOT assert it.
 - Removed queries are excluded for participants but included for moderators (with `removed: true`).
-- Sort: unresponded first, then by descending vote_count (UI-side sort consistent with prose).
 - A query the caller asked has `mine: true`; a query the caller voted on has `voted: true`.
 
 **Tests (UI)**
-- On `/s/<CODE>`, `#queries` lists visible (non-removed) queries; unresponded appear above responded, ties broken by vote count desc.
-- The participant's own queries are styled with a "you" marker; voted queries are visually highlighted.
+- On `/s/<CODE>`, `#queries` lists visible (non-removed) queries; unresponded appear above responded, ties broken by `vote_count` descending. This sort is performed by the participant page's JS, not the API.
+- The participant's own queries are styled with a "you" marker; voted queries show the `.voted` vote-button state.
 
 ### UC-P-07: See live quiz
 
