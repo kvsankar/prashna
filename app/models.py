@@ -212,6 +212,10 @@ class QuizRun(Base):
     status: Mapped[str] = mapped_column(String(10), default="queued")  # "queued" | "live" | "closed"
     current_question_idx: Mapped[int] = mapped_column(Integer, default=0)
     reveal_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When true, the projector and participant pages show running answer counts
+    # during the answering phase (before reveal). Correctness is still hidden
+    # until reveal_current is true (or the run is closed).
+    show_live_counts: Mapped[bool] = mapped_column(Boolean, default=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

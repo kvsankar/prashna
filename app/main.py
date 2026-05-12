@@ -257,6 +257,7 @@ def serialize_quiz_run(
     questions = version.questions
     current = questions[run.current_question_idx] if 0 <= run.current_question_idx < len(questions) else None
     show_correct = is_mod or (run.status == "closed") or run.reveal_current
+    show_results = show_correct or run.show_live_counts
     payload = {
         "id": run.id,
         "session_id": run.session_id,
@@ -268,6 +269,7 @@ def serialize_quiz_run(
         "current_question_idx": run.current_question_idx,
         "question_count": len(questions),
         "reveal_current": run.reveal_current,
+        "show_live_counts": run.show_live_counts,
         "current_question": None,
         "my_selections": [],
         "results": None,
@@ -297,7 +299,7 @@ def serialize_quiz_run(
                 )
             ).all()
             payload["my_selections"] = [r.answer_id for r in mine]
-        if is_mod or run.reveal_current or run.status == "closed":
+        if show_results:
             payload["results"] = tally_question(db, run, current)
     return payload
 
@@ -1315,6 +1317,23 @@ async def advance_quiz_run(
     db.commit()
     await broadcast_session(s, "quiz_run_update")
     return {"ok": True}
+
+
+@app.post("/api/sessions/{code}/quiz_runs/{run_id}/live_counts")
+async def set_live_counts(
+    code: str,
+    run_id: int,
+    payload: dict,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    """Toggle whether the answering phase exposes running answer counts."""
+    s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
+    run.show_live_counts = bool(payload.get("show", True))
+    db.commit()
+    await broadcast_session(s, "quiz_run_update")
+    return {"show_live_counts": run.show_live_counts}
 
 
 @app.post("/api/sessions/{code}/quiz_runs/{run_id}/reveal")
