@@ -328,14 +328,18 @@ Used by question and answer editors to set `image_url`.
 
 - **Given** the moderator is on `/m/<code>` and the session is
   `planning`
-- **When** they click Start session
+- **When** they click **Start session**
 - **Then** `POST /api/sessions/{code}/start` sets status to `live` and
   records `started_at`
-- **When** they click End session and confirm
+- **When** they click **End session** (the UI shows a native
+  `confirm()` first — the backend has no confirmation gate; the
+  request is fired straight if the moderator clicks OK)
 - **Then** `POST /api/sessions/{code}/end` sets status to `ended` and
   records `ended_at`
 - **And** starting a quiz run on a `planning` session auto-advances
   it to `live` as a side effect
+- **And** the `/end` route accepts a request on any non-ended status
+  — there's no requirement to have first transitioned to `live`
 
 ### UC-M-03: Queue a quiz onto the session
 
@@ -381,9 +385,17 @@ recognizes which phase the current question is in.
 - **When** the moderator clicks **Close →**
 - **Then** the run closes (see UC-M-06).
 - **Prev** moves `current_question_idx` backwards (mod can revisit a
-  question; resets `reveal_current`).
-- **Live counts** are toggled independently per QuizRun via a
-  "live counts" checkbox; see UC-D-08.
+  question). Any advance call (next / prev / to) resets
+  `reveal_current = False` server-side.
+- **Live counts** are toggled independently per QuizRun via
+  `POST /api/sessions/{code}/quiz_runs/{id}/live_counts` with body
+  `{show: bool}` (mod-or-owner auth). Default off. The moderator UI
+  surfaces this as a "live counts" checkbox per quiz-run row. See
+  UC-D-08 / UC-P-12 for the rendered behavior.
+- **Backend routes called by this UC**: `/start` (queued → live),
+  `/advance` (`{direction: "next" | "prev" | "to", index?: int}`),
+  `/reveal` (`{reveal: bool}`), `/close`, `/live_counts`. All POST,
+  all mod-or-owner auth.
 
 ### UC-M-06: Close a quiz run
 
@@ -520,10 +532,13 @@ recognizes which phase the current question is in.
   and click Submit
 - **Then** `POST .../quiz_runs/{id}/submit` replaces their prior
   submissions for that question with the new ones (last-write-wins)
-- **And** answers must belong to the current question; mismatch returns
-  `400`
-- **And** single-type cannot have > 1 answer_id; returns `400`
-- **And** an ended session refuses with `400`
+- **And** answer ids must reference the current question's answers
+  (matched `answer_id ∈ vq.answers`); a wrong `question_id`
+  (not in the run's version) returns `404 "Question not in this
+  quiz run"`; a `question_id` that's not the current one returns
+  `400 "Not the current question"`
+- **And** single-type cannot have > 1 `answer_id`; returns `400`
+- **And** an ended session refuses with `400 "Session has ended"`
 
 ### UC-P-09: See results when revealed or closed
 
@@ -540,6 +555,13 @@ recognizes which phase the current question is in.
 - **Then** a QR encodes the same participant URL the moderator
   configured (or `location.origin` fallback)
 
+### UC-P-11: Ended session is read-only
+
+- **Given** session.status flips to `ended` via WS broadcast
+- **When** the participant view refreshes (via the broadcast)
+- **Then** the Ask card disappears, a "Session ended" card appears,
+  and existing queries / quiz results remain visible
+
 ### UC-P-12: Live answer counts during voting
 
 Participant-side counterpart of UC-D-08.
@@ -553,13 +575,6 @@ Participant-side counterpart of UC-D-08.
   Submit is enabled
 - **And** when `show_live_counts = false` (default), the answering
   phase shows only the question and answers (no bars, no counts)
-
-### UC-P-11: Ended session is read-only
-
-- **Given** session.status flips to `ended` via WS broadcast
-- **When** the participant view refreshes (via the broadcast)
-- **Then** the Ask-a-question card disappears, a "Session ended" card
-  appears, and existing questions / quiz results remain visible
 
 ---
 
@@ -679,11 +694,13 @@ are the rules every user-facing UC silently relies on.
 - **And** the client auto-reconnects with exponential backoff if the
   socket drops
 
-### UC-X-02: Cross-origin WS rejected
+### UC-X-02: WebSocket upgrade rejections
 
 - **Given** a browser sends an `Origin` header that doesn't match
   `Host`
-- **Then** the WS upgrade is closed with code 4403
+- **Then** the WS upgrade is closed with code **4403** (cross-origin)
+- **Given** the URL's `{code}` does not match any Session
+- **Then** the WS upgrade is closed with code **4404** (no session)
 
 ### UC-X-03: Static asset security headers
 
@@ -711,6 +728,17 @@ are the rules every user-facing UC silently relies on.
 | At most one `QuizSubmission` per `(run, question, answer, participant)` | UNIQUE constraint                         |
 | One `Participant` per `(session, voter_token)`                         | UNIQUE constraint                          |
 
+### UC-X-06: Versioning lazy capture
+
+- **Given** Quiz Q has versions v1, v2 already
+- **When** the moderator queues Q without editing since v2 → the new
+  QuizRun reuses v2
+- **And** when an edit happens between v2 and the next queue → a v3
+  is captured at queue time and the new run points to v3
+- **And** when two requests race and both try to create version N+1,
+  the UNIQUE constraint causes one to lose; the loser catches
+  `IntegrityError`, re-reads the latest, and returns it
+
 ### UC-X-07: PRASHNA_SECRET_KEY lifecycle
 
 The admin session cookie is signed (HMAC) by `itsdangerous`. The
@@ -726,17 +754,6 @@ signing key is read from `PRASHNA_SECRET_KEY` at process start.
 - **Operational rule:** production deployments **must** set
   `PRASHNA_SECRET_KEY` to a long random string and keep it stable.
   Rotating it is a deliberate "invalidate all sessions" action.
-
-### UC-X-06: Versioning lazy capture
-
-- **Given** Quiz Q has versions v1, v2 already
-- **When** the moderator queues Q without editing since v2 → the new
-  QuizRun reuses v2
-- **And** when an edit happens between v2 and the next queue → a v3
-  is captured at queue time and the new run points to v3
-- **And** when two requests race and both try to create version N+1,
-  the UNIQUE constraint causes one to lose; the loser catches
-  `IntegrityError`, re-reads the latest, and returns it
 
 ---
 
