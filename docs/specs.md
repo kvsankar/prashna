@@ -81,7 +81,9 @@ setup form for the first visitor to claim admin.
 - `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null}`. Auth: none.
 - `POST /api/admin/setup` with `{"username": "alice", "password": "longenough"}` → `200 {username: "alice"}` and sets `admin_session` cookie. Auth: none.
 - `GET /api/admin/status` immediately after setup (with cookie) → `200 {initialized: true, authenticated: true, username: "alice"}`.
-- `POST /api/admin/setup` a second time → `409 "Admin already initialized"`. Race: two concurrent setup calls — exactly one returns `200`, the other returns `409` (the handler wraps the insert in try/except `IntegrityError` and re-checks `admin_exists()` before serving 200).
+- `POST /api/admin/setup` a second time → `409 "Admin already initialized"`.
+- Race: two concurrent setup calls with **different usernames** — exactly one returns `200`, the other returns `409`. Serialized by a process-wide `threading.Lock` around the check+insert (Prashna is single-process per CLAUDE.md, so this is a real invariant). Test: `test_uc_a_01_concurrent_setup_different_usernames`.
+- Same-username conflict path is also caught via `try/except IntegrityError` and surfaces as `409`.
 - `POST /api/admin/setup` with `{"username": "alice", "password": "short"}` → `400 "password must be at least 8 characters"`.
 - `POST /api/admin/setup` with `{"username": "", "password": "longenough"}` → `400 "username required"`.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import threading
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta
@@ -453,31 +454,32 @@ def admin_status(db: DbSession = Depends(get_db), me: m.User | None = Depends(au
     }
 
 
+# Serializes first-run admin_setup against itself. Prashna runs as a
+# single FastAPI process (see CLAUDE.md), so a process-wide lock is a
+# real bootstrap invariant — not advisory. Closes the
+# different-username concurrent-setup race that two DB statements
+# alone cannot.
+_setup_lock = threading.Lock()
+
+
 @app.post("/api/admin/setup")
 def admin_setup(payload: dict, request: Request, response: Response, db: DbSession = Depends(get_db)):
-    if auth.admin_exists(db):
-        raise HTTPException(409, "Admin already initialized")
-    username, password = _validate_credentials(payload.get("username", ""), payload.get("password", ""))
-    user = m.User(username=username, password_hash=auth.hash_password(password))
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError:
-        # Concurrent setup race: two callers both passed the admin_exists()
-        # check, the first wins, the second sees a UNIQUE collision on
-        # username (or our singleton invariant). Surface as 409 either way.
-        db.rollback()
-        raise HTTPException(409, "Admin already initialized")
-    # Belt-and-suspenders singleton invariant: if some other user already
-    # exists, refuse — keep first-run setup as a single-row bootstrap.
-    other = db.scalar(select(m.User.id).where(m.User.id != user.id).limit(1))
-    if other is not None:
-        db.delete(user)
-        db.commit()
-        raise HTTPException(409, "Admin already initialized")
-    db.refresh(user)
-    auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
-    return {"username": user.username}
+    with _setup_lock:
+        if auth.admin_exists(db):
+            raise HTTPException(409, "Admin already initialized")
+        username, password = _validate_credentials(payload.get("username", ""), payload.get("password", ""))
+        user = m.User(username=username, password_hash=auth.hash_password(password))
+        db.add(user)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Defensive: a username UNIQUE collision against some
+            # other admin row we didn't expect. Surface as 409.
+            db.rollback()
+            raise HTTPException(409, "Admin already initialized")
+        db.refresh(user)
+        auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
+        return {"username": user.username}
 
 
 @app.post("/api/admin/login")

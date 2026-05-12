@@ -50,6 +50,43 @@ def test_uc_a_01_setup_empty_username(client):
     assert r.json() == {"detail": "username required"}
 
 
+def test_uc_a_01_concurrent_setup_different_usernames(app_module):
+    """UC-A-01: two concurrent setups with different usernames → exactly one wins.
+
+    Closes the round-2 race finding: without the process-wide lock,
+    both callers could pass the admin_exists() check and both could
+    commit a User. The lock serializes the check+insert so the second
+    caller sees the first's row and gets 409.
+    """
+    import threading
+    from fastapi.testclient import TestClient
+
+    results = []
+    barrier = threading.Barrier(2)
+
+    def attempt(username):
+        with TestClient(app_module.app) as c:
+            barrier.wait()
+            r = c.post("/api/admin/setup",
+                       json={"username": username, "password": "longenough"})
+            results.append(r.status_code)
+
+    threads = [
+        threading.Thread(target=attempt, args=("alice",)),
+        threading.Thread(target=attempt, args=("bob",)),
+    ]
+    for t in threads: t.start()
+    for t in threads: t.join()
+
+    # Exactly one 200 and one 409 — no double-admin outcome.
+    assert sorted(results) == [200, 409]
+    # And exactly one User row exists.
+    from app.db import SessionLocal
+    from app import models as m
+    with SessionLocal() as db:
+        assert db.query(m.User).count() == 1
+
+
 # ---------- UC-A-02: Login / Logout ----------
 
 def test_uc_a_02_login_valid(client, admin_creds):
