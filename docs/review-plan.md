@@ -27,6 +27,22 @@ The review was split into four roles:
    - Scope: `static/common.js`, `static/index.html`, `static/quizzes.html`, `static/moderator.html`, `static/participant.html`, `static/projector.html`, `static/app.css`, and `tests/ui`.
    - Focus: browser-side correctness, live refresh behavior, stale state, unsafe DOM/URL handling, moderator key handling, accessibility gaps, and UI test coverage.
 
+## Round 2 Re-Review Scheme
+
+The second pass re-used the same review lanes and focused on validating the addressed findings rather than re-reading the entire project from scratch:
+
+1. Fix validation
+   - Checked whether prior "DONE" annotations were actually complete in code, tests, and operational behavior.
+
+2. Regression review
+   - Looked for places where backend fixes changed contracts that specs or browser pages still assumed.
+
+3. Deployability review
+   - Checked whether the security and persistence fixes survive the current SQLite `create_all()` deployment model and an existing local database.
+
+4. Verification
+   - Ran the test suite and recorded new uncovered paths in the report test-gap sections.
+
 ## Output Files
 
 - `docs/design-review-report.md`

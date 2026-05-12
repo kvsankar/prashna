@@ -8,6 +8,38 @@ Prashna is a self-hosted live Q&A and quiz tool for sessions with an audience. T
 
 The design is intentionally simple: SQLite persistence, a single FastAPI process, static role-specific browser clients, and WebSocket refresh hints that cause clients to refetch.
 
+## Round 2 Re-Review (2026-05-12)
+
+### High: Schema evolution is now blocking a security fix rollout — **DONE**
+
+**Fix:** Lightweight additive migrator in `app/db.py` (`_apply_additive_migrations`) runs after `create_all` and adds missing columns via `ALTER TABLE`. Targeted at `users.session_version` for now; the same list grows as we add columns. Alembic still deferred.
+
+
+
+The earlier migration concern was deferred because Prashna is pre-launch and can recreate `prashna.db`. The second-pass code review found this is no longer just a future production concern: the password-cookie invalidation fix added `users.session_version`, but existing SQLite databases are not upgraded by `create_all()`. A database created before the fix can fail admin auth/status paths after deploy.
+
+Design decision needed: either keep the pre-launch "delete and recreate the DB" workflow and document this change as a breaking local-data reset, or add a tiny startup migration path for additive SQLite columns until Alembic is adopted. The current middle ground is fragile because the app claims backward cookie compatibility while the schema is not backward compatible.
+
+### Medium-High: Role-boundary fix is not reflected across product surfaces — **DONE**
+
+**Fix:** Moderator page hides the Base URL editor for delegates (boot detects admin-owner via `/api/admin/status`). UC-M-11 rewritten in `docs/specs.md` to describe the two-tier view (owner edits, delegate reads).
+
+
+
+The backend now treats session rename, participant base URL changes, and hard-delete as owner-only. That matches the design direction, but the moderator experience and spec are still split: `docs/specs.md:629` and `docs/specs.md:888` still describe moderator-key access for now-owner-only operations, and the moderator page still exposes the base URL editor to delegates.
+
+Recommendation: make the product rule explicit in one place and drive both API tests and UI from it. If delegated moderators are intentionally narrower, hide owner-only controls when the page is opened with only `X-Mod-Key`.
+
+### High: Public first-run setup still needs a real bootstrap invariant — **DEFERRED**
+
+**Reason:** Same answer as the unchanged D5: per the localhost+ngrok workflow, the public-setup window isn't a real risk today. The hosted/SaaS distribution path will need a proper DB-level singleton + setup-token. Tracked together in `docs/todo.md`.
+
+
+
+The first-run setup race fix improved conflict handling but did not establish a database-level singleton. Combined with the intentionally deferred public-claim workflow, setup remains the main operational footgun before any public or shared deployment.
+
+Recommendation: before public hosting, solve this at the workflow and invariant levels: private/local bootstrap is acceptable for the current ngrok workflow, but a hosted service should require a setup token, CLI bootstrap, or locked bootstrap row.
+
 ## Findings
 
 ### High: Quiz-run and session lifecycles are not enforced centrally — **PARTIALLY DONE**
@@ -34,9 +66,9 @@ The hard-delete route is documented as an admin escape hatch with no standard UI
 
 Recommendation: split "moderator operation" from "owner/admin operation." Make session metadata, hard-delete, moderator-key rotation, and historical/report-impacting actions owner-only unless the product explicitly grants them to delegates.
 
-### High: Production persistence has no migration path — **DEFERRED**
+### High: Production persistence has no migration path — **DEFERRED / ACTIVE ROLLOUT RISK**
 
-**Reason:** Product call. Prashna is still pre-launch; the README explicitly says "delete `prashna.db` and recreate" is fine until real user data exists. Alembic introduces a new dep, a new workflow (migrations as commits), and onboarding cost. Will revisit once SaaS hosting goes live — see [[project_prashna_direction]].
+**Reason:** Product call. Prashna is still pre-launch; the README explicitly says "delete `prashna.db` and recreate" is fine until real user data exists. Alembic introduces a new dep, a new workflow (migrations as commits), and onboarding cost. Round 2 found the new `users.session_version` column turns this into an immediate rollout risk for any existing local DB unless the operator resets the database or the app performs a small additive migration.
 
 
 
@@ -58,7 +90,7 @@ Recommendation: refetch immediately after every successful reconnect. Document t
 
 ### Medium: First-run admin setup is operationally fragile — **DEFERRED**
 
-**Reason:** Open product question. Options are (a) one-time setup token printed at container startup, (b) CLI bootstrap, (c) require running app in a "private bootstrap" mode. Picked none yet — needs user decision. Tracking as open question for the wrap-up. The race itself (concurrent setup) is now safe (see C4 in critical review).
+**Reason:** Open product question. Options are (a) one-time setup token printed at container startup, (b) CLI bootstrap, (c) require running app in a "private bootstrap" mode. Picked none yet — needs user decision. Tracking as open question for the wrap-up. Round 2 found the same-username conflict path is safer, but the different-username concurrent setup race is still not fully closed (see C4 in critical review).
 
 
 

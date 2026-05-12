@@ -2,6 +2,38 @@
 
 Date: 2026-05-12
 
+## Round 2 Re-Review (2026-05-12)
+
+### Medium-High: Delegated moderators still see an owner-only Base URL control — **DONE**
+
+**Fix:** `static/moderator.html` boot now hits `/api/admin/status` and sets an `isOwner` flag; `renderInvite()` hides the Base URL `.field` (input + Use-default button) when `isOwner` is false. QR / URL / Copy remain available to delegates.
+
+
+
+`POST /api/sessions/{code}/participant_base_url` is now admin-cookie owner-only (`app/main.py:600`), but `static/moderator.html:41` still renders the Base URL input and "Use default" button for every moderator page. `saveModBaseUrl()` sends only the moderator headers available on that page (`static/moderator.html:143`), so a delegated moderator will receive `401`. The shared `api()` helper redirects to `/` on `401` outside the root page (`static/common.js:38`), which makes this look like a forced logout/navigation rather than a clear authorization boundary.
+
+Recommendation: hide or disable the Base URL editor unless the page has owner/admin context, or split the moderator page into owner-only and delegate-visible controls. Add a UI test that opens `/m/{code}` with only a mod key and verifies owner-only controls are absent.
+
+### Medium: Closed quiz runs still expose a rejected live-counts toggle — **DONE**
+
+**Fix:** The per-run "live counts" checkbox is only rendered when `r.status !== "closed"`. UC-M-05 in `docs/specs.md` updated to document this.
+
+
+
+The backend now allows `live_counts` only for queued and live runs and rejects closed runs (`app/main.py:1421`). The moderator UI still renders the checkbox for every run status (`static/moderator.html:326`), including closed history. Toggling it on a closed run creates a backend error path for an immutable historical record.
+
+Recommendation: render the live-counts checkbox only for queued/live runs, or make it read-only on closed runs. Add a UI test for closed-run controls.
+
+### Medium: Spec drift will keep producing frontend regressions — **DONE**
+
+**Fix:** UC-M-11 in `docs/specs.md` now matches the owner-only Base URL backend and the two-tier UI. UC-A-06 already states owner-only auth. UC-M-05 notes the closed-run UI gating.
+
+
+
+The spec now contains both owner-only and moderator-capable descriptions for participant base URL editing (`docs/specs.md:199`, `docs/specs.md:888`). Frontend work should not rely on stale UC-M-11 language until the role decision is reconciled.
+
+Recommendation: update the spec first, then make the moderator page conditional on the resolved role model.
+
 ## Findings
 
 ### High: WebSocket reconnects do not resync missed state — **DONE**
@@ -62,8 +94,7 @@ No active untrusted `innerHTML` injection path was found in the reviewed role pa
 
 ## Test Gaps
 
-- Reconnect refresh after a missed WebSocket event.
-- Moderator response to `session_state` messages from another actor.
-- Multi-choice clear/update in participant UI.
+- Delegate moderator UI coverage for owner-only controls, especially Base URL editing.
+- Closed quiz-run UI coverage for hidden/disabled immutable controls.
 - Out-of-order refresh protection for live quiz state.
-- Accessibility assertions for key form controls.
+- Reconnect refresh after a missed WebSocket event remains indirectly covered only; the direct Playwright restart test is still skipped.

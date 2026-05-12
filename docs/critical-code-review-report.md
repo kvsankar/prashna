@@ -2,6 +2,42 @@
 
 Date: 2026-05-12
 
+## Round 2 Re-Review (2026-05-12)
+
+### High: `session_version` is not deployable against existing SQLite databases — **DONE**
+
+**Fix:** Added `_apply_additive_migrations()` in `app/db.py`, called from `init_db()` after `create_all`. It inspects `PRAGMA table_info(users)` and runs `ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1` when the column is missing. New columns in the future can be added to the same list. Tests still pass against a fresh DB; the migration is idempotent for already-up-to-date schemas.
+
+
+
+The password-cookie invalidation fix added `User.session_version` (`app/models.py:20`) and auth now reads it on admin cookie validation (`app/auth.py:95`). However, startup still only calls `Base.metadata.create_all()` (`app/db.py:47`), which does not add columns to an existing SQLite table.
+
+I verified the checked-out local `prashna.db` still has no `users.session_version` column, and a normal ORM lookup fails with `sqlite3.OperationalError: no such column: users.session_version`. This means an existing operator database created before this change can break admin status/auth paths immediately after deploy. It also weakens the stated backward-compatible cookie shim, because old uid-only cookies still require the new database column to exist.
+
+Recommendation: either add a one-time startup migration/backfill for this pre-launch SQLite app, for example `ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1` when missing, or explicitly require deleting/recreating `prashna.db` for this commit and remove the transitional-cookie compatibility claim. Add a regression test that boots against an old `users` schema and validates admin auth/status still works.
+
+### High: First-run admin setup race is only partially fixed — **DEFERRED**
+
+**Reason:** The remaining race (two concurrent setups with *different* usernames) requires real concurrent setup traffic against a publicly reachable instance. Per [[project_local_plus_ngrok]] the operator runs Prashna on localhost and exposes it via ngrok *after* completing setup, so the public-setup window doesn't exist in the current workflow. A proper DB-level singleton (singleton-row table + UNIQUE constraint, or `BEGIN IMMEDIATE` serialization) is the right long-term fix and is folded into the broader D5 "secure first-run flow" open item — to be decided together with the public-claim story.
+
+
+
+`admin_setup` now catches same-username uniqueness conflicts and performs a post-commit check (`app/main.py:456`). That improves one race path, but two concurrent setup requests with different usernames can still both pass the pre-insert `admin_exists()` check. If both commits land before either post-commit cleanup completes, both requests can see "another admin" and both can delete themselves, leaving zero admins.
+
+Recommendation: enforce the singleton bootstrap invariant at the database/transaction level instead of by app-level post-commit cleanup. Practical options include a fixed singleton bootstrap/settings row guarded by a unique key, a transactional bootstrap lock, or a deterministic fixed admin slot. Add a real concurrent setup test for two different usernames.
+
+### Medium: Owner-only permission fixes created API/spec/UI drift — **DONE**
+
+**Fix:**
+- `static/moderator.html`: Base URL `.field` is hidden when the page lacks an admin cookie (boot now calls `GET /api/admin/status` to detect owner context). The QR, URL, and Copy button remain visible to delegates.
+- `docs/specs.md` UC-M-11 rewritten: owner-only editor; delegate sees read-only QR/URL/Copy. UC-A-06 already states owner-only auth.
+
+
+
+The backend now makes `PATCH /api/sessions/{code}` and `POST /api/sessions/{code}/participant_base_url` owner-only, but `docs/specs.md` still contains conflicting moderator-auth expectations at `docs/specs.md:629` and `docs/specs.md:888`. The moderator page also still renders the base-URL editor to delegated moderators, so the backend fix is correct but not yet fully integrated across the product surface.
+
+Recommendation: update the spec and frontend together: either keep these actions owner-only and hide/disable the controls for mod-key-only users, or deliberately restore the moderator capability.
+
 ## Findings
 
 ### High: Queued quizzes leak questions before start — **DONE**
@@ -26,7 +62,7 @@ Recommendation: for non-moderators and queued runs, return only lobby-safe metad
 
 Recommendation: reject submissions when `run.reveal_current` is true, or introduce an explicit `accepting_answers` phase flag. Add a test that submit-after-reveal returns a controlled 400/409 and does not mutate submissions.
 
-### High: Password changes do not invalidate existing admin cookies — **DONE**
+### High: Password changes do not invalidate existing admin cookies — **DONE, MIGRATION GAP FOUND IN ROUND 2**
 
 **Fix:** Added `User.session_version` (int). Signed cookie payload is now `"{user_id}:{session_version}"`. `current_admin` rejects when versions don't match. `admin_change_password` bumps the counter. Backward-compat shim in `_parse_cookie` allows old uid-only cookies during transition (will phase out after redeploy).
 
@@ -36,9 +72,9 @@ Recommendation: reject submissions when `run.reveal_current` is true, or introdu
 
 Recommendation: include a session version, password-changed timestamp, or per-user session secret in signed cookies and verify it on every request. Add a regression test that captures the old `prashna_admin` cookie, changes the password, and proves the old cookie can no longer access admin routes.
 
-### High: First-run admin setup is raceable — **DONE**
+### High: First-run admin setup is raceable — **PARTIAL / REOPENED IN ROUND 2**
 
-**Fix:** `admin_setup` now wraps the insert in try/except `IntegrityError`, re-checks `admin_exists()` after commit, and returns deterministic 409 on conflict. Singleton invariant enforced at the app level (no DB-level "only-one-row" constraint added — singleton is a deployment-state notion, not a domain truth).
+**Fix status:** `admin_setup` now wraps the insert in try/except `IntegrityError`, re-checks `admin_exists()` after commit, and returns deterministic 409 for the same-username conflict path. The second-pass review found the different-username concurrent setup race is still not fully closed; see the Round 2 section above.
 
 
 
@@ -98,12 +134,7 @@ Recommendation: add per-send timeouts, gather sends concurrently, or move broadc
 
 ## Test Gaps
 
-- Public queued quiz payload redaction.
-- Submit-after-reveal rejection.
-- Old admin cookie invalidation after password change.
-- Concurrent first-run setup.
-- Invalid quiz-run source-state transitions.
-- Duplicate multi-choice answer IDs and concurrent vote/submit races.
-- SQLite foreign-key enforcement.
-- Upload content sniffing.
-- Slow WebSocket client broadcast behavior.
+- Legacy-schema startup/auth coverage for databases without `users.session_version`.
+- Concurrent first-run setup with two different usernames.
+- Upload content sniffing for allowed extensions with invalid image bytes.
+- Slow WebSocket client broadcast behavior under a stalled socket.

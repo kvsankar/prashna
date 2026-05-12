@@ -770,7 +770,7 @@ recognizes which phase the current question is in.
 - In results phase on a non-last question, the control reads "Next question →"; clicking advances `current_question_idx` and resets to answering phase for the next question.
 - In results phase on the last question, the control reads "Close →"; clicking closes the run (see UC-M-06).
 - A Prev control moves backwards through questions.
-- A "live counts" checkbox per quiz-run row toggles `show_live_counts`; default is off.
+- A "live counts" checkbox per quiz-run row toggles `show_live_counts`; default is off. The checkbox is **not rendered for closed runs** (the backend would 400 anyway since closed runs are historical).
 
 ### UC-M-06: Close a quiz run
 
@@ -877,19 +877,30 @@ recognizes which phase the current question is in.
 
 ### UC-M-11: Invite participants
 
-- **Given** the moderator is on the moderator page
+- **Given** any moderator (delegate or admin owner) is on the
+  moderator page
+- **Then** the invite card shows the QR and the participant URL,
+  and the Copy URL button works
+- **Given** the visitor is the admin owner (cookie present)
 - **When** they paste a Base URL and blur the input
 - **Then** the page rebuilds the participant URL as
   `<base>/s/<code>`, renders a QR, and updates the copy-URL text
 - **And** clicking Use default clears the override and the page falls
   back to `location.origin`
+- **Given** the visitor is a delegated moderator (mod_key only, no
+  admin cookie)
+- **Then** the Base URL editor is **not rendered** — only the read-only
+  QR/URL/Copy controls. The underlying
+  `POST /api/sessions/{code}/participant_base_url` is owner-only
+  (see UC-A-06).
 
 **Tests (API)**
-- Same surface as UC-A-06: `POST /api/sessions/{code}/participant_base_url`. Auth: mod-key OR admin cookie.
+- Editing surface is owner-only — see UC-A-06 for the auth tests.
 
 **Tests (UI)**
-- On `/m/<code>`, typing into `#base-url` and blurring updates `#invite-url` and re-renders `#invite-qr` encoding `<base>/s/<code>`.
-- Clicking `#base-url-clear` clears the override; the QR/URL fall back to `location.origin`.
+- On `/m/<code>` opened with the admin cookie, `#base-url` (inside its `.field` container) is visible; typing and blurring updates `#invite-url` and re-renders `#invite-qr` encoding `<base>/s/<code>`.
+- On `/m/<code>` opened with only a `mod_key` (no admin cookie), the `.field` wrapping `#base-url` is hidden; QR, `#invite-url`, and `#invite-copy` remain visible.
+- Clicking `#base-url-clear` (owner view) clears the override; the QR/URL fall back to `location.origin`.
 - Clicking `#invite-copy` copies `#invite-url` text to clipboard.
 
 ---
