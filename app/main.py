@@ -1240,9 +1240,36 @@ def list_quiz_runs(
         select(m.QuizRun).where(m.QuizRun.session_id == s.id)
         .order_by(m.QuizRun.created_at.desc())
     ).all()
-    if not is_mod:
-        rows = [r for r in rows if r.status in ("live", "closed")]
+    # Non-mods see queued/live/closed (queued powers the projector "Next up"
+    # lobby). The participant page itself ignores queued in its own render.
     return [serialize_quiz_run(db, r, viewer_participant_id=p.id, is_mod=is_mod) for r in rows]
+
+
+@app.get("/api/sessions/{code}/available_quizzes")
+def list_available_quizzes(
+    code: str,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    """Ready quizzes the session-owner can launch in this session.
+
+    Same shape as `/api/quizzes?ready_only=true`, but gated on mod-or-owner
+    auth so a delegate (mod-key holder, no admin account) can populate the
+    Launch dropdown. Filters by `owner_user_id = session.owner_user_id`.
+    """
+    s = get_session_by_code(db, code)
+    require_mod_or_owner(s, x_mod_key, me)
+    quizzes = db.scalars(
+        select(m.Quiz)
+        .where(m.Quiz.owner_user_id == s.owner_user_id, m.Quiz.status == "ready")
+        .options(selectinload(m.Quiz.questions))
+        .order_by(m.Quiz.created_at.desc())
+    ).all()
+    return [
+        {"id": q.id, "title": q.title, "status": q.status, "question_count": len(q.questions)}
+        for q in quizzes
+    ]
 
 
 @app.post("/api/sessions/{code}/quiz_runs")

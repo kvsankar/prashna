@@ -1026,7 +1026,7 @@ recognizes which phase the current question is in.
   showing results
 
 **Tests (API)**
-- `GET /api/sessions/{code}/quiz_runs` as a participant → only runs in `live` or `closed` status are returned (queued runs filtered). Auth: none (cookie issued on first call).
+- `GET /api/sessions/{code}/quiz_runs` as a participant → returns runs in any non-deleted status: `queued`, `live`, `closed`. Queued is included so the projector can render the "Next up" lobby (UC-D-07); the participant page itself ignores queued in its `loadQuiz()` selector. Auth: none (cookie issued on first call).
 - The serialized run includes `current_question` (id, text, qtype, answers without `is_correct` unless revealed/closed) and `my_selections`.
 - For a `closed` run, `is_correct` and `results` are included.
 
