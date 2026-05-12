@@ -38,6 +38,26 @@
       <p class="muted small" id="lifecycle-hint" style="margin: 0;"></p>
     </section>
 
+    <section class="card" id="invite-card" style="display:none;">
+      <div class="card-head"><h2>Invite participants</h2></div>
+      <p class="muted small" style="margin: 0 0 8px;">
+        Override the base URL if this server is reached via a different public address (e.g. a reverse proxy, LAN IP, or tunnel). Leave blank to use the address shown in the moderator's address bar.
+      </p>
+      <div class="field row gap">
+        <input id="base-url" class="inline" style="flex:1;" placeholder="e.g. https://prashna.sankara.net">
+        <button id="base-url-save" class="small">Save</button>
+        <button id="base-url-clear" class="ghost small">Use default</button>
+      </div>
+      <div class="row gap" style="align-items: flex-start;">
+        <div id="invite-qr" style="width: 180px; min-width: 180px;"></div>
+        <div style="flex:1;">
+          <div class="small muted" style="margin-bottom: 4px;">Participants join at:</div>
+          <code id="invite-url" class="small" style="display:block; padding: 8px; background: var(--panel-2); border-radius: 6px; word-break: break-all;"></code>
+          <button id="invite-copy" class="ghost small" style="margin-top: 8px;">Copy URL</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card" id="quizzes-card" style="display:none;">
       <div class="card-head">
         <h2>Quizzes</h2>
@@ -58,7 +78,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast } from "/static/common.js";
+    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast, renderQR } from "/static/common.js";
 
     const CODE = pathCode();
 
@@ -78,7 +98,7 @@
     const pendingAnswerText = new Map();
 
     function showWorkSurfaces(visible) {
-      for (const id of ["lifecycle-card", "quizzes-card", "questions-card"]) $("#" + id).style.display = visible ? "" : "none";
+      for (const id of ["lifecycle-card", "invite-card", "quizzes-card", "questions-card"]) $("#" + id).style.display = visible ? "" : "none";
     }
     function showKeyGate() {
       $("#modkey-code").textContent = CODE;
@@ -104,7 +124,45 @@
       $("#participant-link").href = `/s/${CODE}`;
       $("#projector-link").href = `/p/${CODE}`;
       renderLifecycle();
+      renderInvite();
     }
+
+    function participantUrlFor(s) {
+      const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
+      return `${base}/s/${s.code}`;
+    }
+
+    async function renderInvite() {
+      const url = participantUrlFor(sessionState);
+      $("#base-url").value = sessionState.participant_base_url || "";
+      $("#invite-url").textContent = url;
+      try { await renderQR($("#invite-qr"), url, { cellSize: 4, margin: 2 }); }
+      catch (e) { $("#invite-qr").textContent = "QR unavailable"; }
+    }
+
+    $("#base-url-save").addEventListener("click", async () => {
+      try {
+        await api(`/api/sessions/${CODE}/participant_base_url`, {
+          method: "POST", headers: modHeaders(), body: { url: $("#base-url").value },
+        });
+        await loadSession();
+        toast("Saved");
+      } catch (e) { errorToast(e.message); }
+    });
+    $("#base-url-clear").addEventListener("click", async () => {
+      try {
+        await api(`/api/sessions/${CODE}/participant_base_url`, {
+          method: "POST", headers: modHeaders(), body: { url: "" },
+        });
+        await loadSession();
+        toast("Reverted to default");
+      } catch (e) { errorToast(e.message); }
+    });
+    $("#invite-copy").addEventListener("click", async () => {
+      const url = $("#invite-url").textContent;
+      try { await navigator.clipboard.writeText(url); toast("URL copied"); }
+      catch { window.prompt("Copy:", url); }
+    });
 
     function renderLifecycle() {
       const status = sessionState.status;

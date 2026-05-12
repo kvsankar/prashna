@@ -9,12 +9,38 @@
     body { background: #000; }
     main.proj { max-width: none; }
     .qa-list { max-height: 75vh; overflow: auto; }
+    #join-qr { cursor: zoom-in; }
+    #join-qr:hover { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+    .lightbox {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; cursor: zoom-out; padding: 40px;
+    }
+    .lightbox-inner {
+      width: min(90vh, 90vw); height: min(90vh, 90vw);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lightbox-inner svg { width: 100%; height: 100%; }
+    .lightbox-hint {
+      position: fixed; bottom: 30px; left: 0; right: 0;
+      text-align: center; color: #888; font-size: 14px;
+    }
   </style>
 </head>
 <body>
   <main class="proj">
     <h1 id="title">Loading…</h1>
-    <div class="code-display">Join: <strong id="code"></strong> at <span id="origin"></span></div>
+    <div class="row gap" style="align-items: flex-start; margin-bottom: 24px;">
+      <div style="flex:1;">
+        <div class="code-display">Join: <strong id="code"></strong> at <span id="origin"></span></div>
+      </div>
+      <div id="join-qr" style="width: 220px; min-width: 220px;" title="Click to enlarge" tabindex="0" role="button" aria-label="Enlarge QR code"></div>
+    </div>
+
+    <div class="lightbox" id="qr-lightbox" style="display:none;">
+      <div class="lightbox-inner" id="qr-lightbox-inner"></div>
+      <div class="lightbox-hint">Click anywhere or press Esc to close</div>
+    </div>
 
     <section id="quiz-section" class="card" style="display:none;">
       <div id="quiz-body"></div>
@@ -27,11 +53,12 @@
   </main>
 
   <script type="module">
-    import { $, api, el, pathCode, openLiveSocket } from "/static/common.js";
+    import { $, api, el, pathCode, openLiveSocket, renderQR } from "/static/common.js";
 
     const CODE = pathCode();
-    $("#origin").textContent = location.origin.replace(/^https?:\/\//, "");
     $("#code").textContent = CODE;
+
+    let lastBase = null;
 
     async function loadAll() {
       const [s, qs, runs] = await Promise.all([
@@ -40,6 +67,14 @@
         api(`/api/sessions/${CODE}/quiz_runs`),
       ]);
       $("#title").textContent = s.title;
+      const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
+      const url = `${base}/s/${s.code}`;
+      $("#origin").textContent = base.replace(/^https?:\/\//, "");
+      if (base !== lastBase) {
+        lastBase = base;
+        try { await renderQR($("#join-qr"), url, { cellSize: 5, margin: 2 }); }
+        catch {}
+      }
       renderQuestions(qs);
       renderQuiz(runs.find(r => r.status === "live") || runs.find(r => r.status === "closed"));
     }
@@ -95,6 +130,29 @@
       }
       if (showResults) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
     }
+
+    // Lightbox: enlarge the join QR on click.
+    function openLightbox() {
+      const src = $("#join-qr").querySelector("svg");
+      if (!src) return;
+      const inner = $("#qr-lightbox-inner");
+      inner.innerHTML = "";
+      const clone = src.cloneNode(true);
+      // The thumbnail SVG had inline height:auto; clear it so the big
+      // copy fills the square container instead of staying short.
+      clone.style.cssText = "width: 100%; height: 100%; display: block; background: white; border-radius: 8px;";
+      inner.appendChild(clone);
+      $("#qr-lightbox").style.display = "";
+    }
+    function closeLightbox() { $("#qr-lightbox").style.display = "none"; }
+    $("#join-qr").addEventListener("click", openLightbox);
+    $("#join-qr").addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openLightbox(); }
+    });
+    $("#qr-lightbox").addEventListener("click", closeLightbox);
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && $("#qr-lightbox").style.display !== "none") closeLightbox();
+    });
 
     loadAll();
     openLiveSocket(CODE, loadAll);
