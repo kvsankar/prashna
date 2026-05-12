@@ -88,3 +88,41 @@ def browser_context_args():
     Each test gets its own context (Playwright default), so cookies don't leak.
     """
     return {"ignore_https_errors": True}
+
+
+@pytest.fixture(scope="session")
+def _playwright():
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        yield p
+
+
+@pytest.fixture(scope="session")
+def browser(_playwright):
+    b = _playwright.chromium.launch()
+    try:
+        yield b
+    finally:
+        b.close()
+
+
+@pytest.fixture
+def context(browser):
+    """Per-test browser context — clean cookie jar."""
+    ctx = browser.new_context(ignore_https_errors=True)
+    # Grant clipboard so the share-mod and copy buttons don't blow up.
+    try:
+        ctx.grant_permissions(["clipboard-read", "clipboard-write"])
+    except Exception:
+        pass
+    try:
+        yield ctx
+    finally:
+        ctx.close()
+
+
+@pytest.fixture
+def page(context):
+    p = context.new_page()
+    yield p
+    p.close()

@@ -266,7 +266,9 @@
     }
 
     async function loadQuizzes() {
-      quizzes = await api("/api/quizzes?ready_only=true");
+      // Session-scoped endpoint: works for both admin owners and mod-key
+      // delegates (who don't have an admin cookie).
+      quizzes = await api(`/api/sessions/${CODE}/available_quizzes`, { headers: modHeaders() });
       const sel = $("#quiz-select");
       sel.innerHTML = "";
       if (!quizzes.length) {

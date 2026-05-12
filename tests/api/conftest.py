@@ -98,5 +98,8 @@ def make_quiz(admin_client: TestClient):
     return _make
 
 
-def mod_headers(mod_key: str) -> dict:
-    return {"X-Mod-Key": mod_key}
+@pytest.fixture
+def mod_headers():
+    def _mk(mod_key: str) -> dict:
+        return {"X-Mod-Key": mod_key}
+    return _mk
