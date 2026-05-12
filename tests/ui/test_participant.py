@@ -218,8 +218,13 @@ def test_uc_p_07_live_quiz_card_visible(base_url, admin_setup, page):
         c.close()
 
 
-def test_uc_p_07_closed_run_keeps_card_visible(base_url, admin_setup, page):
-    """UC-P-07: closed run → card stays visible with results."""
+def test_uc_p_07_closed_run_hidden_on_participant(base_url, admin_setup, page):
+    """UC-P-07: closed run → participant card disappears.
+
+    Final results live on the projector / moderator views. The
+    participant surface only renders live runs to keep focus on
+    actionable state.
+    """
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-P07c {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-P07cs {secrets.token_hex(3)}")
@@ -228,8 +233,7 @@ def test_uc_p_07_closed_run_keeps_card_visible(base_url, admin_setup, page):
     c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close").raise_for_status()
     try:
         page.goto(f"{base_url}/s/{s['code']}")
-        expect(page.locator("#quiz-card")).to_be_visible(timeout=5000)
-        expect(page.locator("#quiz-body")).to_contain_text("closed")
+        expect(page.locator("#quiz-card")).to_be_hidden(timeout=5000)
     finally:
         c.close()
 
