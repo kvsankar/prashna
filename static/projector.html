@@ -47,8 +47,8 @@
     </section>
 
     <section class="card">
-      <h2>Top questions</h2>
-      <div id="questions" class="qa-list"></div>
+      <h2>Top queries</h2>
+      <div id="queries" class="qa-list"></div>
     </section>
   </main>
 
@@ -63,7 +63,7 @@
     async function loadAll() {
       const [s, qs, runs] = await Promise.all([
         api(`/api/sessions/${CODE}`),
-        api(`/api/sessions/${CODE}/questions`),
+        api(`/api/sessions/${CODE}/queries`),
         api(`/api/sessions/${CODE}/quiz_runs`),
       ]);
       $("#title").textContent = s.title;
@@ -75,16 +75,16 @@
         try { await renderQR($("#join-qr"), url, { cellSize: 5, margin: 2 }); }
         catch {}
       }
-      renderQuestions(qs);
+      renderQueries(qs);
       renderQuiz(runs.find(r => r.status === "live") || runs.find(r => r.status === "closed"));
     }
 
-    function renderQuestions(qs) {
-      const root = $("#questions");
+    function renderQueries(qs) {
+      const root = $("#queries");
       root.innerHTML = "";
-      const top = qs.filter(q => !q.answered).sort((a, b) => b.vote_count - a.vote_count).slice(0, 8);
+      const top = qs.filter(q => !q.responded).sort((a, b) => b.vote_count - a.vote_count).slice(0, 8);
       if (!top.length) {
-        root.appendChild(el("div", { class: "muted" }, "Waiting for questions…"));
+        root.appendChild(el("div", { class: "muted" }, "Waiting for queries…"));
         return;
       }
       for (const q of top) {
@@ -105,28 +105,28 @@
       if (!run) { section.style.display = "none"; return; }
       section.style.display = "";
       body.innerHTML = "";
-      body.appendChild(el("div", { class: "muted" }, `${run.quiz_title} — item ${run.current_item_idx + 1}/${run.item_count}`));
-      const q = run.current_item;
+      body.appendChild(el("div", { class: "muted" }, `${run.quiz_title} — question ${run.current_question_idx + 1}/${run.question_count}`));
+      const q = run.current_question;
       if (!q) return;
       body.appendChild(el("h2", { style: "font-size: 32px; margin: 12px 0;" }, q.text));
       if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
       const totals = run.results?.totals || {};
       const respondents = run.results?.respondents || 0;
       const showResults = !!run.results;
-      for (const op of q.options) {
-        const opDiv = el("div", { class: "option disabled" + (showResults && op.is_correct ? " correct" : "") });
+      for (const a of q.answers) {
+        const aDiv = el("div", { class: "option disabled" + (showResults && a.is_correct ? " correct" : "") });
         if (showResults) {
           const bar = el("div", { class: "bar" });
-          bar.style.transform = `scaleX(${respondents ? (totals[op.id] || 0) / respondents : 0})`;
-          opDiv.appendChild(bar);
+          bar.style.transform = `scaleX(${respondents ? (totals[a.id] || 0) / respondents : 0})`;
+          aDiv.appendChild(bar);
         }
-        if (op.image_url) opDiv.appendChild(el("img", { class: "opt-img", src: op.image_url }));
-        opDiv.appendChild(el("div", { class: "opt-text" }, op.text));
+        if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
+        aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
         if (showResults) {
-          const pct = respondents ? Math.round((totals[op.id] || 0) / respondents * 100) : 0;
-          opDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
+          const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
+          aDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
         }
-        body.appendChild(opDiv);
+        body.appendChild(aDiv);
       }
       if (showResults) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
     }

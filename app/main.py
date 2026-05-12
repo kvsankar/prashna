@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
+from contextlib import asynccontextmanager
 from fastapi import (
     Cookie,
     Depends,
@@ -22,7 +23,6 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from contextlib import asynccontextmanager
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
@@ -42,8 +42,6 @@ UPLOADS.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 PRESENCE_WINDOW = timedelta(seconds=30)
-# Throttle last_seen_at writes — SQLite is single-writer; updating per request
-# bottlenecks under load. Idle polls touch the row at most once per this window.
 LAST_SEEN_THROTTLE = timedelta(seconds=5)
 
 
@@ -69,7 +67,6 @@ class UploadsSecurityHeaders(BaseHTTPMiddleware):
 
 
 app.add_middleware(UploadsSecurityHeaders)
-
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -119,11 +116,6 @@ def get_session_by_code(db: DbSession, code: str) -> m.Session:
     return s
 
 
-def require_mod(session: m.Session, mod_key: str | None) -> None:
-    if not mod_key or not secrets.compare_digest(mod_key, session.mod_key):
-        raise HTTPException(403, "Moderator key required")
-
-
 def is_admin_owner(session: m.Session, user: m.User | None) -> bool:
     return user is not None and session.owner_user_id == user.id
 
@@ -154,11 +146,6 @@ def require_session_owner(session: m.Session, user: m.User) -> None:
         raise HTTPException(403, "Not your session")
 
 
-def require_quiz_owner(quiz: m.Quiz, user: m.User) -> None:
-    if quiz.owner_user_id != user.id:
-        raise HTTPException(403, "Not your quiz")
-
-
 def current_participant(
     session: m.Session,
     request: Request,
@@ -166,11 +153,6 @@ def current_participant(
     voter_token: str | None,
     db: DbSession,
 ) -> m.Participant:
-    """Resolve the participant for this (session, voter_token) tuple. Create if missing.
-
-    Updates last_seen_at as a side effect — this drives the live presence count.
-    Issues the voter_token cookie when a fresh token is minted.
-    """
     token = voter_token
     fresh = False
     if not token:
@@ -186,10 +168,9 @@ def current_participant(
         db.commit()
         db.refresh(p)
     else:
-        # Throttle: skip the write if last_seen_at is fresh enough already.
-        now = datetime.utcnow()
-        if now - p.last_seen_at >= LAST_SEEN_THROTTLE:
-            p.last_seen_at = now
+        nowt = datetime.utcnow()
+        if nowt - p.last_seen_at >= LAST_SEEN_THROTTLE:
+            p.last_seen_at = nowt
             db.commit()
     if fresh:
         _set_voter_cookie(request, response, token)
@@ -206,13 +187,13 @@ def participant_count_online(db: DbSession, session: m.Session) -> int:
 
 # ---------- serialization ----------
 
-def serialize_question(q: m.Question, viewer_participant_id: int | None, is_mod: bool) -> dict:
+def serialize_query(q: m.Query, viewer_participant_id: int | None, is_mod: bool) -> dict:
     return {
         "id": q.id,
         "text": q.text,
         "author_name": q.participant.name if q.participant else None,
-        "answer_text": q.answer_text,
-        "answered": q.answered_at is not None,
+        "response_text": q.response_text,
+        "responded": q.responded_at is not None,
         "removed": q.removed_at is not None,
         "vote_count": len(q.votes),
         "voted": any(v.participant_id == viewer_participant_id for v in q.votes),
@@ -226,42 +207,42 @@ def serialize_quiz(quiz: m.Quiz, include_correct: bool = False) -> dict:
         "id": quiz.id,
         "title": quiz.title,
         "status": quiz.status,
-        "items": [
+        "questions": [
             {
-                "id": it.id,
-                "text": it.text,
-                "image_url": it.image_url,
-                "qtype": it.qtype,
-                "order_index": it.order_index,
-                "options": [
+                "id": qq.id,
+                "text": qq.text,
+                "image_url": qq.image_url,
+                "qtype": qq.qtype,
+                "order_index": qq.order_index,
+                "answers": [
                     {
-                        "id": op.id,
-                        "text": op.text,
-                        "image_url": op.image_url,
-                        "order_index": op.order_index,
-                        **({"is_correct": op.is_correct} if include_correct else {}),
+                        "id": a.id,
+                        "text": a.text,
+                        "image_url": a.image_url,
+                        "order_index": a.order_index,
+                        **({"is_correct": a.is_correct} if include_correct else {}),
                     }
-                    for op in it.options
+                    for a in qq.answers
                 ],
             }
-            for it in quiz.items
+            for qq in quiz.questions
         ],
     }
 
 
-def tally_item(db: DbSession, run: m.QuizRun, vitem: m.QuizVersionItem) -> dict:
+def tally_question(db: DbSession, run: m.QuizRun, vq: m.QuizVersionQuestion) -> dict:
     rows = db.scalars(
-        select(m.QuizResponse).where(
-            m.QuizResponse.quiz_run_id == run.id,
-            m.QuizResponse.item_id == vitem.id,
+        select(m.QuizSubmission).where(
+            m.QuizSubmission.quiz_run_id == run.id,
+            m.QuizSubmission.question_id == vq.id,
         )
     ).all()
-    counts = Counter(r.option_id for r in rows)
+    counts = Counter(r.answer_id for r in rows)
     voters = {r.participant_id for r in rows}
     return {
-        "item_id": vitem.id,
+        "question_id": vq.id,
         "respondents": len(voters),
-        "totals": {op.id: counts.get(op.id, 0) for op in vitem.options},
+        "totals": {a.id: counts.get(a.id, 0) for a in vq.answers},
     }
 
 
@@ -273,8 +254,8 @@ def serialize_quiz_run(
     is_mod: bool,
 ) -> dict:
     version = run.quiz_version
-    items = version.items
-    current = items[run.current_item_idx] if 0 <= run.current_item_idx < len(items) else None
+    questions = version.questions
+    current = questions[run.current_question_idx] if 0 <= run.current_question_idx < len(questions) else None
     show_correct = is_mod or (run.status == "closed") or run.reveal_current
     payload = {
         "id": run.id,
@@ -284,61 +265,61 @@ def serialize_quiz_run(
         "quiz_title": version.quiz_title,
         "version_no": version.version_no,
         "status": run.status,
-        "current_item_idx": run.current_item_idx,
-        "item_count": len(items),
+        "current_question_idx": run.current_question_idx,
+        "question_count": len(questions),
         "reveal_current": run.reveal_current,
-        "current_item": None,
+        "current_question": None,
         "my_selections": [],
         "results": None,
     }
     if current is not None:
-        payload["current_item"] = {
+        payload["current_question"] = {
             "id": current.id,
             "text": current.text,
             "image_url": current.image_url,
             "qtype": current.qtype,
-            "options": [
+            "answers": [
                 {
-                    "id": op.id,
-                    "text": op.text,
-                    "image_url": op.image_url,
-                    **({"is_correct": op.is_correct} if show_correct else {}),
+                    "id": a.id,
+                    "text": a.text,
+                    "image_url": a.image_url,
+                    **({"is_correct": a.is_correct} if show_correct else {}),
                 }
-                for op in current.options
+                for a in current.answers
             ],
         }
         if viewer_participant_id is not None:
             mine = db.scalars(
-                select(m.QuizResponse).where(
-                    m.QuizResponse.quiz_run_id == run.id,
-                    m.QuizResponse.item_id == current.id,
-                    m.QuizResponse.participant_id == viewer_participant_id,
+                select(m.QuizSubmission).where(
+                    m.QuizSubmission.quiz_run_id == run.id,
+                    m.QuizSubmission.question_id == current.id,
+                    m.QuizSubmission.participant_id == viewer_participant_id,
                 )
             ).all()
-            payload["my_selections"] = [r.option_id for r in mine]
+            payload["my_selections"] = [r.answer_id for r in mine]
         if is_mod or run.reveal_current or run.status == "closed":
-            payload["results"] = tally_item(db, run, current)
+            payload["results"] = tally_question(db, run, current)
     return payload
 
 
 # ---------- quiz lifecycle helpers ----------
 
 def _validate_quiz_publishable(quiz: m.Quiz) -> None:
-    if not quiz.items:
-        raise HTTPException(400, "Quiz needs at least one item")
-    for idx, it in enumerate(quiz.items, start=1):
-        if not it.text.strip():
-            raise HTTPException(400, f"Item {idx} is missing text")
-        if len(it.options) < 2:
-            raise HTTPException(400, f"Item {idx} needs at least 2 options")
-        correct = [op for op in it.options if op.is_correct]
-        if it.qtype == "single" and len(correct) != 1:
-            raise HTTPException(400, f"Item {idx} (single choice) needs exactly one correct option")
-        if it.qtype == "multi" and len(correct) < 1:
-            raise HTTPException(400, f"Item {idx} (multiple choice) needs at least one correct option")
-        for opi, op in enumerate(it.options, start=1):
-            if not op.text.strip() and not op.image_url:
-                raise HTTPException(400, f"Item {idx}, option {opi} is empty")
+    if not quiz.questions:
+        raise HTTPException(400, "Quiz needs at least one question")
+    for idx, qq in enumerate(quiz.questions, start=1):
+        if not qq.text.strip():
+            raise HTTPException(400, f"Question {idx} is missing text")
+        if len(qq.answers) < 2:
+            raise HTTPException(400, f"Question {idx} needs at least 2 answers")
+        correct = [a for a in qq.answers if a.is_correct]
+        if qq.qtype == "single" and len(correct) != 1:
+            raise HTTPException(400, f"Question {idx} (single choice) needs exactly one correct answer")
+        if qq.qtype == "multi" and len(correct) < 1:
+            raise HTTPException(400, f"Question {idx} (multiple choice) needs at least one correct answer")
+        for ai, a in enumerate(qq.answers, start=1):
+            if not a.text.strip() and not a.image_url:
+                raise HTTPException(400, f"Question {idx}, answer {ai} is empty")
 
 
 def _mark_quiz_edited(quiz: m.Quiz) -> None:
@@ -353,13 +334,7 @@ def _latest_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion | None:
 
 
 def _ensure_current_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion:
-    """Return the version that captures the quiz's current editable tree.
-
-    Creates a new version only if the editable tree has been touched since the
-    latest version was captured. Race-safe: if two requests both try to create
-    version N+1, the UNIQUE(quiz_id, version_no) constraint causes one to
-    fail; we catch and return the winner's version.
-    """
+    """Return the version that captures the quiz's current editable tree."""
     latest = _latest_version(db, quiz)
     if latest and latest.created_at >= quiz.last_edited_at:
         return latest
@@ -375,23 +350,23 @@ def _ensure_current_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion:
         if winner is None:
             raise
         return winner
-    for it in quiz.items:
-        vit = m.QuizVersionItem(
+    for qq in quiz.questions:
+        vq = m.QuizVersionQuestion(
             version_id=version.id,
-            text=it.text,
-            image_url=it.image_url,
-            qtype=it.qtype,
-            order_index=it.order_index,
+            text=qq.text,
+            image_url=qq.image_url,
+            qtype=qq.qtype,
+            order_index=qq.order_index,
         )
-        db.add(vit)
+        db.add(vq)
         db.flush()
-        for op in it.options:
-            db.add(m.QuizVersionOption(
-                item_id=vit.id,
-                text=op.text,
-                image_url=op.image_url,
-                is_correct=op.is_correct,
-                order_index=op.order_index,
+        for a in qq.answers:
+            db.add(m.QuizVersionAnswer(
+                question_id=vq.id,
+                text=a.text,
+                image_url=a.image_url,
+                is_correct=a.is_correct,
+                order_index=a.order_index,
             ))
     db.commit()
     db.refresh(version)
@@ -504,7 +479,7 @@ def list_sessions(db: DbSession = Depends(get_db), me: m.User = Depends(auth.cur
             "created_at": s.created_at.isoformat(),
             "started_at": s.started_at.isoformat() if s.started_at else None,
             "ended_at": s.ended_at.isoformat() if s.ended_at else None,
-            "question_count": len(s.questions),
+            "query_count": len(s.queries),
             "quiz_run_count": len(s.quiz_runs),
         }
         for s in rows
@@ -574,8 +549,6 @@ async def set_participant_base_url(
     require_mod_or_owner(s, x_mod_key, me)
     url = (payload.get("url") or "").strip()
     if url:
-        # Light validation: must be a plausible URL. Strip trailing slash so
-        # we don't double-slash when appending /s/<code>.
         if not (url.startswith("http://") or url.startswith("https://")):
             raise HTTPException(400, "URL must start with http:// or https://")
         if len(url) > 500:
@@ -587,31 +560,6 @@ async def set_participant_base_url(
     db.commit()
     await broadcast_session(s, "session_state")
     return {"participant_base_url": s.participant_base_url}
-
-
-@app.delete("/api/sessions/{code}")
-def delete_session(
-    code: str,
-    payload: dict | None = None,
-    db: DbSession = Depends(get_db),
-    me: m.User = Depends(auth.current_admin),
-):
-    s = get_session_by_code(db, code)
-    require_session_owner(s, me)
-    if s.status == "live":
-        raise HTTPException(400, "End the session before deleting it")
-    # Has-data check: questions or quiz_runs.
-    has_data = bool(s.questions) or bool(s.quiz_runs)
-    if has_data:
-        confirm_title = (payload or {}).get("confirm_title", "")
-        if confirm_title != s.title:
-            raise HTTPException(
-                400,
-                "Type the session title exactly to confirm deletion",
-            )
-    db.delete(s)
-    db.commit()
-    return {"ok": True}
 
 
 @app.post("/api/sessions/{code}/start")
@@ -650,6 +598,27 @@ async def end_session(
     return {"status": s.status}
 
 
+@app.delete("/api/sessions/{code}")
+def delete_session(
+    code: str,
+    payload: dict | None = None,
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    s = get_session_by_code(db, code)
+    require_session_owner(s, me)
+    if s.status == "live":
+        raise HTTPException(400, "End the session before deleting it")
+    has_data = bool(s.queries) or bool(s.quiz_runs)
+    if has_data:
+        confirm_title = (payload or {}).get("confirm_title", "")
+        if confirm_title != s.title:
+            raise HTTPException(400, "Type the session title exactly to confirm deletion")
+    db.delete(s)
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/sessions/{code}/presence")
 def session_presence(
     code: str,
@@ -659,7 +628,6 @@ def session_presence(
     db: DbSession = Depends(get_db),
 ):
     s = get_session_by_code(db, code)
-    # Touch the participant row so the counter reflects this caller too.
     current_participant(s, request, response, voter_token, db)
     return {"online": participant_count_online(db, s)}
 
@@ -699,10 +667,10 @@ async def update_my_participant(
     return {"id": p.id, "name": p.name}
 
 
-# ---------- routes: questions (Q&A) ----------
+# ---------- routes: queries (the Q&A board) ----------
 
-@app.get("/api/sessions/{code}/questions")
-def list_questions(
+@app.get("/api/sessions/{code}/queries")
+def list_queries(
     code: str,
     request: Request,
     response: Response,
@@ -715,18 +683,18 @@ def list_questions(
     is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
     p = current_participant(s, request, response, voter_token, db)
     qs = db.scalars(
-        select(m.Question)
-        .where(m.Question.session_id == s.id)
-        .options(selectinload(m.Question.votes), selectinload(m.Question.participant))
-        .order_by(m.Question.created_at.desc())
+        select(m.Query)
+        .where(m.Query.session_id == s.id)
+        .options(selectinload(m.Query.votes), selectinload(m.Query.participant))
+        .order_by(m.Query.created_at.desc())
     ).all()
     if not is_mod:
         qs = [q for q in qs if q.removed_at is None]
-    return [serialize_question(q, p.id, is_mod) for q in qs]
+    return [serialize_query(q, p.id, is_mod) for q in qs]
 
 
-@app.post("/api/sessions/{code}/questions")
-async def create_question(
+@app.post("/api/sessions/{code}/queries")
+async def create_query(
     code: str,
     payload: dict,
     request: Request,
@@ -743,20 +711,19 @@ async def create_question(
     if len(text) > 1000:
         raise HTTPException(400, "text too long")
     p = current_participant(s, request, response, voter_token, db)
-    # Allow the participant to set their name in the same call.
     if "author_name" in payload:
         nm = (payload.get("author_name") or "").strip()[:80] or None
         p.name = nm
-    q = m.Question(session_id=s.id, text=text, participant_id=p.id)
+    q = m.Query(session_id=s.id, text=text, participant_id=p.id)
     db.add(q)
     db.commit()
     db.refresh(q)
     db.refresh(q, ["votes", "participant"])
-    await broadcast_session(s, "question_new")
-    return serialize_question(q, p.id, False)
+    await broadcast_session(s, "query_new")
+    return serialize_query(q, p.id, False)
 
 
-@app.post("/api/sessions/{code}/questions/{qid}/vote")
+@app.post("/api/sessions/{code}/queries/{qid}/vote")
 async def toggle_vote(
     code: str,
     qid: int,
@@ -768,32 +735,32 @@ async def toggle_vote(
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
-    q = db.get(m.Question, qid)
+    q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
     if q.removed_at is not None:
-        raise HTTPException(404)  # invisible to participants
+        raise HTTPException(404)
     p = current_participant(s, request, response, voter_token, db)
     existing = db.scalar(
-        select(m.QuestionVote).where(
-            m.QuestionVote.question_id == qid,
-            m.QuestionVote.participant_id == p.id,
+        select(m.QueryVote).where(
+            m.QueryVote.query_id == qid,
+            m.QueryVote.participant_id == p.id,
         )
     )
     if existing:
         db.delete(existing)
         voted = False
     else:
-        db.add(m.QuestionVote(question_id=qid, participant_id=p.id))
+        db.add(m.QueryVote(query_id=qid, participant_id=p.id))
         voted = True
     db.commit()
     db.refresh(q, ["votes"])
-    await broadcast_session(s, "question_vote")
+    await broadcast_session(s, "query_vote")
     return {"voted": voted, "vote_count": len(q.votes)}
 
 
-@app.post("/api/sessions/{code}/questions/{qid}/answer")
-async def answer_question(
+@app.post("/api/sessions/{code}/queries/{qid}/respond")
+async def respond_to_query(
     code: str,
     qid: int,
     payload: dict,
@@ -803,18 +770,18 @@ async def answer_question(
 ):
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
-    q = db.get(m.Question, qid)
+    q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
-    q.answer_text = (payload.get("answer_text") or "").strip() or None
-    q.answered_at = datetime.utcnow() if payload.get("answered", True) else None
+    q.response_text = (payload.get("response_text") or "").strip() or None
+    q.responded_at = datetime.utcnow() if payload.get("responded", True) else None
     db.commit()
-    await broadcast_session(s, "question_answered")
+    await broadcast_session(s, "query_responded")
     return {"ok": True}
 
 
-@app.post("/api/sessions/{code}/questions/{qid}/remove")
-async def remove_question(
+@app.post("/api/sessions/{code}/queries/{qid}/remove")
+async def remove_query(
     code: str,
     qid: int,
     payload: dict,
@@ -825,7 +792,7 @@ async def remove_question(
     """Soft-remove: hides from participants but keeps the row for audit."""
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
-    q = db.get(m.Question, qid)
+    q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
     if payload.get("removed", True):
@@ -833,12 +800,12 @@ async def remove_question(
     else:
         q.removed_at = None
     db.commit()
-    await broadcast_session(s, "question_removed")
+    await broadcast_session(s, "query_removed")
     return {"ok": True}
 
 
-@app.delete("/api/sessions/{code}/questions/{qid}")
-async def delete_question(
+@app.delete("/api/sessions/{code}/queries/{qid}")
+async def delete_query(
     code: str,
     qid: int,
     x_mod_key: Annotated[str | None, Header()] = None,
@@ -848,12 +815,12 @@ async def delete_question(
     """Hard delete: admin escape hatch. Not on the standard moderator UI."""
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
-    q = db.get(m.Question, qid)
+    q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
     db.delete(q)
     db.commit()
-    await broadcast_session(s, "question_deleted")
+    await broadcast_session(s, "query_deleted")
     return {"ok": True}
 
 
@@ -868,14 +835,14 @@ def list_quizzes(
     stmt = (
         select(m.Quiz)
         .where(m.Quiz.owner_user_id == me.id)
-        .options(selectinload(m.Quiz.items).selectinload(m.QuizItem.options))
+        .options(selectinload(m.Quiz.questions).selectinload(m.Question.answers))
         .order_by(m.Quiz.created_at.desc())
     )
     if ready_only:
         stmt = stmt.where(m.Quiz.status == "ready")
     quizzes = db.scalars(stmt).all()
     return [
-        {"id": q.id, "title": q.title, "status": q.status, "item_count": len(q.items)}
+        {"id": q.id, "title": q.title, "status": q.status, "question_count": len(q.questions)}
         for q in quizzes
     ]
 
@@ -911,11 +878,9 @@ def get_quiz(
     quiz = db.get(m.Quiz, quiz_id)
     if not quiz:
         raise HTTPException(404)
-    # Only the owner can read the template at all.
     if not me or quiz.owner_user_id != me.id:
         raise HTTPException(404)
-    payload = serialize_quiz(quiz, include_correct=include_correct)
-    return payload
+    return serialize_quiz(quiz, include_correct=include_correct)
 
 
 @app.post("/api/quizzes/{quiz_id}/publish")
@@ -967,7 +932,6 @@ def delete_quiz(
     me: m.User = Depends(auth.current_admin),
 ):
     quiz = _owned_quiz_or_404(db, quiz_id, me)
-    # Preserve session data: refuse to delete if any version has been used in a run.
     used = db.scalar(
         select(m.QuizRun.id)
         .join(m.QuizVersion, m.QuizRun.quiz_version_id == m.QuizVersion.id)
@@ -981,8 +945,8 @@ def delete_quiz(
     return {"ok": True}
 
 
-@app.post("/api/quizzes/{quiz_id}/items")
-def add_quiz_item(
+@app.post("/api/quizzes/{quiz_id}/questions")
+def add_quiz_question(
     quiz_id: int,
     payload: dict,
     db: DbSession = Depends(get_db),
@@ -992,133 +956,135 @@ def add_quiz_item(
     qtype = payload.get("qtype", "single")
     if qtype not in ("single", "multi"):
         raise HTTPException(400, "qtype must be single or multi")
-    next_order = (max((it.order_index for it in quiz.items), default=-1)) + 1
-    it = m.QuizItem(
+    next_order = (max((qq.order_index for qq in quiz.questions), default=-1)) + 1
+    qq = m.Question(
         quiz_id=quiz_id,
         text=(payload.get("text") or "").strip(),
         image_url=payload.get("image_url"),
         qtype=qtype,
         order_index=payload.get("order_index", next_order),
     )
-    db.add(it)
+    db.add(qq)
     _mark_quiz_edited(quiz)
     db.commit()
-    db.refresh(it)
-    return {"id": it.id}
+    db.refresh(qq)
+    return {"id": qq.id}
 
 
-def _owned_quiz_item_or_404(db: DbSession, item_id: int, user: m.User) -> m.QuizItem:
-    it = db.get(m.QuizItem, item_id)
-    if not it or it.quiz.owner_user_id != user.id:
+def _owned_quiz_question_or_404(db: DbSession, question_id: int, user: m.User) -> m.Question:
+    qq = db.get(m.Question, question_id)
+    if not qq or qq.quiz.owner_user_id != user.id:
         raise HTTPException(404)
-    return it
+    return qq
 
 
-@app.patch("/api/quiz_items/{item_id}")
-def update_quiz_item(
-    item_id: int,
+@app.patch("/api/quiz_questions/{question_id}")
+def update_quiz_question(
+    question_id: int,
     payload: dict,
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
-    it = _owned_quiz_item_or_404(db, item_id, me)
+    qq = _owned_quiz_question_or_404(db, question_id, me)
     if "text" in payload:
-        it.text = str(payload["text"] or "").strip()
+        qq.text = str(payload["text"] or "").strip()
     if "image_url" in payload:
         v = payload["image_url"]
-        it.image_url = str(v) if v else None
+        qq.image_url = str(v) if v else None
     if "qtype" in payload:
         if payload["qtype"] not in ("single", "multi"):
             raise HTTPException(400, "qtype must be single or multi")
-        it.qtype = payload["qtype"]
+        qq.qtype = payload["qtype"]
     if "order_index" in payload:
         try:
-            it.order_index = int(payload["order_index"])
+            qq.order_index = int(payload["order_index"])
         except (TypeError, ValueError):
             raise HTTPException(400, "order_index must be an integer")
-    _mark_quiz_edited(it.quiz)
+    _mark_quiz_edited(qq.quiz)
     db.commit()
     return {"ok": True}
 
 
-@app.delete("/api/quiz_items/{item_id}")
-def delete_quiz_item(
-    item_id: int,
+@app.delete("/api/quiz_questions/{question_id}")
+def delete_quiz_question(
+    question_id: int,
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
-    it = _owned_quiz_item_or_404(db, item_id, me)
-    quiz = it.quiz
-    db.delete(it)
+    qq = _owned_quiz_question_or_404(db, question_id, me)
+    quiz = qq.quiz
+    db.delete(qq)
     _mark_quiz_edited(quiz)
     db.commit()
     return {"ok": True}
 
 
-@app.post("/api/quiz_items/{item_id}/options")
-def add_quiz_option(
-    item_id: int,
+@app.post("/api/quiz_questions/{question_id}/answers")
+def add_quiz_answer(
+    question_id: int,
     payload: dict,
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
-    it = _owned_quiz_item_or_404(db, item_id, me)
-    next_order = (max((op.order_index for op in it.options), default=-1)) + 1
-    op = m.QuizOption(
-        item_id=item_id,
+    qq = _owned_quiz_question_or_404(db, question_id, me)
+    next_order = (max((a.order_index for a in qq.answers), default=-1)) + 1
+    a = m.Answer(
+        question_id=question_id,
         text=(payload.get("text") or "").strip(),
         image_url=payload.get("image_url"),
         is_correct=bool(payload.get("is_correct", False)),
         order_index=payload.get("order_index", next_order),
     )
-    db.add(op)
-    _mark_quiz_edited(it.quiz)
+    db.add(a)
+    _mark_quiz_edited(qq.quiz)
     db.commit()
-    db.refresh(op)
-    return {"id": op.id}
+    db.refresh(a)
+    return {"id": a.id}
 
 
-def _owned_quiz_option_or_404(db: DbSession, op_id: int, user: m.User) -> m.QuizOption:
-    op = db.get(m.QuizOption, op_id)
-    if not op or op.item.quiz.owner_user_id != user.id:
+def _owned_quiz_answer_or_404(db: DbSession, answer_id: int, user: m.User) -> m.Answer:
+    a = db.get(m.Answer, answer_id)
+    if not a or a.question.quiz.owner_user_id != user.id:
         raise HTTPException(404)
-    return op
+    return a
 
 
-@app.patch("/api/quiz_options/{op_id}")
-def update_quiz_option(
-    op_id: int,
+@app.patch("/api/quiz_answers/{answer_id}")
+def update_quiz_answer(
+    answer_id: int,
     payload: dict,
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
-    op = _owned_quiz_option_or_404(db, op_id, me)
+    a = _owned_quiz_answer_or_404(db, answer_id, me)
     if "text" in payload:
-        op.text = str(payload["text"] or "").strip()
+        a.text = str(payload["text"] or "").strip()
     if "image_url" in payload:
         v = payload["image_url"]
-        op.image_url = str(v) if v else None
+        a.image_url = str(v) if v else None
     if "is_correct" in payload:
-        op.is_correct = bool(payload["is_correct"])
+        a.is_correct = bool(payload["is_correct"])
     if "order_index" in payload:
         try:
-            op.order_index = int(payload["order_index"])
+            a.order_index = int(payload["order_index"])
         except (TypeError, ValueError):
             raise HTTPException(400, "order_index must be an integer")
-    _mark_quiz_edited(op.item.quiz)
+    qq = db.get(m.Question, a.question_id)
+    _mark_quiz_edited(qq.quiz)
     db.commit()
     return {"ok": True}
 
 
-@app.delete("/api/quiz_options/{op_id}")
-def delete_quiz_option(
-    op_id: int,
+@app.delete("/api/quiz_answers/{answer_id}")
+def delete_quiz_answer(
+    answer_id: int,
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
-    op = _owned_quiz_option_or_404(db, op_id, me)
-    quiz = op.item.quiz
-    db.delete(op)
+    a = _owned_quiz_answer_or_404(db, answer_id, me)
+    qq = db.get(m.Question, a.question_id)
+    quiz = qq.quiz
+    db.delete(a)
     _mark_quiz_edited(quiz)
     db.commit()
     return {"ok": True}
@@ -1149,7 +1115,7 @@ async def upload_image(
     return {"url": f"/uploads/{name}"}
 
 
-# ---------- routes: quiz runs (was quiz_sessions) ----------
+# ---------- routes: quiz runs ----------
 
 @app.get("/api/quiz_runs")
 def list_all_quiz_runs(
@@ -1163,15 +1129,15 @@ def list_all_quiz_runs(
         .where(m.Session.owner_user_id == me.id)
         .options(
             selectinload(m.QuizRun.session),
-            selectinload(m.QuizRun.quiz_version).selectinload(m.QuizVersion.items),
-            selectinload(m.QuizRun.responses),
+            selectinload(m.QuizRun.quiz_version).selectinload(m.QuizVersion.questions),
+            selectinload(m.QuizRun.submissions),
         )
         .order_by(m.QuizRun.created_at.desc())
     ).all()
     out = []
     for r in rows:
-        item_count = len(r.quiz_version.items)
-        respondents = len({rsp.participant_id for rsp in r.responses})
+        question_count = len(r.quiz_version.questions)
+        respondents = len({sub.participant_id for sub in r.submissions})
         out.append({
             "id": r.id,
             "status": r.status,
@@ -1180,8 +1146,8 @@ def list_all_quiz_runs(
             "quiz_id": r.quiz_version.quiz_id,
             "quiz_title": r.quiz_version.quiz_title,
             "version_no": r.quiz_version.version_no,
-            "current_item_idx": r.current_item_idx,
-            "item_count": item_count,
+            "current_question_idx": r.current_question_idx,
+            "question_count": question_count,
             "respondent_count": respondents,
             "created_at": r.created_at.isoformat(),
             "started_at": r.started_at.isoformat() if r.started_at else None,
@@ -1200,23 +1166,23 @@ def quiz_run_results(
     if not run or run.session.owner_user_id != me.id:
         raise HTTPException(404)
     version = run.quiz_version
-    items = []
-    for vit in version.items:
-        tally = tally_item(db, run, vit)
-        items.append({
-            "id": vit.id,
-            "text": vit.text,
-            "image_url": vit.image_url,
-            "qtype": vit.qtype,
-            "options": [
+    questions = []
+    for vq in version.questions:
+        tally = tally_question(db, run, vq)
+        questions.append({
+            "id": vq.id,
+            "text": vq.text,
+            "image_url": vq.image_url,
+            "qtype": vq.qtype,
+            "answers": [
                 {
-                    "id": op.id,
-                    "text": op.text,
-                    "image_url": op.image_url,
-                    "is_correct": op.is_correct,
-                    "count": tally["totals"].get(op.id, 0),
+                    "id": a.id,
+                    "text": a.text,
+                    "image_url": a.image_url,
+                    "is_correct": a.is_correct,
+                    "count": tally["totals"].get(a.id, 0),
                 }
-                for op in vit.options
+                for a in vq.answers
             ],
             "respondents": tally["respondents"],
         })
@@ -1227,8 +1193,8 @@ def quiz_run_results(
         "session_title": run.session.title,
         "quiz_title": version.quiz_title,
         "version_no": version.version_no,
-        "current_item_idx": run.current_item_idx,
-        "items": items,
+        "current_question_idx": run.current_question_idx,
+        "questions": questions,
     }
 
 
@@ -1262,11 +1228,6 @@ async def create_quiz_run(
     db: DbSession = Depends(get_db),
     me: m.User | None = Depends(auth.optional_admin),
 ):
-    """Queue a quiz onto a session.
-
-    Creates a QuizVersion lazily if the Quiz has been edited since the latest version,
-    then creates a QuizRun (status=queued) pointing at that version.
-    """
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
     if s.status == "ended":
@@ -1312,17 +1273,13 @@ async def start_quiz_run(
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     if run.status != "queued":
         raise HTTPException(400, f"Cannot start from status: {run.status}")
-    # Auto-advance Session: planning → live the first time a quiz starts.
     if s.status == "planning":
         s.status = "live"
         s.started_at = datetime.utcnow()
     run.status = "live"
-    run.current_item_idx = 0
+    run.current_question_idx = 0
     run.reveal_current = False
     run.started_at = datetime.utcnow()
-    # "At most one live run per session" is enforced by a partial unique index
-    # (uq_session_live_run). If a concurrent Start already won, the commit
-    # below raises IntegrityError; we surface 409.
     try:
         db.commit()
     except IntegrityError:
@@ -1343,17 +1300,17 @@ async def advance_quiz_run(
 ):
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     direction = payload.get("direction", "next")
-    total = len(run.quiz_version.items)
+    total = len(run.quiz_version.questions)
     if direction == "next":
-        run.current_item_idx = min(run.current_item_idx + 1, max(total - 1, 0))
+        run.current_question_idx = min(run.current_question_idx + 1, max(total - 1, 0))
     elif direction == "prev":
-        run.current_item_idx = max(run.current_item_idx - 1, 0)
+        run.current_question_idx = max(run.current_question_idx - 1, 0)
     elif direction == "to" and "index" in payload:
         try:
             idx = int(payload["index"])
         except (TypeError, ValueError):
             raise HTTPException(400, "index must be an integer")
-        run.current_item_idx = max(0, min(idx, max(total - 1, 0)))
+        run.current_question_idx = max(0, min(idx, max(total - 1, 0)))
     run.reveal_current = False
     db.commit()
     await broadcast_session(s, "quiz_run_update")
@@ -1432,8 +1389,8 @@ def get_quiz_run(
     return serialize_quiz_run(db, run, viewer_participant_id=p.id, is_mod=is_mod)
 
 
-@app.post("/api/sessions/{code}/quiz_runs/{run_id}/respond")
-async def respond_quiz_run(
+@app.post("/api/sessions/{code}/quiz_runs/{run_id}/submit")
+async def submit_quiz_run(
     code: str,
     run_id: int,
     payload: dict,
@@ -1442,51 +1399,51 @@ async def respond_quiz_run(
     voter_token: Annotated[str | None, Cookie()] = None,
     db: DbSession = Depends(get_db),
 ):
+    """Participant submits their selected answer(s) for the current question."""
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id or run.status != "live":
         raise HTTPException(404, "Quiz not live")
-    item_id = payload.get("item_id")
-    option_ids_raw = payload.get("option_ids") or []
-    if not isinstance(option_ids_raw, list):
-        raise HTTPException(400, "option_ids must be a list")
+    question_id = payload.get("question_id")
+    answer_ids_raw = payload.get("answer_ids") or []
+    if not isinstance(answer_ids_raw, list):
+        raise HTTPException(400, "answer_ids must be a list")
     try:
-        option_ids = [int(o) for o in option_ids_raw]
+        answer_ids = [int(a) for a in answer_ids_raw]
     except (TypeError, ValueError):
-        raise HTTPException(400, "option_ids must be integers")
-    vit = db.get(m.QuizVersionItem, item_id)
-    if not vit or vit.version_id != run.quiz_version_id:
-        raise HTTPException(404, "Item not in this quiz run")
-    items = run.quiz_version.items
-    if items[run.current_item_idx].id != vit.id:
-        raise HTTPException(400, "Not the current item")
-    if vit.qtype == "single" and len(option_ids) > 1:
-        raise HTTPException(400, "Only one option allowed")
-    valid_option_ids = {op.id for op in vit.options}
-    if any(oid not in valid_option_ids for oid in option_ids):
-        raise HTTPException(400, "Invalid option")
+        raise HTTPException(400, "answer_ids must be integers")
+    vq = db.get(m.QuizVersionQuestion, question_id)
+    if not vq or vq.version_id != run.quiz_version_id:
+        raise HTTPException(404, "Question not in this quiz run")
+    questions = run.quiz_version.questions
+    if questions[run.current_question_idx].id != vq.id:
+        raise HTTPException(400, "Not the current question")
+    if vq.qtype == "single" and len(answer_ids) > 1:
+        raise HTTPException(400, "Only one answer allowed")
+    valid_answer_ids = {a.id for a in vq.answers}
+    if any(aid not in valid_answer_ids for aid in answer_ids):
+        raise HTTPException(400, "Invalid answer")
     p = current_participant(s, request, response, voter_token, db)
-    # Clear existing responses by this participant for this item.
     existing = db.scalars(
-        select(m.QuizResponse).where(
-            m.QuizResponse.quiz_run_id == run.id,
-            m.QuizResponse.item_id == vit.id,
-            m.QuizResponse.participant_id == p.id,
+        select(m.QuizSubmission).where(
+            m.QuizSubmission.quiz_run_id == run.id,
+            m.QuizSubmission.question_id == vq.id,
+            m.QuizSubmission.participant_id == p.id,
         )
     ).all()
     for r in existing:
         db.delete(r)
-    for oid in option_ids:
-        db.add(m.QuizResponse(
+    for aid in answer_ids:
+        db.add(m.QuizSubmission(
             quiz_run_id=run.id,
-            item_id=vit.id,
-            option_id=oid,
+            question_id=vq.id,
+            answer_id=aid,
             participant_id=p.id,
         ))
     db.commit()
-    await broadcast_session(s, "quiz_response")
+    await broadcast_session(s, "quiz_submission")
     return {"ok": True}
 
 

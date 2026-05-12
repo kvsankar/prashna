@@ -24,7 +24,7 @@ cite it. Acceptance tests are Given/When/Then.
 
 **Authorization model.** Every moderator-gated route accepts *either*
 the admin owner cookie *or* an `X-Mod-Key` header. Reads that branch
-on "is this caller a moderator?" (e.g., showing removed questions, or
+on "is this caller a moderator?" (e.g., showing removed queries, or
 queued runs) use the same rule. This means the admin gets the moderator
 UI seamlessly; the mod_key path stays available for delegates.
 
@@ -77,7 +77,7 @@ setup form for the first visitor to claim admin.
 - **Given** the admin owns sessions
 - **When** they `GET /api/sessions`
 - **Then** they see only sessions where `owner_user_id = me.id`,
-  ordered by `created_at desc`, with status, question count, quiz-run
+  ordered by `created_at desc`, with status, query count, quiz-run
   count, mod_key, and participant_base_url
 
 ### UC-A-05: Edit session title
@@ -115,41 +115,7 @@ setup form for the first visitor to claim admin.
   questions, votes, participants, quiz_runs, and responses.
   QuizVersions are NOT touched (they belong to Quiz templates).
 
-### UC-A-08: Author a quiz template
-
-- **Given** the admin opens `/quizzes` and creates a quiz via the
-  composer
-- **When** they edit the title, add items, add options, and toggle
-  correctness
-- **Then** the quiz tree persists each change on blur; `last_edited_at`
-  advances; status remains `draft` until publish
-- **And** edits to a `ready` quiz do **not** auto-revert it to draft
-  (versioning protects history)
-
-### UC-A-09: Publish / Unpublish a quiz
-
-- **Given** a Draft quiz with ≥ 1 item, each with ≥ 2 options, each
-  single-choice item with exactly 1 correct option, each multi-choice
-  item with ≥ 1 correct option
-- **When** the admin clicks Publish
-- **Then** `POST /api/quizzes/{id}/publish` validates and sets status
-  to `ready`
-- **And** a quiz that fails validation returns a `400` with a specific
-  message ("Quiz needs at least one item" / "Item N needs at least 2
-  options" / etc.)
-- **And** the admin can click Unpublish on a Ready quiz to flip it
-  back to Draft
-
-### UC-A-10: Delete a quiz template
-
-- **Given** the admin clicks Delete on a quiz row
-- **When** no QuizVersion of that Quiz has been used in any QuizRun
-- **Then** `DELETE /api/quizzes/{id}` removes it
-- **And** if any QuizVersion has runs, `DELETE` returns `400 Quiz has
-  been used in a session run and cannot be deleted` (preserves
-  session data)
-
-### UC-A-12: Inline session moderation from the landing page
+### UC-A-08: Inline session moderation from the landing page
 
 Because Admin ⊇ Moderator, the admin doesn't need to switch contexts
 to do basic moderation on their own sessions.
@@ -165,15 +131,157 @@ to do basic moderation on their own sessions.
   loads the full moderator surface without a key gate (admin owners
   authenticate via cookie)
 
-### UC-A-11: Global quiz-runs report
+---
 
-- **Given** the admin opens `/quizzes`
-- **When** they view the "Quiz runs" table
+**Quiz authoring** (UC-A-09 through UC-A-22). Each operation gets its
+own use case so tests and PRs can cite one ID per behavior.
+
+### UC-A-09: Create a quiz template
+
+- **Given** the admin clicks **+ New** on `/quizzes` with a title
+- **When** `POST /api/quizzes` is called
+- **Then** a Quiz is created with `owner_user_id = me.id`, status =
+  `draft`, `last_edited_at = now`; the new quiz opens in the editor
+
+### UC-A-10: Browse the quiz library
+
+- **Given** the admin is on `/quizzes`
+- **When** `GET /api/quizzes` (optionally `?ready_only=true`) is called
+- **Then** the response includes only quizzes owned by the admin,
+  ordered by `created_at desc`, with `status` and `question_count`
+- **And** moderator dropdowns use `ready_only=true`; the quiz library
+  table uses the full list
+
+### UC-A-11: Open a quiz for editing
+
+- **Given** the admin clicks a row in the library
+- **When** `GET /api/quizzes/{id}?include_correct=true` is called
+- **Then** the editor pane shows the title, items, options, and
+  per-option correctness
+- **And** the route returns `404` for a non-owner (no read access
+  across owners)
+
+### UC-A-12: Rename a quiz
+
+- **Given** the editor is open
+- **When** the admin edits the title input and blurs
+- **Then** `PATCH /api/quizzes/{id}` updates the title and advances
+  `last_edited_at`
+- **And** an empty title is silently ignored (existing title kept)
+- **And** status does **not** auto-revert from `ready` → `draft`
+  (versioning protects history)
+
+### UC-A-13: Delete a quiz template
+
+- **Given** the admin clicks Delete on a quiz row
+- **When** no QuizVersion of this quiz has been used in any run
+- **Then** `DELETE /api/quizzes/{id}` cascades to items, options, and
+  versions
+- **And** if any version has been used, returns `400 Quiz has been
+  used in a session run and cannot be deleted` (preserves session
+  data)
+
+### UC-A-14: Add a quiz question
+
+- **Given** the admin clicks **+ Add question** in the editor
+- **When** `POST /api/quizzes/{id}/questions` is called
+- **Then** a `Question` is added at the end (`order_index = max + 1`)
+  with default `text = "New question"` and `qtype = "single"`; parent's
+  `last_edited_at` advances
+- **And** a `qtype` not in `("single", "multi")` returns `400`
+
+### UC-A-15: Edit a quiz question
+
+- **Given** the admin focuses a question's text, type, image, or order
+- **When** `PATCH /api/quiz_questions/{id}` is called with any subset of
+  `text` / `qtype` / `image_url` / `order_index`
+- **Then** the fields update; parent quiz `last_edited_at` advances
+- **And** invalid `qtype` returns `400`; non-int `order_index`
+  returns `400`
+
+### UC-A-16: Delete a quiz question
+
+- **Given** the admin clicks Delete on a question (with `confirm()`)
+- **When** `DELETE /api/quiz_questions/{id}` is called
+- **Then** the question and its answers are removed via cascade; parent
+  quiz `last_edited_at` advances
+
+### UC-A-17: Add an answer to a question
+
+- **Given** the admin clicks **+ Answer** under an item
+- **When** `POST /api/quiz_questions/{id}/answers` is called
+- **Then** a `Answer` is added at the end with default
+  `text = "New answer"`, `is_correct = false`; parent quiz
+  `last_edited_at` advances
+
+### UC-A-18: Edit an answer
+
+- **Given** the admin changes an answer's text, correctness, image,
+  or order
+- **When** `PATCH /api/quiz_answers/{id}` is called
+- **Then** the fields update; parent quiz `last_edited_at` advances
+- **And** non-int `order_index` returns `400`
+
+### UC-A-19: Delete an answer
+
+- **Given** the admin clicks ✕ on an answer
+- **When** `DELETE /api/quiz_answers/{id}` is called
+- **Then** the answer is removed; parent quiz `last_edited_at`
+  advances
+
+### UC-A-20: Upload an image
+
+Used by question and answer editors to set `image_url`.
+
+- **Given** the admin picks a file via a file input
+- **When** `POST /api/uploads` is called (multipart) by the admin
+- **Then** the server enforces extension ∈ `{.png, .jpg, .jpeg, .gif,
+  .webp}` (SVG explicitly excluded), Content-Length ≤ 5 MB, and a
+  streaming 5 MB cap; saves under a fresh UUID name; returns
+  `{url: "/uploads/<uuid>.<ext>"}`
+- **And** the calling page then `PATCH`es the question or answer with
+  the new `image_url`
+
+### UC-A-21: Publish a quiz
+
+- **Given** a Draft quiz
+- **When** the admin clicks Publish (`POST /api/quizzes/{id}/publish`)
+- **Then** validation runs: ≥ 1 question; each question with non-empty text;
+  each question with ≥ 2 answers; each `single` question with exactly one
+  `is_correct` answer; each `multi` question with ≥ 1 correct answer;
+  each answer with non-empty text OR `image_url`
+- **And** on pass, status → `ready`
+- **And** on fail, returns `400` with the specific failing rule
+  message ("Question 2 (single choice) needs exactly one correct answer")
+
+### UC-A-22: Unpublish a quiz
+
+- **Given** a Ready quiz
+- **When** `POST /api/quizzes/{id}/unpublish` is called
+- **Then** status → `draft`
+- **And** quiz versions already captured for prior runs are NOT
+  affected (history preserved)
+
+---
+
+**Reports**
+
+### UC-A-23: Global quiz-runs report
+
+- **Given** the admin owns sessions with QuizRuns
+- **When** they open `/quizzes` and view the "Quiz runs" table
 - **Then** they see every QuizRun across all their sessions (joined
   via owner), with quiz title, version number, session code, status,
-  progress, respondent count, created time
-- **And** clicking a row opens an inline results pane showing
-  per-item tallies with correctness markers
+  progress, respondent count, and created time
+
+### UC-A-24: View one quiz-run's results
+
+- **Given** the admin clicks a row in the Quiz runs table
+- **When** `GET /api/quiz_runs/{id}/results` is called
+- **Then** the inline results pane shows per-question answer counts,
+  correctness markers, and respondent count; uses the snapshotted
+  `quiz_title` + `version_no` so historical reports survive later
+  edits to the template
 
 ---
 
@@ -227,7 +335,7 @@ to do basic moderation on their own sessions.
 - **Given** a QuizRun is `queued`
 - **When** the moderator clicks Start
 - **Then** `POST /api/sessions/{code}/quiz_runs/{id}/start` flips its
-  status to `live`, resets `current_item_idx = 0`, `reveal_current =
+  status to `live`, resets `current_question_idx = 0`, `reveal_current =
   False`
 - **And** if another QuizRun is already `live` in the same Session,
   the start returns `409 Another quiz is already live — close it
@@ -237,7 +345,7 @@ to do basic moderation on their own sessions.
 
 - **Given** a live QuizRun
 - **When** the moderator clicks Next / Prev
-- **Then** `current_item_idx` advances within `[0, item_count-1]` and
+- **Then** `current_question_idx` advances within `[0, question_count-1]` and
   `reveal_current` resets to `False`
 - **And** clicking Reveal results / Hide results toggles
   `reveal_current` for the current item
@@ -266,15 +374,15 @@ to do basic moderation on their own sessions.
 ### UC-M-08: Mark a question answered
 
 - **Given** a question in the moderator's questions list
-- **When** they type an answer (optional) and click Mark answered
-- **Then** `POST .../questions/{qid}/answer` sets `answered_at` and
-  `answer_text` (which may be null for verbal-only answers)
+- **When** they type an answer (optional) and click Mark responded
+- **Then** `POST .../queries/{qid}/respond` sets `responded_at` and
+  `response_text` (which may be null for verbal-only answers)
 - **And** the participant view moves the question to the answered
   section
 - **And** the moderator can Reopen an answered question, clearing
-  `answered_at`
+  `responded_at`
 
-### UC-M-09: Remove / Restore a question
+### UC-M-09: Remove / Restore a query
 
 - **Given** any question (e.g., spam / off-topic / duplicate)
 - **When** the moderator clicks Remove
@@ -333,7 +441,7 @@ to do basic moderation on their own sessions.
   response of theirs going forward
 - **And** name is optional; blank = anonymous
 
-### UC-P-04: Ask a question
+### UC-P-04: Ask
 
 - **Given** the session is `planning` or `live`
 - **When** the participant types a question and clicks Ask (or
@@ -343,19 +451,19 @@ to do basic moderation on their own sessions.
 - **And** an `ended` session refuses with `400 Session has ended` and
   the Ask card is hidden from the UI
 
-### UC-P-05: Vote on a question
+### UC-P-05: Vote on a query
 
 - **Given** a non-removed question on a non-ended session
 - **When** the participant clicks the vote button
 - **Then** `POST .../questions/{qid}/vote` toggles their vote; vote
   count refreshes; aria-pressed updates
-- **And** removed questions return `404`; ended sessions return `400`
+- **And** removed queries return `404`; ended sessions return `400`
 
 ### UC-P-06: See questions sorted
 
 - **Given** any participant viewing the session
 - **When** `GET .../questions` returns
-- **Then** removed questions are filtered out; remaining are sorted
+- **Then** removed queries are filtered out; remaining are sorted
   unanswered-first, then by descending vote count
 - **And** their own questions are flagged `mine: true` and the
   questions they voted on are flagged `voted: true`
@@ -429,10 +537,10 @@ to do basic moderation on their own sessions.
   connected to `/ws/sessions/{CODE}`
 - **When** any state-changing route on that session commits
 - **Then** the server broadcasts `{type: <kind>}` to the room (kinds:
-  `session_state`, `participant`, `question_new`, `question_vote`,
-  `question_answered`, `question_removed`, `question_deleted`,
+  `session_state`, `participant`, `query_new`, `query_vote`,
+  `query_responded`, `query_removed`, `query_deleted`,
   `quiz_run_new`, `quiz_run_update`, `quiz_run_deleted`,
-  `quiz_response`); each frontend treats it as a refresh hint and
+  `quiz_submission`); each frontend treats it as a refresh hint and
   re-fetches its data
 - **And** the client auto-reconnects with exponential backoff if the
   socket drops

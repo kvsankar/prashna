@@ -36,7 +36,7 @@ class Session(Base):
     participant_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
-    questions: Mapped[list["Question"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    queries: Mapped[list["Query"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     quiz_runs: Mapped[list["QuizRun"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     participants: Mapped[list["Participant"]] = relationship(back_populates="session", cascade="all, delete-orphan")
 
@@ -56,34 +56,36 @@ class Participant(Base):
     session: Mapped[Session] = relationship(back_populates="participants")
 
 
-# ---------- Q&A ----------
+# ---------- Q&A: queries (participant-asked) + their upvotes ----------
 
-class Question(Base):
-    __tablename__ = "questions"
+class Query(Base):
+    """A participant-asked Q&A entry. Moderator can mark it responded
+    (with optional response text), remove it (soft), or hard-delete."""
+    __tablename__ = "queries"
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
     participant_id: Mapped[int] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
-    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    answered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Soft-remove: a removed question is hidden from participants but kept for audit / preserve-session-data.
+    response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Soft-remove: a removed query is hidden from participants but kept for audit / preserve-session-data.
     removed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
-    session: Mapped[Session] = relationship(back_populates="questions")
+    session: Mapped[Session] = relationship(back_populates="queries")
     participant: Mapped[Participant] = relationship()
-    votes: Mapped[list["QuestionVote"]] = relationship(back_populates="question", cascade="all, delete-orphan")
+    votes: Mapped[list["QueryVote"]] = relationship(back_populates="query", cascade="all, delete-orphan")
 
 
-class QuestionVote(Base):
-    __tablename__ = "question_votes"
-    __table_args__ = (UniqueConstraint("question_id", "participant_id", name="uq_qvote"),)
+class QueryVote(Base):
+    __tablename__ = "query_votes"
+    __table_args__ = (UniqueConstraint("query_id", "participant_id", name="uq_qvote"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+    query_id: Mapped[int] = mapped_column(ForeignKey("queries.id", ondelete="CASCADE"), index=True)
     participant_id: Mapped[int] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
-    question: Mapped[Question] = relationship(back_populates="votes")
+    query: Mapped[Query] = relationship(back_populates="votes")
 
 
 # ---------- quizzes (templates, mutable) ----------
@@ -98,10 +100,10 @@ class Quiz(Base):
     last_edited_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
-    items: Mapped[list["QuizItem"]] = relationship(
+    questions: Mapped[list["Question"]] = relationship(
         back_populates="quiz",
         cascade="all, delete-orphan",
-        order_by="QuizItem.order_index",
+        order_by="Question.order_index",
     )
     versions: Mapped[list["QuizVersion"]] = relationship(
         back_populates="quiz",
@@ -110,8 +112,9 @@ class Quiz(Base):
     )
 
 
-class QuizItem(Base):
-    __tablename__ = "quiz_items"
+class Question(Base):
+    """One question in a Quiz template."""
+    __tablename__ = "quiz_questions"
     id: Mapped[int] = mapped_column(primary_key=True)
     quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
@@ -119,24 +122,25 @@ class QuizItem(Base):
     qtype: Mapped[str] = mapped_column(String(10), default="single")  # "single" | "multi"
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
-    quiz: Mapped[Quiz] = relationship(back_populates="items")
-    options: Mapped[list["QuizOption"]] = relationship(
-        back_populates="item",
+    quiz: Mapped[Quiz] = relationship(back_populates="questions")
+    answers: Mapped[list["Answer"]] = relationship(
+        back_populates="question",
         cascade="all, delete-orphan",
-        order_by="QuizOption.order_index",
+        order_by="Answer.order_index",
     )
 
 
-class QuizOption(Base):
-    __tablename__ = "quiz_options"
+class Answer(Base):
+    """One answer choice for a Question in a Quiz template."""
+    __tablename__ = "quiz_answers"
     id: Mapped[int] = mapped_column(primary_key=True)
-    item_id: Mapped[int] = mapped_column(ForeignKey("quiz_items.id", ondelete="CASCADE"), index=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("quiz_questions.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_correct: Mapped[bool] = mapped_column(Boolean, default=False)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
-    item: Mapped[QuizItem] = relationship(back_populates="options")
+    question: Mapped[Question] = relationship(back_populates="answers")
 
 
 # ---------- quiz versions (immutable snapshots, created lazily on launch) ----------
@@ -151,15 +155,15 @@ class QuizVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     quiz: Mapped[Quiz] = relationship(back_populates="versions")
-    items: Mapped[list["QuizVersionItem"]] = relationship(
+    questions: Mapped[list["QuizVersionQuestion"]] = relationship(
         back_populates="version",
         cascade="all, delete-orphan",
-        order_by="QuizVersionItem.order_index",
+        order_by="QuizVersionQuestion.order_index",
     )
 
 
-class QuizVersionItem(Base):
-    __tablename__ = "quiz_version_items"
+class QuizVersionQuestion(Base):
+    __tablename__ = "quiz_version_questions"
     id: Mapped[int] = mapped_column(primary_key=True)
     version_id: Mapped[int] = mapped_column(ForeignKey("quiz_versions.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
@@ -167,24 +171,24 @@ class QuizVersionItem(Base):
     qtype: Mapped[str] = mapped_column(String(10), default="single")
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
-    version: Mapped[QuizVersion] = relationship(back_populates="items")
-    options: Mapped[list["QuizVersionOption"]] = relationship(
-        back_populates="item",
+    version: Mapped[QuizVersion] = relationship(back_populates="questions")
+    answers: Mapped[list["QuizVersionAnswer"]] = relationship(
+        back_populates="question",
         cascade="all, delete-orphan",
-        order_by="QuizVersionOption.order_index",
+        order_by="QuizVersionAnswer.order_index",
     )
 
 
-class QuizVersionOption(Base):
-    __tablename__ = "quiz_version_options"
+class QuizVersionAnswer(Base):
+    __tablename__ = "quiz_version_answers"
     id: Mapped[int] = mapped_column(primary_key=True)
-    item_id: Mapped[int] = mapped_column(ForeignKey("quiz_version_items.id", ondelete="CASCADE"), index=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("quiz_version_questions.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_correct: Mapped[bool] = mapped_column(Boolean, default=False)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
-    item: Mapped[QuizVersionItem] = relationship(back_populates="options")
+    question: Mapped[QuizVersionQuestion] = relationship(back_populates="answers")
 
 
 # ---------- quiz runs (one playthrough of a frozen quiz inside a session) ----------
@@ -194,7 +198,6 @@ class QuizRun(Base):
     __tablename__ = "quiz_runs"
     __table_args__ = (
         # Enforce "at most one live QuizRun per Session" at the storage layer.
-        # Partial unique index — SQLite & Postgres both support this syntax.
         Index(
             "uq_session_live_run",
             "session_id",
@@ -207,7 +210,7 @@ class QuizRun(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
     quiz_version_id: Mapped[int] = mapped_column(ForeignKey("quiz_versions.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(10), default="queued")  # "queued" | "live" | "closed"
-    current_item_idx: Mapped[int] = mapped_column(Integer, default=0)
+    current_question_idx: Mapped[int] = mapped_column(Integer, default=0)
     reveal_current: Mapped[bool] = mapped_column(Boolean, default=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -215,19 +218,26 @@ class QuizRun(Base):
 
     session: Mapped[Session] = relationship(back_populates="quiz_runs")
     quiz_version: Mapped[QuizVersion] = relationship()
-    responses: Mapped[list["QuizResponse"]] = relationship(cascade="all, delete-orphan")
+    submissions: Mapped[list["QuizSubmission"]] = relationship(cascade="all, delete-orphan")
 
 
-class QuizResponse(Base):
-    __tablename__ = "quiz_responses"
+class QuizSubmission(Base):
+    """A participant's selected Answer for a Question during a QuizRun.
+
+    One row per (run, question, answer, participant). Multi-choice picks
+    create multiple rows; single-choice picks create one. Re-submitting a
+    quiz answer deletes the participant's prior rows for the same
+    (run, question) and inserts new ones — last-write-wins.
+    """
+    __tablename__ = "quiz_submissions"
     __table_args__ = (
-        UniqueConstraint("quiz_run_id", "item_id", "option_id", "participant_id", name="uq_qresp"),
-        # Tally queries filter by (quiz_run_id, item_id); back this with an index.
-        Index("ix_qresp_run_item", "quiz_run_id", "item_id"),
+        UniqueConstraint("quiz_run_id", "question_id", "answer_id", "participant_id", name="uq_qsubmission"),
+        # Tally queries filter by (quiz_run_id, question_id); back this with an index.
+        Index("ix_qsub_run_question", "quiz_run_id", "question_id"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     quiz_run_id: Mapped[int] = mapped_column(ForeignKey("quiz_runs.id", ondelete="CASCADE"), index=True)
-    item_id: Mapped[int] = mapped_column(ForeignKey("quiz_version_items.id", ondelete="CASCADE"))
-    option_id: Mapped[int] = mapped_column(ForeignKey("quiz_version_options.id", ondelete="CASCADE"))
+    question_id: Mapped[int] = mapped_column(ForeignKey("quiz_version_questions.id", ondelete="CASCADE"))
+    answer_id: Mapped[int] = mapped_column(ForeignKey("quiz_version_answers.id", ondelete="CASCADE"))
     participant_id: Mapped[int] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

@@ -25,22 +25,22 @@
 
     <section class="card" id="ended-card" style="display:none;">
       <div class="card-head"><h2>Session ended</h2></div>
-      <p class="muted small" style="margin: 0;">This session has ended. You can still see what was asked, but you can't add new questions or vote.</p>
+      <p class="muted small" style="margin: 0;">This session has ended. You can still see what was asked, but you can't add new queries or vote.</p>
     </section>
 
     <section class="card" id="ask-card">
-      <div class="card-head"><h2>Ask a question</h2></div>
-      <textarea id="question-text" placeholder="Type your question… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
+      <div class="card-head"><h2>Ask</h2></div>
+      <textarea id="query-text" placeholder="Type your query… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
       <div class="row" style="margin-top: 8px;">
         <span class="muted small">Anonymous unless you set a name above.</span>
         <div class="spacer"></div>
-        <button class="primary" id="ask-btn">Ask</button>
+        <button class="primary" id="ask-btn">Submit</button>
       </div>
     </section>
 
     <section class="card">
-      <div class="card-head"><h2>Questions</h2></div>
-      <div id="questions"></div>
+      <div class="card-head"><h2>Queries</h2></div>
+      <div id="queries"></div>
     </section>
 
     <section class="card" id="invite-card">
@@ -58,10 +58,10 @@
     import { $, api, el, escapeHtml, pathCode, openLiveSocket, toast, errorToast, renderQR } from "/static/common.js";
 
     const CODE = pathCode();
-    let questions = [];
+    let queries = [];
     let activeQuiz = null;
     let pendingSelection = new Set();
-    let lastItemId = null;
+    let lastQuestionId = null;
     let me = { id: null, name: null };
 
     let sessionEnded = false;
@@ -83,7 +83,6 @@
       $("#my-name").value = me.name || "";
     }
 
-    // Save name on blur (no Save button — direct manipulation per UX doc).
     $("#my-name").addEventListener("change", async () => {
       try {
         me = await api(`/api/sessions/${CODE}/me`, { method: "PATCH", body: { name: $("#my-name").value } });
@@ -91,26 +90,26 @@
       } catch (e) { errorToast(e.message); }
     });
 
-    async function loadQuestions() {
-      questions = await api(`/api/sessions/${CODE}/questions`);
-      renderQuestions();
+    async function loadQueries() {
+      queries = await api(`/api/sessions/${CODE}/queries`);
+      renderQueries();
     }
 
-    function renderQuestions() {
-      const root = $("#questions");
+    function renderQueries() {
+      const root = $("#queries");
       root.innerHTML = "";
-      if (!questions.length) {
-        root.appendChild(el("div", { class: "muted small" }, "No questions yet. Be the first to ask."));
+      if (!queries.length) {
+        root.appendChild(el("div", { class: "muted small" }, "No queries yet. Be the first to ask."));
         return;
       }
-      const sorted = [...questions].sort((a, b) => {
-        if (a.answered !== b.answered) return a.answered ? 1 : -1;
+      const sorted = [...queries].sort((a, b) => {
+        if (a.responded !== b.responded) return a.responded ? 1 : -1;
         return b.vote_count - a.vote_count;
       });
-      for (const q of sorted) root.appendChild(renderQuestion(q));
+      for (const q of sorted) root.appendChild(renderQuery(q));
     }
 
-    function renderQuestion(q) {
+    function renderQuery(q) {
       const voteBtn = el("button", {
         class: "vote-btn" + (q.voted ? " voted" : ""),
         "aria-pressed": String(!!q.voted),
@@ -123,39 +122,38 @@
       const body = el("div", { class: "body" },
         el("div", { class: "text" }, q.text),
         q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
-        q.answered && q.answer_text
-          ? el("div", { class: "answer" }, el("strong", {}, "Answer: "), q.answer_text)
+        q.responded && q.response_text
+          ? el("div", { class: "answer" }, el("strong", {}, "Response: "), q.response_text)
           : null,
       );
       return el("div",
-        { class: "question" + (q.answered ? " answered" : "") },
+        { class: "question" + (q.responded ? " answered" : "") },
         voteBtn, body,
       );
     }
 
     async function toggleVote(qid) {
-      try { await api(`/api/sessions/${CODE}/questions/${qid}/vote`, { method: "POST" }); }
+      try { await api(`/api/sessions/${CODE}/queries/${qid}/vote`, { method: "POST" }); }
       catch (e) { errorToast(e.message); }
-      loadQuestions();
+      loadQueries();
     }
 
-    async function askQuestion() {
-      const text = $("#question-text").value.trim();
+    async function askQuery() {
+      const text = $("#query-text").value.trim();
       if (!text) return;
       try {
-        // Send name with the question so the participant row picks it up even on first interaction.
-        await api(`/api/sessions/${CODE}/questions`, {
+        await api(`/api/sessions/${CODE}/queries`, {
           method: "POST",
           body: { text, author_name: $("#my-name").value || null },
         });
-        $("#question-text").value = "";
-        loadQuestions();
-        toast("Question submitted");
+        $("#query-text").value = "";
+        loadQueries();
+        toast("Query submitted");
       } catch (e) { errorToast(e.message); }
     }
-    $("#ask-btn").addEventListener("click", askQuestion);
-    $("#question-text").addEventListener("keydown", e => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); askQuestion(); }
+    $("#ask-btn").addEventListener("click", askQuery);
+    $("#query-text").addEventListener("keydown", e => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); askQuery(); }
     });
 
     async function loadQuiz() {
@@ -163,15 +161,12 @@
       const live = rows.find(r => r.status === "live");
       const closed = rows.find(r => r.status === "closed");
       activeQuiz = live || closed || null;
-      // Reset working selection only when the item actually changes. On same-item
-      // refreshes (WS-driven), preserve whatever the user has been clicking
-      // before they submit. After submit, my_selections will match anyway.
-      if (activeQuiz && activeQuiz.current_item && activeQuiz.current_item.id !== lastItemId) {
+      if (activeQuiz && activeQuiz.current_question && activeQuiz.current_question.id !== lastQuestionId) {
         pendingSelection = new Set(activeQuiz.my_selections || []);
-        lastItemId = activeQuiz.current_item.id;
+        lastQuestionId = activeQuiz.current_question.id;
       } else if (!activeQuiz) {
         pendingSelection = new Set();
-        lastItemId = null;
+        lastQuestionId = null;
       }
       renderQuiz();
     }
@@ -182,10 +177,10 @@
       if (!activeQuiz) { card.style.display = "none"; return; }
       card.style.display = "";
       body.innerHTML = "";
-      const q = activeQuiz.current_item;
+      const q = activeQuiz.current_question;
       const status = activeQuiz.status;
       body.appendChild(el("div", { class: "small muted" },
-        `${escapeHtml(activeQuiz.quiz_title)} — item ${activeQuiz.current_item_idx + 1} of ${activeQuiz.item_count}` +
+        `${escapeHtml(activeQuiz.quiz_title)} — question ${activeQuiz.current_question_idx + 1} of ${activeQuiz.question_count}` +
         (status === "closed" ? " (closed)" : "")
       ));
       if (!q) {
@@ -199,36 +194,36 @@
       const totals = showResults ? activeQuiz.results.totals : null;
       const respondents = showResults ? Math.max(activeQuiz.results.respondents, 1) : 1;
       const locked = status === "closed" || showResults;
-      for (const op of q.options) {
-        const selected = pendingSelection.has(op.id);
-        const pct = totals ? Math.round((totals[op.id] || 0) / respondents * 100) : 0;
+      for (const a of q.answers) {
+        const selected = pendingSelection.has(a.id);
+        const pct = totals ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
         const onPick = () => {
           if (locked) return;
-          if (q.qtype === "single") { pendingSelection = new Set([op.id]); }
-          else { pendingSelection.has(op.id) ? pendingSelection.delete(op.id) : pendingSelection.add(op.id); }
+          if (q.qtype === "single") { pendingSelection = new Set([a.id]); }
+          else { pendingSelection.has(a.id) ? pendingSelection.delete(a.id) : pendingSelection.add(a.id); }
           renderQuiz();
         };
-        const opDiv = el("button", {
+        const aDiv = el("button", {
           type: "button",
           disabled: locked,
           "aria-pressed": String(selected),
           class: "option" + (selected ? " selected" : "") + (locked ? " disabled" : "") +
-                 (showResults && op.is_correct === true ? " correct" : "") +
-                 (showResults && selected && op.is_correct === false ? " wrong" : ""),
+                 (showResults && a.is_correct === true ? " correct" : "") +
+                 (showResults && selected && a.is_correct === false ? " wrong" : ""),
           onclick: onPick,
         });
         if (showResults) {
           const bar = el("div", { class: "bar" });
-          bar.style.transform = `scaleX(${(totals[op.id] || 0) / respondents})`;
-          opDiv.appendChild(bar);
+          bar.style.transform = `scaleX(${(totals[a.id] || 0) / respondents})`;
+          aDiv.appendChild(bar);
         }
-        if (op.image_url) opDiv.appendChild(el("img", { class: "opt-img", src: op.image_url }));
-        opDiv.appendChild(el("div", { class: "opt-text" }, op.text));
-        if (showResults) opDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
-        body.appendChild(opDiv);
+        if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
+        aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
+        if (showResults) aDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
+        body.appendChild(aDiv);
       }
       if (!locked) {
-        const submitBtn = el("button", { class: "primary", onclick: submitQuizResponse },
+        const submitBtn = el("button", { class: "primary", onclick: submitQuiz },
           submitted ? "Update answer" : "Submit");
         submitBtn.disabled = pendingSelection.size === 0;
         body.appendChild(el("div", { style: "margin-top: 12px;" }, submitBtn,
@@ -236,21 +231,21 @@
       }
     }
 
-    async function submitQuizResponse() {
-      if (!activeQuiz || !activeQuiz.current_item) return;
+    async function submitQuiz() {
+      if (!activeQuiz || !activeQuiz.current_question) return;
       try {
-        await api(`/api/sessions/${CODE}/quiz_runs/${activeQuiz.id}/respond`, {
+        await api(`/api/sessions/${CODE}/quiz_runs/${activeQuiz.id}/submit`, {
           method: "POST",
           body: {
-            item_id: activeQuiz.current_item.id,
-            option_ids: [...pendingSelection],
+            question_id: activeQuiz.current_question.id,
+            answer_ids: [...pendingSelection],
           },
         });
         loadQuiz();
       } catch (e) { errorToast(e.message); }
     }
 
-    function refreshAll() { loadSession(); loadQuestions(); loadQuiz(); }
+    function refreshAll() { loadSession(); loadQueries(); loadQuiz(); }
 
     (async function () {
       await loadSession();
