@@ -77,6 +77,41 @@ export function openLiveSocket(code, onMessage) {
   return { close() { alive = false; ws && ws.close(); } };
 }
 
+// Render a QR code into `target` (an element). Replaces its contents.
+// Lazy-loads /static/vendor/qrcode.js the first time it's called.
+let _qrcodePromise = null;
+function _loadQR() {
+  if (_qrcodePromise) return _qrcodePromise;
+  _qrcodePromise = new Promise((resolve, reject) => {
+    if (window.qrcode) return resolve(window.qrcode);
+    const s = document.createElement("script");
+    s.src = "/static/vendor/qrcode.js";
+    s.onload = () => resolve(window.qrcode);
+    s.onerror = () => reject(new Error("Could not load QR library"));
+    document.head.appendChild(s);
+  });
+  return _qrcodePromise;
+}
+
+export async function renderQR(target, text, { cellSize = 4, margin = 2 } = {}) {
+  if (!target) return;
+  const qrcode = await _loadQR();
+  // Type 0 = auto-size; "M" error correction (~15%).
+  const qr = qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  target.innerHTML = qr.createSvgTag({ cellSize, margin, scalable: true });
+  // Style the embedded SVG so it adapts to the container.
+  const svg = target.querySelector("svg");
+  if (svg) {
+    svg.style.width = "100%";
+    svg.style.height = "auto";
+    svg.style.display = "block";
+    svg.style.background = "white";
+    svg.style.borderRadius = "8px";
+  }
+}
+
 export function toast(msg, { error = false, duration = 2800 } = {}) {
   const t = el("div", {
     class: "toast" + (error ? " toast-error" : ""),

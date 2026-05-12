@@ -475,6 +475,7 @@ def list_sessions(db: DbSession = Depends(get_db), me: m.User = Depends(auth.cur
             "title": s.title,
             "status": s.status,
             "mod_key": s.mod_key,
+            "participant_base_url": s.participant_base_url,
             "created_at": s.created_at.isoformat(),
             "started_at": s.started_at.isoformat() if s.started_at else None,
             "ended_at": s.ended_at.isoformat() if s.ended_at else None,
@@ -510,7 +511,39 @@ def get_session(code: str, db: DbSession = Depends(get_db)):
         "title": s.title,
         "status": s.status,
         "created_at": s.created_at.isoformat(),
+        "participant_base_url": s.participant_base_url,
     }
+
+
+@app.post("/api/sessions/{code}/participant_base_url")
+async def set_participant_base_url(
+    code: str,
+    payload: dict,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    s = get_session_by_code(db, code)
+    # Accept either the session owner (logged-in admin) or the mod_key holder.
+    is_owner = me is not None and s.owner_user_id == me.id
+    is_mod = bool(x_mod_key) and secrets.compare_digest(x_mod_key, s.mod_key)
+    if not (is_owner or is_mod):
+        raise HTTPException(403, "Not authorized")
+    url = (payload.get("url") or "").strip()
+    if url:
+        # Light validation: must be a plausible URL. Strip trailing slash so
+        # we don't double-slash when appending /s/<code>.
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise HTTPException(400, "URL must start with http:// or https://")
+        if len(url) > 500:
+            raise HTTPException(400, "URL is too long")
+        url = url.rstrip("/")
+        s.participant_base_url = url
+    else:
+        s.participant_base_url = None
+    db.commit()
+    await broadcast_session(s, "session_state")
+    return {"participant_base_url": s.participant_base_url}
 
 
 @app.delete("/api/sessions/{code}")

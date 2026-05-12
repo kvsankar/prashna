@@ -66,6 +66,29 @@
       </table>
     </section>
 
+    <section class="card compact" id="session-detail-card" style="display:none;">
+      <div class="card-head">
+        <h2 id="sd-title">Session settings</h2>
+        <button class="ghost small" id="sd-close">Close</button>
+      </div>
+      <p class="muted small" style="margin: 0 0 12px;">
+        Participants join at the URL shown below. Override the base URL if this server is reached via a different public address (LAN IP, reverse proxy, tunnel, vanity domain). Leave blank to use whatever address you're currently browsing from.
+      </p>
+      <div class="field row gap">
+        <input id="sd-base-url" class="inline" style="flex:1;" placeholder="e.g. https://prashna.sankara.net">
+        <button id="sd-save" class="small">Save</button>
+        <button id="sd-clear" class="ghost small">Use default</button>
+      </div>
+      <div class="row gap" style="align-items: flex-start; margin-top: 12px;">
+        <div id="sd-qr" style="width: 180px; min-width: 180px;"></div>
+        <div style="flex:1;">
+          <div class="small muted" style="margin-bottom: 4px;">Participant URL</div>
+          <code id="sd-url" class="small" style="display:block; padding: 8px; background: var(--panel-2); border-radius: 6px; word-break: break-all;"></code>
+          <button id="sd-copy" class="ghost small" style="margin-top: 8px;">Copy URL</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card compact" id="confirm-delete-card" style="display:none;">
       <div class="card-head">
         <h2>Delete session?</h2>
@@ -89,7 +112,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, toast, errorToast } from "/static/common.js";
+    import { $, api, el, escapeHtml, toast, errorToast, renderQR } from "/static/common.js";
 
     // ----- bad code banner from /s/BOGUS redirect -----
     const bad = new URLSearchParams(location.search).get("bad_code");
@@ -108,8 +131,8 @@
       login:    $("#login-card"),
       sessions: $("#sessions-card"),
       library:  $("#library-card"),
-      // Transient delete-confirm card — hidden on every state change unless
-      // explicitly opened via startDeleteFlow().
+      // Transient cards — hidden on every state change unless explicitly opened.
+      sessionDetail: $("#session-detail-card"),
       confirmDelete: $("#confirm-delete-card"),
     };
     function show(...names) {
@@ -210,7 +233,8 @@
         tbody.innerHTML = "";
         for (const s of rows) {
           const when = new Date(s.created_at).toLocaleString();
-          const tr = el("tr");
+          const tr = el("tr", { class: "rowable" + (currentDetail === s.code ? " selected" : "") });
+          tr.addEventListener("click", () => openSessionDetail(s));
           tr.appendChild(el("td", {}, s.title));
           tr.appendChild(el("td", {}, el("code", { class: "small" }, s.code)));
           tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + s.status }, s.status)));
@@ -219,6 +243,8 @@
           tr.appendChild(el("td", { class: "muted small" }, when));
 
           const actions = el("td", { class: "actions" });
+          // Stop the row click from firing when an action is clicked.
+          actions.addEventListener("click", e => e.stopPropagation());
           actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
           actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
           // Moderator link is built on-demand to avoid leaking mod_key into the DOM.
@@ -243,6 +269,65 @@
         tbody.innerHTML = `<tr><td colspan="7" class="error-banner">${escapeHtml(e.message)}</td></tr>`;
       }
     }
+
+    // ----- session detail / settings drill-down -----
+    let currentDetail = null;       // session code currently open in detail card
+    let currentDetailData = null;   // the row data
+
+    function participantUrlFor(s) {
+      const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
+      return `${base}/s/${s.code}`;
+    }
+
+    async function paintDetail(s) {
+      currentDetailData = s;
+      $("#sd-title").textContent = `Session: ${s.title}`;
+      $("#sd-base-url").value = s.participant_base_url || "";
+      const url = participantUrlFor(s);
+      $("#sd-url").textContent = url;
+      try { await renderQR($("#sd-qr"), url, { cellSize: 4, margin: 2 }); }
+      catch { $("#sd-qr").textContent = "QR unavailable"; }
+    }
+
+    async function openSessionDetail(s) {
+      currentDetail = s.code;
+      $("#session-detail-card").style.display = "";
+      await paintDetail(s);
+      loadSessions();   // refresh row "selected" state
+      $("#session-detail-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function closeSessionDetail() {
+      currentDetail = null;
+      currentDetailData = null;
+      $("#session-detail-card").style.display = "none";
+      loadSessions();
+    }
+    $("#sd-close").addEventListener("click", closeSessionDetail);
+
+    $("#sd-save").addEventListener("click", async () => {
+      if (!currentDetailData) return;
+      try {
+        await api(`/api/sessions/${currentDetailData.code}/participant_base_url`, {
+          method: "POST", body: { url: $("#sd-base-url").value },
+        });
+        toast("Saved");
+        // Re-fetch the row to get the canonical stored value (trailing slash stripped, etc.)
+        const fresh = await api("/api/sessions");
+        const found = fresh.find(x => x.code === currentDetailData.code);
+        if (found) await paintDetail(found);
+        loadSessions();
+      } catch (e) { errorToast(e.message); }
+    });
+    $("#sd-clear").addEventListener("click", async () => {
+      $("#sd-base-url").value = "";
+      $("#sd-save").click();
+    });
+    $("#sd-copy").addEventListener("click", async () => {
+      const url = $("#sd-url").textContent;
+      try { await navigator.clipboard.writeText(url); toast("URL copied"); }
+      catch { window.prompt("Copy:", url); }
+    });
 
     // ----- session delete flow -----
     function hideConfirmCard() {

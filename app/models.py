@@ -31,6 +31,9 @@ class Session(Base):
     status: Mapped[str] = mapped_column(String(10), default="planning")
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Optional override used when generating the participant URL + QR.
+    # If unset, frontends fall back to location.origin.
+    participant_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     questions: Mapped[list["Question"]] = relationship(back_populates="session", cascade="all, delete-orphan")
