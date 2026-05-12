@@ -1,26 +1,29 @@
 # Prashna — specs
 
-Use cases and acceptance tests for the four roles in the system. Each use
-case has a stable ID (`UC-<ROLE>-NN`) so tests, PRs, and bug reports can
-cite it. Acceptance tests are Given/When/Then.
+Use cases and acceptance tests for the five surfaces of the system.
+Each use case has a stable ID (`UC-<ROLE>-NN`) so tests, PRs, and bug
+reports can cite it. Acceptance tests are Given/When/Then.
 
-**Roles**
-- **Admin** — a logged-in `User` (today: single global admin per
-  deployment). Owns sessions and quiz templates. **Capabilities are a
-  strict superset of Moderator.** Authenticates via signed cookie;
-  reaches all moderator routes on owned sessions without needing the
-  mod_key.
-- **Moderator** — anyone holding the `mod_key` for a session. Used for
-  *delegation*: the owner can hand the moderator URL to a TA / co-host
-  who has no admin account. Capabilities are the moderation subset of
-  Admin (no quiz authoring, no session create/delete, no global
-  reports).
-- **Participant** — anonymous audience member. Identified by a
-  `voter_token` cookie that resolves to a per-session `Participant`
-  row.
-- **System** — implicit actor for lifecycle gates, WebSocket
-  broadcasts, validation, and constraints enforced at the storage
-  layer.
+**Roles** (and their UC prefixes)
+- **Admin** (`UC-A-*`) — a logged-in `User` (today: single global
+  admin per deployment). Owns sessions and quiz templates.
+  **Capabilities are a strict superset of Moderator.** Authenticates
+  via signed cookie; reaches all moderator routes on owned sessions
+  without needing the mod_key.
+- **Moderator** (`UC-M-*`) — anyone holding the `mod_key` for a
+  session. Used for *delegation*: the owner can hand the moderator
+  URL to a TA / co-host who has no admin account. Capabilities are
+  the moderation subset of Admin (no quiz authoring, no session
+  create/delete, no global reports).
+- **Participant** (`UC-P-*`) — anonymous audience member. Identified
+  by a `voter_token` cookie that resolves to a per-session
+  `Participant` row.
+- **Projector / Display** (`UC-D-*`) — the big-screen view at the
+  front of the room (`/p/<code>`). Public, read-only, no chrome,
+  updates live via WebSocket.
+- **System** (`UC-X-*`) — cross-cutting backend invariants, broadcast
+  contracts, security headers, and storage-level constraints. Not a
+  user action; the substrate every other UC silently depends on.
 
 **Authorization model.** Every moderator-gated route accepts *either*
 the admin owner cookie *or* an `X-Mod-Key` header. Reads that branch
@@ -341,14 +344,29 @@ Used by question and answer editors to set `image_url`.
   the start returns `409 Another quiz is already live — close it
   first` (enforced by the `uq_session_live_run` partial unique index)
 
-### UC-M-05: Walk through items
+### UC-M-05: Walk through questions
 
-- **Given** a live QuizRun
-- **When** the moderator clicks Next / Prev
-- **Then** `current_question_idx` advances within `[0, question_count-1]` and
-  `reveal_current` resets to `False`
-- **And** clicking Reveal results / Hide results toggles
-  `reveal_current` for the current item
+The primary affordance for advancing is a **single Next button** that
+recognizes which phase the current question is in.
+
+- **Given** a live QuizRun in **answering** phase (`reveal_current=false`)
+- **When** the moderator clicks **Reveal results →**
+- **Then** `reveal_current` flips to true → the current question
+  enters **results** phase (bars + correctness shown on projector /
+  participant pages); voting is locked.
+- **Given** the QuizRun is in results phase and the current question
+  is not the last
+- **When** the moderator clicks **Next question →**
+- **Then** `current_question_idx` advances; `reveal_current` resets
+  to false → the next question's answering phase begins.
+- **Given** the QuizRun is in results phase and the current question
+  **is** the last
+- **When** the moderator clicks **Close →**
+- **Then** the run closes (see UC-M-06).
+- **Prev** moves `current_question_idx` backwards (mod can revisit a
+  question; resets `reveal_current`).
+- **Live counts** are toggled independently per QuizRun via a
+  "live counts" checkbox; see UC-D-08.
 
 ### UC-M-06: Close a quiz run
 
@@ -371,7 +389,7 @@ Used by question and answer editors to set `image_url`.
 - **And** a closed run returns `400 Closed quiz runs are historical
   and cannot be deleted`
 
-### UC-M-08: Mark a question answered
+### UC-M-08: Respond to a query
 
 - **Given** a question in the moderator's questions list
 - **When** they type an answer (optional) and click Mark responded
@@ -514,24 +532,109 @@ Used by question and answer editors to set `image_url`.
 
 ---
 
-## Projector / System
+## Projector
 
-### UC-X-01: Projector display
+The projector view (`/p/<code>`) is a public, read-only **display
+surface** — the big screen at the front of the room. No auth, no
+controls, no chrome. Updates live in lockstep with the rest of the
+session.
+
+### UC-D-01: Projector display
 
 - **Given** anyone (no auth) opens `/p/<code>` for a valid session
 - **Then** they see: session title, the join code in large type, the
   participant URL host, a QR encoding the full participant URL, top
-  questions sorted by vote, and the current live or closed quiz item
+  queries sorted by vote (limited to ~8 unanswered), and the current
+  live or closed quiz question
+- **And** an invalid `code` redirects to `/?bad_code=…` (same 303
+  pattern used by participant/moderator pages)
 
-### UC-X-02: QR lightbox
+### UC-D-02: QR lightbox
 
 - **Given** the projector page
-- **When** someone clicks (or Tab→Enter) the QR
-- **Then** a full-screen lightbox shows the QR at ≈90% of the
-  smaller viewport dimension; Esc, click, or the `cursor: zoom-out`
-  area dismisses it
+- **When** someone clicks the QR (or Tab + Enter / Space)
+- **Then** a full-screen lightbox shows the QR at ≈ 90% of the
+  smaller viewport dimension; Esc, click anywhere, or the
+  `cursor: zoom-out` area dismisses it
 
-### UC-X-03: Live updates via WebSocket
+### UC-D-03: Live updates via WebSocket
+
+- **Given** the projector is connected to `/ws/sessions/{CODE}`
+- **When** any state-changing route on that session commits
+- **Then** the projector re-fetches session / queries / quiz_runs and
+  re-renders without needing a page reload (see UC-X-01 for the full
+  broadcast contract)
+
+### UC-D-04: Session lifecycle reactions
+
+- **Given** the session is in `planning` → the projector renders the
+  join code and QR but shows no queries yet (none possible) and no
+  live quiz card
+- **And** in `live` → queries appear as participants submit them;
+  the quiz card appears when the moderator starts a run; current item
+  and revealed results update live
+- **And** in `ended` → queries and the last quiz result remain
+  visible read-only; no new queries can arrive
+
+### UC-D-05: Reconnect on long sessions
+
+- **Given** the projector has been left on for a long session and
+  the WebSocket connection drops (network blip, server restart)
+- **Then** `openLiveSocket` retries with exponential backoff (capped
+  ~32s); when it reconnects, the next broadcast prompts a refetch
+  and the projector recovers without operator intervention
+
+### UC-D-06: Quiz states on the projector
+
+Display priority when multiple QuizRuns exist for the session: **live**
+beats **queued (lobby)** beats **closed**. If none, the quiz card is
+hidden entirely.
+
+- **No QuizRun present** → the quiz card is hidden.
+- **A QuizRun is `queued`** → the projector enters the **lobby**
+  state (see UC-D-07).
+- **A QuizRun is `live` in the answering phase** (reveal_current=false)
+  → projector shows the current question and answer choices, no
+  correctness markers. If `show_live_counts` is true, vote-share bars
+  appear during voting; otherwise no counts.
+- **A QuizRun is `live` in the results phase** (reveal_current=true)
+  → projector adds vote-share bars and correctness markers to the
+  same current question.
+- **A QuizRun is `closed`** → the projector keeps the last question
+  visible with final tallies and correctness — the permanent record.
+
+### UC-D-07: Quiz lobby state
+
+- **Given** a QuizRun is `queued` and none is `live`
+- **Then** the projector replaces the quiz card body with a lobby
+  view: "Next up:" + quiz title in display type + a prompt to scan
+  the participant URL QR
+- **And** when the moderator clicks Start, the projector flips to
+  UC-D-06 answering phase via WebSocket broadcast
+
+### UC-D-08: Live answer counts variant
+
+Configurable per QuizRun via `show_live_counts` (default off).
+
+- **Given** the moderator toggles "live counts" on for a QuizRun
+- **When** the run is in answering phase
+- **Then** the projector and participant pages display running vote
+  totals (bars + percentages) for each answer, **without** revealing
+  correctness
+- **And** voting remains open — participants can still pick / change
+  their answer until the moderator advances or reveals
+- **And** when counts are off (default), the answering phase shows
+  only the question and answer texts; counts and correctness appear
+  only after reveal
+
+---
+
+## System
+
+Cross-cutting backend invariants. These aren't user actions; they
+are the rules every user-facing UC silently relies on.
+
+### UC-X-01: Live updates via WebSocket
 
 - **Given** any of the participant / moderator / projector views are
   connected to `/ws/sessions/{CODE}`
@@ -540,42 +643,44 @@ Used by question and answer editors to set `image_url`.
   `session_state`, `participant`, `query_new`, `query_vote`,
   `query_responded`, `query_removed`, `query_deleted`,
   `quiz_run_new`, `quiz_run_update`, `quiz_run_deleted`,
-  `quiz_submission`); each frontend treats it as a refresh hint and
-  re-fetches its data
+  `quiz_submission`); each frontend treats the message as a refresh
+  hint and re-fetches the data it cares about
 - **And** the client auto-reconnects with exponential backoff if the
   socket drops
 
-### UC-X-04: Cross-origin WS rejected
+### UC-X-02: Cross-origin WS rejected
 
 - **Given** a browser sends an `Origin` header that doesn't match
   `Host`
 - **Then** the WS upgrade is closed with code 4403
 
-### UC-X-05: Static asset security headers
+### UC-X-03: Static asset security headers
 
 - **Given** any file under `/uploads/`
 - **Then** responses carry `X-Content-Type-Options: nosniff`,
   `Content-Security-Policy: default-src 'none'; sandbox`, and
-  `Cross-Origin-Resource-Policy: same-origin`
+  `Cross-Origin-Resource-Policy: same-origin` — defense in depth in
+  case a file slips past the extension check
 
-### UC-X-06: Image upload constraints
+### UC-X-04: Image upload constraints
 
 - **Given** the admin uploads an image
 - **Then** `POST /api/uploads` accepts only `.png`, `.jpg`, `.jpeg`,
-  `.gif`, `.webp` (SVG is explicitly excluded); rejects files over
-  5 MB on size or streaming; stores under a fresh UUID filename
+  `.gif`, `.webp` (SVG is explicitly excluded); enforces 5 MB caps
+  on both Content-Length and streaming; stores under a fresh UUID
+  filename
 
-### UC-X-07: Storage-level invariants
+### UC-X-05: Storage-level invariants
 
-| Invariant                                | Enforced by                             |
-| ---------------------------------------- | --------------------------------------- |
-| At most one live QuizRun per Session     | Partial unique index `uq_session_live_run` |
-| At most one QuizVersion per (quiz_id, version_no) | UNIQUE constraint              |
-| At most one vote per (question, participant) | UNIQUE constraint                  |
-| At most one response per (run, item, option, participant) | UNIQUE constraint    |
-| One Participant per (session, voter_token) | UNIQUE constraint                     |
+| Invariant                                                              | Enforced by                                |
+| ---------------------------------------------------------------------- | ------------------------------------------ |
+| At most one **live** `QuizRun` per Session                             | Partial unique index `uq_session_live_run` |
+| At most one `QuizVersion` per `(quiz_id, version_no)`                  | UNIQUE constraint                          |
+| At most one `QueryVote` per `(query, participant)`                     | UNIQUE constraint                          |
+| At most one `QuizSubmission` per `(run, question, answer, participant)` | UNIQUE constraint                         |
+| One `Participant` per `(session, voter_token)`                         | UNIQUE constraint                          |
 
-### UC-X-08: Versioning lazy capture
+### UC-X-06: Versioning lazy capture
 
 - **Given** Quiz Q has versions v1, v2 already
 - **When** the moderator queues Q without editing since v2 → the new

@@ -190,10 +190,13 @@
       body.appendChild(el("h3", {}, q.text));
       if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
       const submitted = (activeQuiz.my_selections || []).length > 0;
-      const showResults = !!activeQuiz.results;
-      const totals = showResults ? activeQuiz.results.totals : null;
-      const respondents = showResults ? Math.max(activeQuiz.results.respondents, 1) : 1;
-      const locked = status === "closed" || showResults;
+      const showCounts = !!activeQuiz.results;
+      const showCorrect = activeQuiz.reveal_current || status === "closed";
+      const totals = showCounts ? activeQuiz.results.totals : null;
+      const respondents = showCounts ? Math.max(activeQuiz.results.respondents, 1) : 1;
+      // Voting is locked only when correctness is on display (reveal/close).
+      // Live counts during the answering phase do not lock voting.
+      const locked = showCorrect;
       for (const a of q.answers) {
         const selected = pendingSelection.has(a.id);
         const pct = totals ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
@@ -208,18 +211,18 @@
           disabled: locked,
           "aria-pressed": String(selected),
           class: "option" + (selected ? " selected" : "") + (locked ? " disabled" : "") +
-                 (showResults && a.is_correct === true ? " correct" : "") +
-                 (showResults && selected && a.is_correct === false ? " wrong" : ""),
+                 (showCorrect && a.is_correct === true ? " correct" : "") +
+                 (showCorrect && selected && a.is_correct === false ? " wrong" : ""),
           onclick: onPick,
         });
-        if (showResults) {
+        if (showCounts) {
           const bar = el("div", { class: "bar" });
           bar.style.transform = `scaleX(${(totals[a.id] || 0) / respondents})`;
           aDiv.appendChild(bar);
         }
         if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
         aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
-        if (showResults) aDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
+        if (showCounts) aDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
         body.appendChild(aDiv);
       }
       if (!locked) {

@@ -76,7 +76,24 @@
         catch {}
       }
       renderQueries(qs);
-      renderQuiz(runs.find(r => r.status === "live") || runs.find(r => r.status === "closed"));
+      // Display priority: live > queued (lobby) > closed > nothing.
+      const live = runs.find(r => r.status === "live");
+      const queued = runs.find(r => r.status === "queued");
+      const closed = runs.find(r => r.status === "closed");
+      if (live) renderQuiz(live);
+      else if (queued) renderLobby(queued);
+      else if (closed) renderQuiz(closed);
+      else { $("#quiz-section").style.display = "none"; }
+    }
+
+    function renderLobby(run) {
+      const section = $("#quiz-section");
+      const body = $("#quiz-body");
+      section.style.display = "";
+      body.innerHTML = "";
+      body.appendChild(el("div", { class: "muted" }, "Next up:"));
+      body.appendChild(el("h2", { style: "font-size: 40px; margin: 8px 0 24px;" }, run.quiz_title));
+      body.appendChild(el("div", { class: "muted" }, "Scan to join — quiz starts when the moderator clicks Start."));
     }
 
     function renderQueries(qs) {
@@ -112,23 +129,24 @@
       if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
       const totals = run.results?.totals || {};
       const respondents = run.results?.respondents || 0;
-      const showResults = !!run.results;
+      const showCounts = !!run.results;                    // includes live-counts variant
+      const showCorrect = run.reveal_current || run.status === "closed";
       for (const a of q.answers) {
-        const aDiv = el("div", { class: "option disabled" + (showResults && a.is_correct ? " correct" : "") });
-        if (showResults) {
+        const aDiv = el("div", { class: "option disabled" + (showCorrect && a.is_correct ? " correct" : "") });
+        if (showCounts) {
           const bar = el("div", { class: "bar" });
           bar.style.transform = `scaleX(${respondents ? (totals[a.id] || 0) / respondents : 0})`;
           aDiv.appendChild(bar);
         }
         if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
         aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
-        if (showResults) {
+        if (showCounts) {
           const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
           aDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
         }
         body.appendChild(aDiv);
       }
-      if (showResults) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
+      if (showCounts) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
     }
 
     // Lightbox: enlarge the join QR on click.
