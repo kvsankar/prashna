@@ -1041,18 +1041,22 @@ recognizes which phase the current question is in.
 - **When** the participant page loads (or refreshes via WS)
 - **Then** the Live quiz card surfaces the current question, its answers,
   and the participant's prior selections (if any)
-- **And** when status flips to `closed`, the card stays visible
-  showing results
+- **And** when status flips to `closed`, the participant card
+  **disappears** — the participant page only renders runs in `live`
+  status. Final results live on the projector (UC-D-06) and the
+  moderator's quiz-runs list. This keeps the participant surface
+  focused on actionable state and avoids stale "this is over"
+  scrollback during a multi-quiz session.
 
 **Tests (API)**
-- `GET /api/sessions/{code}/quiz_runs` as a participant → returns runs in any non-deleted status: `queued`, `live`, `closed`. Queued is included so the projector can render the "Next up" lobby (UC-D-07); the participant page itself ignores queued in its `loadQuiz()` selector. Auth: none (cookie issued on first call).
+- `GET /api/sessions/{code}/quiz_runs` as a participant → returns runs in any non-deleted status: `queued`, `live`, `closed`. Queued is included so the projector can render the "Next up" lobby (UC-D-07); the participant page itself ignores both queued and closed in its `loadQuiz()` selector. Auth: none (cookie issued on first call).
 - **Queued-run redaction**: for non-moderator callers, a `queued` run is serialized with `current_question: null` — the question text and answers are NOT exposed before Start (prevents pre-launch peek at the first question). Moderators/owners see `current_question` even on queued runs.
 - The serialized run includes `current_question` (id, text, qtype, answers without `is_correct` unless revealed/closed) and `my_selections` once live.
-- For a `closed` run, `is_correct` and `results` are included.
+- For a `closed` run, `is_correct` and `results` are still included in the API payload — the participant page's selector is what hides the run; the contract for projector/moderator is unchanged.
 
 **Tests (UI)**
 - On `/s/<CODE>` with a live run, `#quiz-card` is visible and `#quiz-body` renders the current question with its answers and the participant's prior selections.
-- When status flips to `closed` via WS, `#quiz-card` stays visible and now shows results bars and correctness markers.
+- When status flips to `closed` via WS, `#quiz-card` is **hidden** on the participant page (the projector and moderator views still display the closed run with results).
 
 ### UC-P-08: Submit an answer to the current question
 
@@ -1089,21 +1093,25 @@ recognizes which phase the current question is in.
 - With multi-choice, clicking answers toggles each independently.
 - After moderator reveals, the answer inputs become disabled.
 
-### UC-P-09: See results when revealed or closed
+### UC-P-09: See results on Reveal (participant)
 
-- **Given** the moderator has clicked Reveal or Close
+- **Given** the moderator has clicked **Reveal** on a still-live run
 - **When** the participant view refreshes
 - **Then** the option bars are scaled to vote share, correctness is
   shown, and the participant's selected option is marked correct or
   wrong as appropriate
+- **And** voting is locked until the moderator advances to the next
+  question (which resets reveal) or closes the run (which removes
+  the card per UC-P-07)
 
 **Tests (API)**
 - After `/reveal` with `{"reveal": true}`, `GET .../quiz_runs/{id}` for a participant returns answers with `is_correct` and a `results: {question_id, respondents, totals: {<aid>: <count>}}` payload.
-- After `/close`, same payload behavior persists (run status `closed`, `reveal_current: true`).
+- After `/close`, the same payload is still served by the API; only the participant page hides the run (see UC-P-07).
 
 **Tests (UI)**
 - On `/s/<CODE>`, after reveal `#quiz-body` shows each answer with a bar scaled to vote share and a correctness marker.
 - The participant's selected answer is visually marked correct or wrong.
+- After the moderator clicks Close, `#quiz-card` is hidden on the participant page (final results live on the projector — UC-D-06).
 
 ### UC-P-10: Share QR with neighbor
 

@@ -160,9 +160,9 @@
 
     async function loadQuiz() {
       const rows = await api(`/api/sessions/${CODE}/quiz_runs`);
-      const live = rows.find(r => r.status === "live");
-      const closed = rows.find(r => r.status === "closed");
-      activeQuiz = live || closed || null;
+      // Only render while a run is live. Once it closes, the participant
+      // card disappears — results live on the projector / moderator views.
+      activeQuiz = rows.find(r => r.status === "live") || null;
       if (activeQuiz && activeQuiz.current_question && activeQuiz.current_question.id !== lastQuestionId) {
         pendingSelection = new Set(activeQuiz.my_selections || []);
         lastQuestionId = activeQuiz.current_question.id;
@@ -180,10 +180,8 @@
       card.style.display = "";
       body.innerHTML = "";
       const q = activeQuiz.current_question;
-      const status = activeQuiz.status;
       body.appendChild(el("div", { class: "small muted" },
-        `${escapeHtml(activeQuiz.quiz_title)} — question ${activeQuiz.current_question_idx + 1} of ${activeQuiz.question_count}` +
-        (status === "closed" ? " (closed)" : "")
+        `${escapeHtml(activeQuiz.quiz_title)} — question ${activeQuiz.current_question_idx + 1} of ${activeQuiz.question_count}`
       ));
       if (!q) {
         body.appendChild(el("div", { class: "muted" }, "Waiting for moderator…"));
@@ -193,7 +191,7 @@
       if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
       const submitted = (activeQuiz.my_selections || []).length > 0;
       const showCounts = !!activeQuiz.results;
-      const showCorrect = activeQuiz.reveal_current || status === "closed";
+      const showCorrect = activeQuiz.reveal_current;
       const totals = showCounts ? activeQuiz.results.totals : null;
       const respondents = showCounts ? Math.max(activeQuiz.results.respondents, 1) : 1;
       // Voting is locked only when correctness is on display (reveal/close).
