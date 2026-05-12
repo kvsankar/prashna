@@ -293,11 +293,31 @@
       txt.addEventListener("change", () => patchOption(op.id, { text: txt.value }));
       row.appendChild(el("label", { class: "small", title: "Correct" }, correctBox));
       row.appendChild(txt);
-      if (op.image_url) row.appendChild(el("img", { src: op.image_url, class: "thumb-sm" }));
-      row.appendChild(el("button", { class: "danger ghost xsmall", onclick: async () => {
-        await api(`/api/quiz_options/${op.id}`, { method: "DELETE" });
-        openQuizDetail(editing.id);
-      } }, "✕"));
+      if (op.image_url) row.appendChild(el("img", { src: op.image_url, class: "thumb-sm", alt: "" }));
+      // Image upload / clear, mirroring the item-level affordance.
+      const imgInp = el("input", { type: "file", accept: "image/*", class: "inline",
+                                   "aria-label": "Set option image",
+                                   style: "width: auto; max-width: 140px;" });
+      imgInp.addEventListener("change", async () => {
+        if (!imgInp.files[0]) return;
+        const url = await uploadImage(imgInp.files[0]);
+        if (url) { await patchOption(op.id, { image_url: url }); openQuizDetail(editing.id); }
+      });
+      row.appendChild(imgInp);
+      if (op.image_url) {
+        row.appendChild(el("button", { class: "ghost xsmall",
+          "aria-label": "Clear option image",
+          onclick: async () => {
+            await patchOption(op.id, { image_url: null });
+            openQuizDetail(editing.id);
+          } }, "Clear"));
+      }
+      row.appendChild(el("button", { class: "danger ghost xsmall",
+        "aria-label": "Delete option",
+        onclick: async () => {
+          await api(`/api/quiz_options/${op.id}`, { method: "DELETE" });
+          openQuizDetail(editing.id);
+        } }, "✕"));
       return row;
     }
 
@@ -381,6 +401,13 @@
         body.appendChild(card);
       }
     }
+
+    // Escape closes whichever drill-down is open (results first, then editor).
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape") return;
+      if ($("#results-card").style.display !== "none") { closeResults(); return; }
+      if ($("#editor-card").style.display !== "none") closeEditor();
+    });
 
     // ---------- init ----------
 
