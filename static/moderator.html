@@ -402,14 +402,13 @@
       showWorkSurfaces(true);
     }
 
-    if (!modKey()) {
+    // Try to boot regardless of mod_key presence — admin owners are authed
+    // by their cookie and need no key. Only show the gate if boot fails the
+    // auth check (i.e., not admin owner and either no key or wrong key).
+    boot().catch(e => {
       showKeyGate();
-    } else {
-      boot().catch(e => {
-        showKeyGate();
-        errorToast("Couldn't load session — re-enter the moderator key.");
-      });
-    }
+      if (modKey()) errorToast("Couldn't load session — re-enter the moderator key.");
+    });
   </script>
 </body>
 </html>
