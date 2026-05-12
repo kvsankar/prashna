@@ -30,9 +30,11 @@ The backend now treats session rename, participant base URL changes, and hard-de
 
 Recommendation: make the product rule explicit in one place and drive both API tests and UI from it. If delegated moderators are intentionally narrower, hide owner-only controls when the page is opened with only `X-Mod-Key`.
 
-### High: Public first-run setup still needs a real bootstrap invariant — **DEFERRED**
+### High: Public first-run setup still needs a real bootstrap invariant — **PARTIALLY DONE**
 
-**Reason:** Same answer as the unchanged D5: per the localhost+ngrok workflow, the public-setup window isn't a real risk today. The hosted/SaaS distribution path will need a proper DB-level singleton + setup-token. Tracked together in `docs/todo.md`.
+**Code side — done:** the concurrent-setup race (different usernames) is now closed by a process-wide `threading.Lock` in `app/main.py` around the check+insert. Single-process FastAPI makes this a real invariant. See critical-code-review C4-round-2 for details.
+
+**Workflow side — deferred:** the public-claim story (anyone-can-grab-admin if the URL leaks before setup completes) is still open and tracked as D5. Per the localhost+ngrok workflow there is no public setup window today; revisit when the distribution shifts to a hosted/SaaS path. Three candidate flows (setup token, CLI bootstrap, private bootstrap mode) live in `docs/todo.md`.
 
 
 

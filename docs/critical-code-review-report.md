@@ -62,9 +62,9 @@ Recommendation: for non-moderators and queued runs, return only lobby-safe metad
 
 Recommendation: reject submissions when `run.reveal_current` is true, or introduce an explicit `accepting_answers` phase flag. Add a test that submit-after-reveal returns a controlled 400/409 and does not mutate submissions.
 
-### High: Password changes do not invalidate existing admin cookies — **DONE, MIGRATION GAP FOUND IN ROUND 2**
+### High: Password changes do not invalidate existing admin cookies — **DONE**
 
-**Fix:** Added `User.session_version` (int). Signed cookie payload is now `"{user_id}:{session_version}"`. `current_admin` rejects when versions don't match. `admin_change_password` bumps the counter. Backward-compat shim in `_parse_cookie` allows old uid-only cookies during transition (will phase out after redeploy).
+**Fix:** Added `User.session_version` (int). Signed cookie payload is now `"{user_id}:{session_version}"`. `current_admin` rejects when versions don't match. `admin_change_password` bumps the counter. Backward-compat shim in `_parse_cookie` allows old uid-only cookies during transition (will phase out after redeploy). Round 2 flagged that the new column wouldn't reach existing local SQLite databases — closed by the additive migrator added to `app/db.py:_apply_additive_migrations`.
 
 
 
@@ -72,9 +72,9 @@ Recommendation: reject submissions when `run.reveal_current` is true, or introdu
 
 Recommendation: include a session version, password-changed timestamp, or per-user session secret in signed cookies and verify it on every request. Add a regression test that captures the old `prashna_admin` cookie, changes the password, and proves the old cookie can no longer access admin routes.
 
-### High: First-run admin setup is raceable — **PARTIAL / REOPENED IN ROUND 2**
+### High: First-run admin setup is raceable — **DONE (closed after Round 2 follow-up)**
 
-**Fix status:** `admin_setup` now wraps the insert in try/except `IntegrityError`, re-checks `admin_exists()` after commit, and returns deterministic 409 for the same-username conflict path. The second-pass review found the different-username concurrent setup race is still not fully closed; see the Round 2 section above.
+**Fix:** `admin_setup` is wrapped in a process-wide `threading.Lock` (`_setup_lock`) that serializes the check+insert across all threads in the FastAPI process. Same-username collisions are still caught defensively via `try/except IntegrityError`. Different-username concurrency — the round-2 hole — is now closed by the lock; regression test `test_uc_a_01_concurrent_setup_different_usernames` exercises two parallel setups via a `threading.Barrier` and asserts exactly one 200 / one 409 / one User row. Removed the earlier post-commit cleanup since the lock makes it redundant.
 
 
 
