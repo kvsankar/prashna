@@ -60,9 +60,19 @@ export function openLiveSocket(code, onMessage) {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = `${proto}//${location.host}/ws/sessions/${code}`;
   let ws, retry = 0, alive = true;
+  let everConnected = false;
   function connect() {
     ws = new WebSocket(url);
-    ws.onopen = () => { retry = 0; };
+    ws.onopen = () => {
+      retry = 0;
+      // After a reconnect, force a refetch so the page recovers any state
+      // changes that broadcasted while the socket was down. The initial
+      // connect doesn't need this — the page just loaded its own data.
+      if (everConnected) {
+        try { onMessage({ type: "reconnect" }); } catch {}
+      }
+      everConnected = true;
+    };
     ws.onmessage = ev => {
       try { onMessage(JSON.parse(ev.data)); } catch {}
     };

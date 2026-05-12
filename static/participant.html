@@ -13,7 +13,8 @@
       <span id="code"></span>
       &nbsp;·&nbsp;
       <span class="small muted">You: </span>
-      <input id="my-name" class="inline" placeholder="(anonymous)" maxlength="80">
+      <label for="my-name" class="small muted">Your name</label>
+      <input id="my-name" class="inline" aria-label="Your display name (optional)" placeholder="(anonymous)" maxlength="80">
     </div>
   </header>
 
@@ -30,7 +31,8 @@
 
     <section class="card" id="ask-card">
       <div class="card-head"><h2>Ask</h2></div>
-      <textarea id="query-text" placeholder="Type your query… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
+      <label for="query-text" class="small muted">Your query</label>
+      <textarea id="query-text" aria-label="Your query" placeholder="Type your query… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
       <div class="row" style="margin-top: 8px;">
         <span class="muted small">Anonymous unless you set a name above.</span>
         <div class="spacer"></div>
@@ -228,7 +230,11 @@
       if (!locked) {
         const submitBtn = el("button", { class: "primary", onclick: submitQuiz },
           submitted ? "Update answer" : "Submit");
-        submitBtn.disabled = pendingSelection.size === 0;
+        // First submission needs at least one selection. Updating a prior
+        // submission is allowed to clear the selection (`answer_ids: []`)
+        // — backend supports it and that's the only way to retract a
+        // multi-choice answer once submitted.
+        submitBtn.disabled = !submitted && pendingSelection.size === 0;
         body.appendChild(el("div", { style: "margin-top: 12px;" }, submitBtn,
           submitted ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Your answer is recorded.") : null));
       }

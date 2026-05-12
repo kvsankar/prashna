@@ -81,7 +81,7 @@ setup form for the first visitor to claim admin.
 - `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null}`. Auth: none.
 - `POST /api/admin/setup` with `{"username": "alice", "password": "longenough"}` → `200 {username: "alice"}` and sets `admin_session` cookie. Auth: none.
 - `GET /api/admin/status` immediately after setup (with cookie) → `200 {initialized: true, authenticated: true, username: "alice"}`.
-- `POST /api/admin/setup` a second time → `409 "Admin already initialized"`.
+- `POST /api/admin/setup` a second time → `409 "Admin already initialized"`. Race: two concurrent setup calls — exactly one returns `200`, the other returns `409` (the handler wraps the insert in try/except `IntegrityError` and re-checks `admin_exists()` before serving 200).
 - `POST /api/admin/setup` with `{"username": "alice", "password": "short"}` → `400 "password must be at least 8 characters"`.
 - `POST /api/admin/setup` with `{"username": "", "password": "longenough"}` → `400 "username required"`.
 
@@ -171,10 +171,11 @@ setup form for the first visitor to claim admin.
   the old value
 
 **Tests (API)**
-- `PATCH /api/sessions/{code}` with `{"title": "New"}` → `200 {code, title: "New", status}`. Auth: mod-key OR admin cookie.
+- `PATCH /api/sessions/{code}` with `{"title": "New"}` → `200 {code, title: "New", status}`. Auth: **admin cookie only** (owner-only — `mod_key` cannot rename).
 - `PATCH /api/sessions/{code}` with `{"title": ""}` → `400 "Session title is required"`.
 - `PATCH /api/sessions/{code}` with `{"title": "a"*201}` → `400 "Session title is too long (max 200 chars)"`.
-- `PATCH /api/sessions/{code}` with no auth → `403 "Not authorized — moderator key or admin login required"`.
+- `PATCH /api/sessions/{code}` with no auth → `401`.
+- `PATCH /api/sessions/{code}` with a valid `mod_key` (no admin cookie) → `401` (delegated mods cannot rename).
 - After success, a WebSocket `{type: "session_state"}` is broadcast on `session:{code}`.
 
 **Tests (UI)**
@@ -195,11 +196,12 @@ setup form for the first visitor to claim admin.
   `null` and the frontend falls back to `location.origin`
 
 **Tests (API)**
-- `POST /api/sessions/{code}/participant_base_url` with `{"url": "https://example.com/"}` → `200 {participant_base_url: "https://example.com"}` (trailing slash stripped). Auth: mod-key OR admin cookie.
+- `POST /api/sessions/{code}/participant_base_url` with `{"url": "https://example.com/"}` → `200 {participant_base_url: "https://example.com"}` (trailing slash stripped). Auth: **admin cookie only** (owner-only).
 - `POST /api/sessions/{code}/participant_base_url` with `{"url": "ftp://x"}` → `400 "URL must start with http:// or https://"`.
 - `POST /api/sessions/{code}/participant_base_url` with `{"url": "http://" + "a"*600}` → `400 "URL is too long"`.
 - `POST /api/sessions/{code}/participant_base_url` with `{"url": ""}` → `200 {participant_base_url: null}`.
-- `POST /api/sessions/{code}/participant_base_url` with no auth → `403`.
+- `POST /api/sessions/{code}/participant_base_url` with no auth → `401`.
+- With a valid `mod_key` but no admin cookie → `401`.
 - After success, broadcasts `{type: "session_state"}`.
 
 **Tests (UI)**
@@ -591,6 +593,7 @@ Used by question and answer editors to set `image_url`.
 - With wrong `current_password` (but valid cookie) → `401 "Current password is incorrect"`.
 - With `new_password` shorter than 8 chars → `400 "new password must be at least 8 characters"`.
 - With no cookie at all → `401 "Not authenticated"` (from `auth.current_admin`, before the handler runs). Two distinct 401 paths.
+- **Old cookies are invalidated**: after a successful change_password call, the prior `admin_session` cookie no longer authenticates. Verified by capturing the pre-change cookie, changing password, then issuing an admin-only call with the captured cookie → `401`. (Implementation: signed cookies carry a `session_version`, bumped on each password change; `current_admin` rejects mismatched versions.)
 
 **Tests (UI)**
 - On `/` (authed), clicking Change password opens `#change-pw-card`.
@@ -659,6 +662,7 @@ Used by question and answer editors to set `image_url`.
 - `POST /api/sessions/{code}/end` on a `live` session → `200 {status: "ended"}` and sets `ended_at`.
 - `POST /api/sessions/{code}/end` on a `planning` session → `200 {status: "ended"}` (allowed without first going live).
 - `POST /api/sessions/{code}/end` on an `ended` session → `200` (no-op).
+- `POST /api/sessions/{code}/end` while any QuizRun in this Session is still `live` → `400 "Close the live quiz before ending the session"`. The moderator must explicitly close the run first.
 - Each successful state change broadcasts `{type: "session_state"}`.
 - With no auth → `403`.
 
@@ -756,7 +760,8 @@ recognizes which phase the current question is in.
 - `{"direction": "prev"}` → decrements idx (floored at 0); resets `reveal_current`.
 - `{"direction": "to", "index": 2}` → sets idx to 2 (clamped to `[0, len-1]`).
 - `{"direction": "to", "index": "x"}` → `400 "index must be an integer"`.
-- `POST /api/sessions/{code}/quiz_runs/{id}/live_counts` with `{"show": true}` → `200 {show_live_counts: true}`; with `{"show": false}` → `{show_live_counts: false}`.
+- **Source-state guards**: `/advance` and `/reveal` require `run.status == "live"`; calling on a `queued` or `closed` run → `400 "Run is not live"`. `/close` requires `live` too — calling on `queued` → `400`; on `closed` → `400 "Run is already closed"`.
+- `POST /api/sessions/{code}/quiz_runs/{id}/live_counts` with `{"show": true}` → `200 {show_live_counts: true}`; with `{"show": false}` → `{show_live_counts: false}`. **Allowed on `queued` and `live`** (so a mod can pre-configure before Start). On a `closed` run → `400 "Cannot toggle live counts on a closed run"`.
 - Each route broadcasts `{type: "quiz_run_update"}`.
 - With no auth → `403`.
 
@@ -848,6 +853,7 @@ recognizes which phase the current question is in.
 - `POST .../vote` on a removed query (as participant) → `404`.
 - Broadcasts `{type: "query_removed"}`.
 - With no auth → `403`.
+- **Hard delete is owner-only**: `DELETE /api/sessions/{code}/queries/{qid}` requires admin cookie. A delegated `mod_key` → `401`. (Soft-remove above remains mod-or-owner.)
 
 **Tests (UI)**
 - In moderator `#queries`, clicking Remove on a query marks it visually removed (still visible to moderator) with a Restore action.
@@ -1027,7 +1033,8 @@ recognizes which phase the current question is in.
 
 **Tests (API)**
 - `GET /api/sessions/{code}/quiz_runs` as a participant → returns runs in any non-deleted status: `queued`, `live`, `closed`. Queued is included so the projector can render the "Next up" lobby (UC-D-07); the participant page itself ignores queued in its `loadQuiz()` selector. Auth: none (cookie issued on first call).
-- The serialized run includes `current_question` (id, text, qtype, answers without `is_correct` unless revealed/closed) and `my_selections`.
+- **Queued-run redaction**: for non-moderator callers, a `queued` run is serialized with `current_question: null` — the question text and answers are NOT exposed before Start (prevents pre-launch peek at the first question). Moderators/owners see `current_question` even on queued runs.
+- The serialized run includes `current_question` (id, text, qtype, answers without `is_correct` unless revealed/closed) and `my_selections` once live.
 - For a `closed` run, `is_correct` and `results` are included.
 
 **Tests (UI)**
@@ -1058,6 +1065,8 @@ recognizes which phase the current question is in.
 - `question_id` belonging to a different run's version → `404 "Question not in this quiz run"`.
 - `question_id` valid but not the current one → `400 "Not the current question"`.
 - `single`-type with `len(answer_ids) > 1` → `400 "Only one answer allowed"`.
+- Duplicate `answer_ids` (e.g. `[5, 5, 7]`) are deduped server-side before insert — no `IntegrityError` surfaces, the resulting submission set is `{5, 7}`.
+- **Submit-after-reveal is blocked**: once the moderator clicks Reveal (so `run.reveal_current=true`), `POST .../submit` → `400 "Voting closed — results have been revealed"`. Prior submissions are preserved; no mutation occurs. This prevents a participant who sees the correct answer from going back to change their pick.
 - Run not `live` (queued/closed) → `404 "Quiz not live"`.
 - Session `ended` → `400 "Session has ended"`.
 - Broadcasts `{type: "quiz_submission"}` on success.
@@ -1304,7 +1313,13 @@ are the rules every user-facing UC silently relies on.
   `quiz_submission`); each frontend treats the message as a refresh
   hint and re-fetches the data it cares about
 - **And** the client auto-reconnects with exponential backoff if the
-  socket drops
+  socket drops; **on every reconnect after the first**, the client
+  fires its refresh callback with a synthetic `{type: "reconnect"}`
+  message so the page resyncs any state it may have missed while
+  disconnected.
+- **And** delivery is fanned out concurrently with a per-send timeout
+  (~2 s). A slow or stalled receiver does not block the API
+  response; failed sockets are evicted from the room.
 
 **Tests (API)**
 - Connect WS to `/ws/sessions/{CODE}` with matching `Origin`/`Host`; perform `PATCH /api/sessions/{code}` → WS receives `{"type": "session_state"}`.
@@ -1372,6 +1387,7 @@ are the rules every user-facing UC silently relies on.
 | One `Participant` per `(session, voter_token)`                         | UNIQUE constraint                          |
 
 **Tests (DB)**
+- `PRAGMA foreign_keys` on every connection returns `1` (enabled via SQLAlchemy `connect` event). Cascade deletes (`ondelete="CASCADE"`) are actually enforced at the DB layer, not only by the ORM.
 - Insert two `QuizRun` rows with `status="live"` for the same Session → second insert raises `IntegrityError` (partial unique index `uq_session_live_run`).
 - Insert two `QuizVersion` rows with the same `(quiz_id, version_no)` → raises `IntegrityError`.
 - Insert two `QueryVote` rows for the same `(query_id, participant_id)` → raises `IntegrityError`.

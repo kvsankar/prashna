@@ -183,8 +183,13 @@ def test_uc_p_08_not_live_404(client, admin_client, make_quiz, make_session):
 
 
 def test_uc_p_08_ended_session_400(client, admin_client, make_quiz, make_session):
-    """UC-P-08: ended session → 400 Session has ended."""
+    """UC-P-08: ended session → 400 Session has ended.
+
+    Per the audit fix, /end refuses while a quiz is live — so this test
+    closes the run first, then ends the session.
+    """
     s, q, run = _live_run(admin_client, make_quiz, make_session)
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close")
     admin_client.post(f"/api/sessions/{s['code']}/end")
     admin_client.cookies.clear()
     r = client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/submit",

@@ -274,7 +274,12 @@ def serialize_quiz_run(
         "my_selections": [],
         "results": None,
     }
-    if current is not None:
+    # Non-mods don't see question/answer details for a queued run — they
+    # only need lobby-safe metadata (title, version, status) to render the
+    # "Next up" projector card. Exposing the first question before Start
+    # would let a participant peek at upcoming items via the API.
+    expose_question = current is not None and (is_mod or run.status in ("live", "closed"))
+    if expose_question:
         payload["current_question"] = {
             "id": current.id,
             "text": current.text,
@@ -302,6 +307,21 @@ def serialize_quiz_run(
         if show_results:
             payload["results"] = tally_question(db, run, current)
     return payload
+
+
+def _no_live_quiz_run(db: DbSession, session: m.Session) -> None:
+    """Raise 400 if any QuizRun in this Session is currently `live`."""
+    live = db.scalar(
+        select(m.QuizRun.id).where(
+            m.QuizRun.session_id == session.id,
+            m.QuizRun.status == "live",
+        )
+    )
+    if live:
+        raise HTTPException(
+            400,
+            "A quiz run is currently live — close it before ending the session",
+        )
 
 
 # ---------- quiz lifecycle helpers ----------
@@ -440,9 +460,23 @@ def admin_setup(payload: dict, request: Request, response: Response, db: DbSessi
     username, password = _validate_credentials(payload.get("username", ""), payload.get("password", ""))
     user = m.User(username=username, password_hash=auth.hash_password(password))
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent setup race: two callers both passed the admin_exists()
+        # check, the first wins, the second sees a UNIQUE collision on
+        # username (or our singleton invariant). Surface as 409 either way.
+        db.rollback()
+        raise HTTPException(409, "Admin already initialized")
+    # Belt-and-suspenders singleton invariant: if some other user already
+    # exists, refuse — keep first-run setup as a single-row bootstrap.
+    other = db.scalar(select(m.User.id).where(m.User.id != user.id).limit(1))
+    if other is not None:
+        db.delete(user)
+        db.commit()
+        raise HTTPException(409, "Admin already initialized")
     db.refresh(user)
-    auth.issue_session(response, user.id, secure=request.url.scheme == "https")
+    auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
     return {"username": user.username}
 
 
@@ -453,7 +487,7 @@ def admin_login(payload: dict, request: Request, response: Response, db: DbSessi
     user = db.scalar(select(m.User).where(m.User.username == username)) if username else None
     if not user or not auth.verify_password(password, user.password_hash):
         raise HTTPException(401, "Invalid username or password")
-    auth.issue_session(response, user.id, secure=request.url.scheme == "https")
+    auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
     return {"username": user.username}
 
 
@@ -478,11 +512,11 @@ def admin_change_password(
     if len(new) < MIN_PASSWORD_LEN:
         raise HTTPException(400, f"new password must be at least {MIN_PASSWORD_LEN} characters")
     me.password_hash = auth.hash_password(new)
+    # Bumping session_version invalidates every cookie issued under the old
+    # version — anywhere the old password may have been stored stops working.
+    me.session_version = (me.session_version or 1) + 1
     db.commit()
-    # Re-issue the session cookie so any prior leak of the old cookie loses
-    # its window earlier (cookie value itself stays signed against the same
-    # signer, but bumping it limits some classes of stale-cookie attacks).
-    auth.issue_session(response, me.id, secure=request.url.scheme == "https")
+    auth.issue_session(response, me.id, me.session_version, secure=request.url.scheme == "https")
     return {"ok": True}
 
 
@@ -544,12 +578,13 @@ def get_session(code: str, db: DbSession = Depends(get_db)):
 async def update_session(
     code: str,
     payload: dict,
-    x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
-    me: m.User | None = Depends(auth.optional_admin),
+    me: m.User = Depends(auth.current_admin),
 ):
     s = get_session_by_code(db, code)
-    require_mod_or_owner(s, x_mod_key, me)
+    # Session metadata (title, etc.) is owner-only — delegated moderators
+    # shouldn't be able to rename someone else's session.
+    require_session_owner(s, me)
     if "title" in payload:
         new_title = (payload.get("title") or "").strip()
         if not new_title:
@@ -566,12 +601,13 @@ async def update_session(
 async def set_participant_base_url(
     code: str,
     payload: dict,
-    x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
-    me: m.User | None = Depends(auth.optional_admin),
+    me: m.User = Depends(auth.current_admin),
 ):
     s = get_session_by_code(db, code)
-    require_mod_or_owner(s, x_mod_key, me)
+    # Owner-only: base URL determines the QR shown to attendees; delegating
+    # moderators shouldn't be able to redirect the audience elsewhere.
+    require_session_owner(s, me)
     url = (payload.get("url") or "").strip()
     if url:
         if not (url.startswith("http://") or url.startswith("https://")):
@@ -616,6 +652,7 @@ async def end_session(
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
     if s.status != "ended":
+        _no_live_quiz_run(db, s)
         s.status = "ended"
         s.ended_at = datetime.utcnow()
         db.commit()
@@ -775,10 +812,19 @@ async def toggle_vote(
     if existing:
         db.delete(existing)
         voted = False
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()  # Concurrent delete won — treat as idempotent.
     else:
         db.add(m.QueryVote(query_id=qid, participant_id=p.id))
         voted = True
-    db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Concurrent insert won under UNIQUE(query_id, participant_id) —
+            # the participant did vote, just not via this call. Idempotent.
+            db.rollback()
     db.refresh(q, ["votes"])
     await broadcast_session(s, "query_vote")
     return {"voted": voted, "vote_count": len(q.votes)}
@@ -833,13 +879,14 @@ async def remove_query(
 async def delete_query(
     code: str,
     qid: int,
-    x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
-    me: m.User | None = Depends(auth.optional_admin),
+    me: m.User = Depends(auth.current_admin),
 ):
-    """Hard delete: admin escape hatch. Not on the standard moderator UI."""
+    """Hard delete: admin-owner escape hatch. Not on the standard moderator
+    UI. Owner-only because deletion destroys the audit trail that
+    soft-remove preserves."""
     s = get_session_by_code(db, code)
-    require_mod_or_owner(s, x_mod_key, me)
+    require_session_owner(s, me)
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
@@ -1351,6 +1398,8 @@ async def advance_quiz_run(
     me: m.User | None = Depends(auth.optional_admin),
 ):
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
+    if run.status != "live":
+        raise HTTPException(400, f"Cannot advance from status: {run.status}")
     direction = payload.get("direction", "next")
     total = len(run.quiz_version.questions)
     if direction == "next":
@@ -1378,8 +1427,14 @@ async def set_live_counts(
     db: DbSession = Depends(get_db),
     me: m.User | None = Depends(auth.optional_admin),
 ):
-    """Toggle whether the answering phase exposes running answer counts."""
+    """Toggle whether the answering phase exposes running answer counts.
+
+    Allowed while queued (mod configures ahead of Start) or live. Blocked
+    on closed — those runs are historical.
+    """
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
+    if run.status == "closed":
+        raise HTTPException(400, "Cannot toggle live counts on a closed run")
     run.show_live_counts = bool(payload.get("show", True))
     db.commit()
     await broadcast_session(s, "quiz_run_update")
@@ -1396,6 +1451,8 @@ async def reveal_quiz_run(
     me: m.User | None = Depends(auth.optional_admin),
 ):
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
+    if run.status != "live":
+        raise HTTPException(400, f"Cannot reveal from status: {run.status}")
     run.reveal_current = bool(payload.get("reveal", True))
     db.commit()
     await broadcast_session(s, "quiz_run_update")
@@ -1411,6 +1468,8 @@ async def close_quiz_run(
     me: m.User | None = Depends(auth.optional_admin),
 ):
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
+    if run.status != "live":
+        raise HTTPException(400, f"Cannot close from status: {run.status}")
     run.status = "closed"
     run.reveal_current = True
     run.closed_at = datetime.utcnow()
@@ -1475,6 +1534,11 @@ async def submit_quiz_run(
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id or run.status != "live":
         raise HTTPException(404, "Quiz not live")
+    # Voting closes when the moderator reveals results — last-write-wins
+    # otherwise lets participants change their answer after seeing the
+    # correctness markers and skew the final tally.
+    if run.reveal_current:
+        raise HTTPException(400, "Voting closed — results have been revealed")
     question_id = payload.get("question_id")
     answer_ids_raw = payload.get("answer_ids") or []
     if not isinstance(answer_ids_raw, list):
@@ -1483,6 +1547,9 @@ async def submit_quiz_run(
         answer_ids = [int(a) for a in answer_ids_raw]
     except (TypeError, ValueError):
         raise HTTPException(400, "answer_ids must be integers")
+    # Dedupe so duplicate ids in the payload don't collide with the
+    # UNIQUE(quiz_run_id, question_id, answer_id, participant_id) constraint.
+    answer_ids = list(dict.fromkeys(answer_ids))
     vq = db.get(m.QuizVersionQuestion, question_id)
     if not vq or vq.version_id != run.quiz_version_id:
         raise HTTPException(404, "Question not in this quiz run")
