@@ -211,13 +211,14 @@ itself with `tr.expanded > td.detail-cell` content. Reserved for
 
 ### Status transitions
 
-Entities with lifecycle (Quiz, QuizSession, Question) use **explicitly
+Entities with lifecycle (Session, Quiz, QuizRun, Query) use **explicitly
 named verb buttons**, never a status dropdown:
 
-- `Publish` / `Unpublish` (not "set status to ready")
-- `Start` / `Close` / `Reveal` (not "advance state machine")
-- `Hide` / `Unhide`
-- `Mark answered` / `Unmark`
+- `Publish` / `Unpublish` (Quiz)
+- `Start` / `End` (Session); `Start` / `Close` / `Reveal results` /
+  `Next question` (QuizRun)
+- `Mark responded` / `Reopen` (Query, formerly Q&A "answer")
+- `Remove` / `Restore` (Query soft-remove)
 
 Why: each transition has different validation rules and side effects;
 forcing the user to think in verbs prevents accidental jumps.
