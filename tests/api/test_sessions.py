@@ -132,13 +132,18 @@ def test_uc_a_05_too_long_title_400(admin_client, make_session):
     assert r.json() == {"detail": "Session title is too long (max 200 chars)"}
 
 
-def test_uc_a_05_no_auth_403(client, admin_client, make_session):
-    """UC-A-05: no auth → 403."""
+def test_uc_a_05_no_auth_401(client, admin_client, make_session):
+    """UC-A-05: PATCH session is owner-only → 401 with no cookie.
+
+    The session metadata routes (title, base URL) were tightened to
+    require admin owner cookie; the delegated-moderator path was
+    removed because a delegate shouldn't rename someone else's session.
+    """
     s = make_session()
     admin_client.cookies.clear()
     r = client.patch(f"/api/sessions/{s['code']}", json={"title": "X"})
-    assert r.status_code == 403
-    assert r.json() == {"detail": "Not authorized — moderator key or admin login required"}
+    assert r.status_code == 401
+    assert r.json() == {"detail": "Not authenticated"}
 
 
 def test_uc_a_05_broadcasts_session_state(admin_client, make_session):
@@ -190,13 +195,13 @@ def test_uc_a_06_empty_clears(admin_client, make_session):
     assert r.json() == {"participant_base_url": None}
 
 
-def test_uc_a_06_no_auth_403(client, make_session):
-    """UC-A-06: no auth → 403."""
+def test_uc_a_06_no_auth_401(client, make_session):
+    """UC-A-06: participant_base_url is owner-only → 401 with no cookie."""
     s = make_session()
     client.cookies.clear()
     r = client.post(f"/api/sessions/{s['code']}/participant_base_url",
                     json={"url": "https://example.com"})
-    assert r.status_code == 403
+    assert r.status_code == 401
 
 
 def test_uc_a_06_broadcasts_session_state(admin_client, make_session):

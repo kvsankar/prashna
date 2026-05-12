@@ -44,8 +44,11 @@ def verify_password(pw: str, hashed: str) -> bool:
         return False
 
 
-def issue_session(response: Response, user_id: int, *, secure: bool) -> None:
-    token = _signer.sign(str(user_id)).decode()
+def issue_session(response: Response, user_id: int, session_version: int, *, secure: bool) -> None:
+    # Cookie value is "user_id:session_version". The session_version comes
+    # from the User row; bumping it on password change invalidates older
+    # cookies even though they remain validly signed.
+    token = _signer.sign(f"{user_id}:{session_version}").decode()
     response.set_cookie(
         COOKIE_NAME,
         token,
@@ -60,13 +63,24 @@ def clear_session(response: Response) -> None:
     response.delete_cookie(COOKIE_NAME)
 
 
-def _user_id_from_cookie(cookie: str | None) -> int | None:
+def _parse_cookie(cookie: str | None) -> tuple[int, int] | None:
+    """Return (user_id, session_version) from a signed cookie, or None."""
     if not cookie:
         return None
     try:
-        raw = _signer.unsign(cookie, max_age=SESSION_MAX_AGE)
-        return int(raw.decode())
-    except (BadSignature, SignatureExpired, ValueError):
+        raw = _signer.unsign(cookie, max_age=SESSION_MAX_AGE).decode()
+    except (BadSignature, SignatureExpired):
+        return None
+    # Backwards-compat for older cookies (no session_version field).
+    if ":" in raw:
+        try:
+            uid_str, ver_str = raw.split(":", 1)
+            return int(uid_str), int(ver_str)
+        except ValueError:
+            return None
+    try:
+        return int(raw), 1
+    except ValueError:
         return None
 
 
@@ -74,11 +88,12 @@ def current_admin(
     prashna_admin: Annotated[str | None, Cookie()] = None,
     db: DbSession = Depends(get_db),
 ) -> m.User:
-    uid = _user_id_from_cookie(prashna_admin)
-    if uid is None:
+    parsed = _parse_cookie(prashna_admin)
+    if parsed is None:
         raise HTTPException(401, "Not authenticated")
+    uid, ver = parsed
     u = db.get(m.User, uid)
-    if u is None:
+    if u is None or u.session_version != ver:
         raise HTTPException(401, "Not authenticated")
     return u
 
@@ -87,10 +102,14 @@ def optional_admin(
     prashna_admin: Annotated[str | None, Cookie()] = None,
     db: DbSession = Depends(get_db),
 ) -> m.User | None:
-    uid = _user_id_from_cookie(prashna_admin)
-    if uid is None:
+    parsed = _parse_cookie(prashna_admin)
+    if parsed is None:
         return None
-    return db.get(m.User, uid)
+    uid, ver = parsed
+    u = db.get(m.User, uid)
+    if u is None or u.session_version != ver:
+        return None
+    return u
 
 
 def admin_exists(db: DbSession) -> bool:

@@ -183,7 +183,11 @@ def test_uc_p_11_vote_after_end_400(client, admin_client, make_session):
 
 
 def test_uc_p_11_submit_after_end_400(admin_client, make_quiz, make_session):
-    """UC-P-11: submit on ended → 400."""
+    """UC-P-11: submit on ended → 400 Session has ended.
+
+    Per the audit fix, /end refuses while a quiz is live — so this test
+    closes the run first, then ends the session.
+    """
     q = make_quiz()
     s = make_session()
     run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
@@ -192,6 +196,7 @@ def test_uc_p_11_submit_after_end_400(admin_client, make_quiz, make_session):
     g = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
     qid = g["current_question"]["id"]
     aid = g["current_question"]["answers"][0]["id"]
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close")
     admin_client.post(f"/api/sessions/{s['code']}/end")
     r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/submit",
                           json={"question_id": qid, "answer_ids": [aid]})

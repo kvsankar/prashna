@@ -26,7 +26,7 @@
     <section class="card" id="modkey-card" style="display:none;">
       <div class="card-head"><h2>Moderator key required</h2></div>
       <p class="muted small">Paste the moderator key for session <strong id="modkey-code"></strong>. (Find it in the moderator URL after <code>#k=</code> or via the <em>Moderator URL</em> button on the home page.)</p>
-      <div class="field"><input id="modkey-input" placeholder="e.g. a1b2c3d4e5f6g7h8"></div>
+      <div class="field"><label for="modkey-input">Moderator key</label><input id="modkey-input" aria-label="Moderator key" placeholder="e.g. a1b2c3d4e5f6g7h8"></div>
       <button class="primary" id="modkey-submit">Continue</button>
     </section>
 
@@ -44,7 +44,8 @@
         Override the base URL if this server is reached via a different public address (e.g. a reverse proxy, LAN IP, or tunnel). Leave blank to use the address shown in the moderator's address bar.
       </p>
       <div class="field row gap">
-        <input id="base-url" class="inline" style="flex:1;" placeholder="e.g. https://prashna.sankara.net">
+        <label for="base-url" class="small muted" style="margin-right: 4px;">Base URL</label>
+        <input id="base-url" class="inline" style="flex:1;" aria-label="Participant base URL" placeholder="e.g. https://prashna.sankara.net">
         <button id="base-url-clear" class="ghost small">Use default</button>
       </div>
       <div class="row gap" style="align-items: flex-start;">
@@ -419,7 +420,10 @@
       } catch (e) { errorToast(e.message); }
     });
 
-    function refresh() { loadQueries(); loadQuizRuns(); loadPresence(); }
+    // Includes loadSession so session_state events (Start/End/title change
+    // from another actor, or reconnect after a missed broadcast) refresh
+    // the header badge, lifecycle controls, and invite QR too.
+    function refresh() { loadSession(); loadQueries(); loadQuizRuns(); loadPresence(); }
 
     async function boot() {
       await loadSession();

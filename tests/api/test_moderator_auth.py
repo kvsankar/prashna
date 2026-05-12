@@ -9,27 +9,30 @@ from fastapi.testclient import TestClient
 # ---------- UC-M-01: Auth gates on mod-or-owner routes ----------
 
 def test_uc_m_01_mod_key_header_ok(client, admin_client, make_session, mod_headers):
-    """UC-M-01: valid X-Mod-Key → 200."""
+    """UC-M-01: valid X-Mod-Key on a mod-or-owner route → 200.
+
+    Tested via POST /start (mod-or-owner). PATCH session is now
+    owner-only and would 401 here.
+    """
     s = make_session()
     admin_client.cookies.clear()
-    r = client.patch(f"/api/sessions/{s['code']}",
-                     json={"title": "x"},
-                     headers=mod_headers(s["mod_key"]))
+    r = client.post(f"/api/sessions/{s['code']}/start",
+                    headers=mod_headers(s["mod_key"]))
     assert r.status_code == 200
 
 
 def test_uc_m_01_admin_owner_cookie_ok(admin_client, make_session):
     """UC-M-01: admin cookie, no mod_key → 200."""
     s = make_session()
-    r = admin_client.patch(f"/api/sessions/{s['code']}", json={"title": "x"})
+    r = admin_client.post(f"/api/sessions/{s['code']}/start")
     assert r.status_code == 200
 
 
 def test_uc_m_01_no_auth_403(client, admin_client, make_session):
-    """UC-M-01: no auth + no mod_key → 403."""
+    """UC-M-01: no auth + no mod_key on a mod-or-owner route → 403."""
     s = make_session()
     admin_client.cookies.clear()
-    r = client.patch(f"/api/sessions/{s['code']}", json={"title": "x"})
+    r = client.post(f"/api/sessions/{s['code']}/start")
     assert r.status_code == 403
     assert r.json() == {"detail": "Not authorized — moderator key or admin login required"}
 
@@ -38,10 +41,20 @@ def test_uc_m_01_wrong_mod_key_403(client, admin_client, make_session, mod_heade
     """UC-M-01: wrong mod_key + no admin cookie → 403."""
     s = make_session()
     admin_client.cookies.clear()
-    r = client.patch(f"/api/sessions/{s['code']}",
-                     json={"title": "x"},
-                     headers=mod_headers("badbadbadbadbadx"))
+    r = client.post(f"/api/sessions/{s['code']}/start",
+                    headers=mod_headers("badbadbadbadbadx"))
     assert r.status_code == 403
+
+
+def test_uc_m_01_patch_session_is_owner_only(client, admin_client, make_session, mod_headers):
+    """Mod-key cannot rename a session — owner-only after the audit fix."""
+    s = make_session()
+    admin_client.cookies.clear()
+    r = client.patch(f"/api/sessions/{s['code']}",
+                     json={"title": "delegate-tried"},
+                     headers=mod_headers(s["mod_key"]))
+    # No admin cookie → 401 from auth.current_admin.
+    assert r.status_code == 401
 
 
 def test_uc_m_01_unknown_code_redirects(make_session, app_module):
