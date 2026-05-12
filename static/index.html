@@ -126,6 +126,18 @@
       </div>
       <p class="muted small" style="margin: 0;">Reusable quiz templates that you can launch inside any session.</p>
     </section>
+
+    <section class="card compact" id="change-pw-card" style="display:none;">
+      <div class="card-head">
+        <h2>Change password</h2>
+        <button class="ghost small" id="cp-close">Close</button>
+      </div>
+      <div class="field"><label for="cp-current">Current password</label><input id="cp-current" type="password" autocomplete="current-password"></div>
+      <div class="field"><label for="cp-new">New password</label><input id="cp-new" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="cp-new2">Confirm new password</label><input id="cp-new2" type="password" autocomplete="new-password"></div>
+      <button class="primary" id="cp-submit">Update password</button>
+      <p class="small muted" style="margin: 8px 0 0;">Minimum 8 characters.</p>
+    </section>
   </main>
 
   <script type="module">
@@ -151,6 +163,7 @@
       // Transient cards — hidden on every state change unless explicitly opened.
       sessionDetail: $("#session-detail-card"),
       confirmDelete: $("#confirm-delete-card"),
+      changePw: $("#change-pw-card"),
     };
     function show(...names) {
       for (const k of Object.keys(cards)) cards[k].style.display = names.includes(k) ? "" : "none";
@@ -177,6 +190,9 @@
       const meta = el("div", { class: "row gap" });
       meta.appendChild(el("span", { class: "small muted" }, "Signed in as "));
       meta.appendChild(el("strong", { class: "small" }, s.username));
+      const cpBtn = el("button", { class: "ghost xsmall" }, "Change password");
+      cpBtn.addEventListener("click", openChangePassword);
+      meta.appendChild(cpBtn);
       const logoutBtn = el("button", { class: "ghost xsmall" }, "Log out");
       logoutBtn.addEventListener("click", async () => {
         await api("/api/admin/logout", { method: "POST" });
@@ -460,9 +476,41 @@
       $("#confirm-delete-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
 
+    // ----- change password -----
+    function openChangePassword() {
+      $("#cp-current").value = "";
+      $("#cp-new").value = "";
+      $("#cp-new2").value = "";
+      $("#change-pw-card").style.display = "";
+      $("#cp-current").focus();
+      $("#change-pw-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    function closeChangePassword() {
+      $("#change-pw-card").style.display = "none";
+    }
+    $("#cp-close").addEventListener("click", closeChangePassword);
+    async function submitChangePassword() {
+      const current = $("#cp-current").value;
+      const next = $("#cp-new").value;
+      const confirm2 = $("#cp-new2").value;
+      if (next !== confirm2) { errorToast("New passwords don't match"); return; }
+      if (next.length < 8) { errorToast("Password must be at least 8 characters"); return; }
+      try {
+        await api("/api/admin/change_password", {
+          method: "POST",
+          body: { current_password: current, new_password: next },
+        });
+        toast("Password updated");
+        closeChangePassword();
+      } catch (e) { errorToast(e.message); }
+    }
+    $("#cp-submit").addEventListener("click", submitChangePassword);
+    $("#cp-new2").addEventListener("keydown", e => { if (e.key === "Enter") submitChangePassword(); });
+
     // Escape closes whichever drill-down is open.
     document.addEventListener("keydown", e => {
       if (e.key !== "Escape") return;
+      if ($("#change-pw-card").style.display !== "none") { closeChangePassword(); return; }
       if ($("#confirm-delete-card").style.display !== "none") { hideConfirmCard(); return; }
       if ($("#session-detail-card").style.display !== "none") closeSessionDetail();
     });

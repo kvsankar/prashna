@@ -463,6 +463,29 @@ def admin_logout(response: Response):
     return {"ok": True}
 
 
+@app.post("/api/admin/change_password")
+def admin_change_password(
+    payload: dict,
+    request: Request,
+    response: Response,
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    current = payload.get("current_password") or ""
+    new = payload.get("new_password") or ""
+    if not auth.verify_password(current, me.password_hash):
+        raise HTTPException(401, "Current password is incorrect")
+    if len(new) < MIN_PASSWORD_LEN:
+        raise HTTPException(400, f"new password must be at least {MIN_PASSWORD_LEN} characters")
+    me.password_hash = auth.hash_password(new)
+    db.commit()
+    # Re-issue the session cookie so any prior leak of the old cookie loses
+    # its window earlier (cookie value itself stays signed against the same
+    # signer, but bumping it limits some classes of stale-cookie attacks).
+    auth.issue_session(response, me.id, secure=request.url.scheme == "https")
+    return {"ok": True}
+
+
 # ---------- routes: sessions ----------
 
 @app.get("/api/sessions")
