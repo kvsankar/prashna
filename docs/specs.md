@@ -78,7 +78,7 @@ setup form for the first visitor to claim admin.
   message
 
 **Tests (API)**
-- `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null}`. Auth: none.
+- `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null, github_enabled: false}` (`github_enabled` reflects whether GitHub OAuth is configured — see UC-A-26). Auth: none.
 - `POST /api/admin/setup` with `{"username": "alice", "password": "longenough"}` → `200 {username: "alice"}` and sets `admin_session` cookie. Auth: none.
 - `GET /api/admin/status` immediately after setup (with cookie) → `200 {initialized: true, authenticated: true, username: "alice"}`.
 - `POST /api/admin/setup` a second time → `409 "Admin already initialized"`.
@@ -606,6 +606,49 @@ Used by question and answer editors to set `image_url`.
 - Pressing Escape inside `#change-pw-card` closes it without submitting.
 - `#cp-close` closes the card without submitting.
 
+### UC-A-26: GitHub OAuth admin login (allowlist)
+
+An optional sign-in path for hosted deploys (e.g. the Hetzner box).
+It runs **alongside** username/password login — password stays as a
+fallback. It's enabled only when all of `PRASHNA_GITHUB_CLIENT_ID`,
+`PRASHNA_GITHUB_CLIENT_SECRET`, and `PRASHNA_GITHUB_ADMINS`
+(comma-separated GitHub logins) are set; otherwise the routes 404 and
+the UI shows no button.
+
+- **Given** GitHub login is configured
+- **Then** `GET /api/admin/status` reports `github_enabled: true`, and
+  the landing page shows a **Sign in with GitHub** button
+- **When** the admin clicks it → `GET /api/auth/github/login` redirects
+  to GitHub's authorize URL with a signed, short-lived `state` (CSRF)
+- **And** GitHub redirects back to `GET /api/auth/github/callback`;
+  the server verifies `state`, exchanges the `code`, fetches the
+  GitHub `{id, login}`, and:
+  - if `login` is in the allowlist (case-insensitive) → **find-or-create**
+    the admin `User` keyed by the immutable GitHub `id` (so the first
+    allowlisted sign-in bootstraps the admin — no password setup needed
+    on the server), issues the normal signed `prashna_admin` session
+    cookie, and `303`-redirects to `/`
+  - otherwise → `303`-redirects to `/?auth_error=…` with a banner; no
+    cookie is issued
+- **And** a missing/invalid/expired `state` or a failed token exchange
+  → `303` to `/?auth_error=…`, no cookie
+- **And** GitHub-created admins have no password (`password_hash=""`),
+  so they cannot use the password login; the local password admin (if
+  any) is unaffected
+
+**Tests (API)**
+- `oauth.enabled()` is `True` only when all three env vars are set; `oauth.is_allowed()` matches the allowlist case-insensitively.
+- With GitHub unconfigured: `GET /api/auth/github/login` and `/callback` → `404`; `GET /api/admin/status` → `github_enabled: false`.
+- With GitHub configured: `GET /api/admin/status` → `github_enabled: true`; `GET /api/auth/github/login` → `302` to `github.com/login/oauth/authorize` carrying a `state`.
+- Callback with a forged/garbage `state` → `303` to `/?auth_error=…`, no `prashna_admin` cookie.
+- Callback with valid `state` and an **allowlisted** login (token/user fetch mocked) → `303` to `/`, sets `prashna_admin`; a follow-up `GET /api/admin/status` is `authenticated: true` with `username` = the GitHub login; a `User` row exists with that `github_id`.
+- Callback with a **non-allowlisted** login → `303` to `/?auth_error=…`, no cookie, no new `User`.
+- Two callbacks for the same GitHub `id` reuse the same `User` (no duplicate row).
+
+**Tests (UI)**
+- On `/` with GitHub configured and not authenticated, `#github-login-btn` is visible and links to `/api/auth/github/login`; with GitHub unconfigured it stays hidden.
+- Loading `/?auth_error=Nope` surfaces the message as an error toast and strips the query param.
+
 ---
 
 ## Moderator
@@ -939,6 +982,11 @@ recognizes which phase the current question is in.
   this session
 - **And** `last_seen_at` is updated at most once per 5 seconds per
   request
+- **And** concurrent first-touch requests sharing one fresh
+  `voter_token` (e.g. the projector firing `/queries` and
+  `/quiz_runs` in parallel) resolve to a **single** Participant row:
+  the loser of the insert race catches `IntegrityError`, re-reads the
+  winner's row, and never surfaces a `500`
 
 **Tests (API)**
 - `GET /api/sessions/{code}/me` with no cookie → `200 {id, name: null}` and `Set-Cookie: voter_token=<token>` (non-HttpOnly, SameSite=Lax). Auth: none (cookie issued on first call).
@@ -946,6 +994,7 @@ recognizes which phase the current question is in.
 - Two distinct cookies for the same session create two distinct Participants (unique on `(session_id, voter_token)`).
 - Two consecutive participant calls within 5s update `last_seen_at` only once (throttled).
 - A call > 5s later updates `last_seen_at` again.
+- Two concurrent participant-resolving GETs sharing one fresh `voter_token` on a not-yet-joined session → both return `200` and exactly one Participant row exists for `(session, voter_token)` (insert race handled, no `500`).
 
 **Tests (UI)**
 - Loading `/s/<CODE>` in a fresh browser context sets a `voter_token` cookie (readable in JS — non-HttpOnly).
@@ -1065,7 +1114,10 @@ recognizes which phase the current question is in.
 - **When** they click answers (single → exclusive; multi → toggle)
   and click Submit
 - **Then** `POST .../quiz_runs/{id}/submit` replaces their prior
-  submissions for that question with the new ones (last-write-wins)
+  submissions for that question with the new ones (last-write-wins);
+  the replace is a **diff** (drop rows no longer selected, add the
+  newly selected), so re-submitting the identical selection is an
+  idempotent no-op rather than a UNIQUE-constraint `500`
 - **And** answer ids must reference the current question's answers
   (matched `answer_id ∈ vq.answers`); a wrong `question_id`
   (not in the run's version) returns `404 "Question not in this
@@ -1077,6 +1129,7 @@ recognizes which phase the current question is in.
 **Tests (API)**
 - `POST /api/sessions/{code}/quiz_runs/{id}/submit` with `{"question_id": <current_vq_id>, "answer_ids": [<aid>]}` → `200 {ok: true}` and replaces any prior submissions for this voter+question. Auth: none (cookie issued on first call).
 - Resubmitting with a different answer replaces; old QuizSubmission rows are gone, new ones inserted.
+- Re-submitting the **identical** selection three times in a row → each returns `200` (idempotent; no `500`), and `my_selections` is unchanged.
 - `answer_ids` referencing an answer not in the current question → `400 "Invalid answer"`.
 - `answer_ids` not a list → `400 "answer_ids must be a list"`; non-int entries → `400 "answer_ids must be integers"`.
 - `question_id` belonging to a different run's version → `404 "Question not in this quiz run"`.
@@ -1368,20 +1421,33 @@ are the rules every user-facing UC silently relies on.
 - Connect WS to `/ws/sessions/NOSUCH` with matching Origin/Host → server closes with code `4404`.
 - Connect WS with no Origin header (curl-style client) → upgrade succeeds (matching skipped when Origin absent).
 
-### UC-X-03: Static asset security headers
+### UC-X-03: HTTP security headers
 
-- **Given** any file under `/uploads/`
-- **Then** responses carry `X-Content-Type-Options: nosniff`,
-  `Content-Security-Policy: default-src 'none'; sandbox`, and
-  `Cross-Origin-Resource-Policy: same-origin` — defense in depth in
-  case a file slips past the extension check
+Two tiers, applied by one middleware:
 
-**Tests (API)**
-- After a `POST /api/uploads` returning `/uploads/<uuid>.png`, `GET /uploads/<uuid>.png` returns the bytes with:
+- **Baseline (every non-`/uploads` response — pages + API):**
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Content-Security-Policy: frame-ancestors 'none'` — blocks
+    clickjacking of the admin / moderator UI. A stricter `script-src`
+    CSP is intentionally **not** set: the no-build pages rely on
+    inline `<script type="module">` blocks, and `frame-ancestors` is
+    the high-value directive that doesn't break them.
+  - `Referrer-Policy: no-referrer` — session codes and `?bad_code=`
+    never leak to third parties via the `Referer` header.
+- **Uploaded files (`/uploads/*`)** carry a stricter isolation set
+  **instead** of the baseline:
   - `X-Content-Type-Options: nosniff`
   - `Content-Security-Policy: default-src 'none'; sandbox`
   - `Cross-Origin-Resource-Policy: same-origin`
-- `GET /static/app.css` (non-uploads path) does NOT carry these headers.
+  — defense in depth in case a file slips past the extension check.
+
+**Tests (API)**
+- After a `POST /api/uploads` returning `/uploads/<uuid>.png`, `GET /uploads/<uuid>.png` returns the bytes with the uploads-tier headers:
+  - `X-Content-Type-Options: nosniff`
+  - `Content-Security-Policy: default-src 'none'; sandbox`
+  - `Cross-Origin-Resource-Policy: same-origin`
+- `GET /` and `GET /static/app.css` (non-uploads paths) carry the baseline headers (`nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `Referrer-Policy: no-referrer`) and do NOT carry the uploads-tier `default-src 'none'; sandbox` CSP.
 
 ### UC-X-04: Image upload constraints
 
@@ -1444,6 +1510,9 @@ signing key is read from `PRASHNA_SECRET_KEY` at process start.
 - **Then** the process generates a random key once and uses it for
   the process lifetime; all admin sessions are invalidated on every
   restart (admins must re-login)
+- **And** the process logs a `WARNING` at startup
+  (`auth.SECRET_KEY_IS_EPHEMERAL` is `True`) so an operator running
+  without the env var isn't surprised by sessions dropping on restart
 - **Operational rule:** production deployments **must** set
   `PRASHNA_SECRET_KEY` to a long random string and keep it stable.
   Rotating it is a deliberate "invalidate all sessions" action.
@@ -1452,6 +1521,41 @@ signing key is read from `PRASHNA_SECRET_KEY` at process start.
 - Start app with `PRASHNA_SECRET_KEY=abc...` env var, log in (admin cookie issued); restart app with same env var → `GET /api/admin/status` with the old cookie still returns `authenticated: true`.
 - Start app with `PRASHNA_SECRET_KEY` unset, log in; restart app without setting the env var → old cookie now fails to verify and `GET /api/admin/status` returns `authenticated: false`.
 - Start app with one value of `PRASHNA_SECRET_KEY`, log in; restart with a different value → old cookie fails to verify (rotation invalidates sessions).
+- `auth._resolve_secret(None)` returns `(<random>, True)` (ephemeral) and `auth._resolve_secret("abc")` returns `("abc", False)`; with the env var set (as in the test session) `auth.SECRET_KEY_IS_EPHEMERAL` is `False`.
+
+### UC-X-08: Rate limiting
+
+A single-process, in-memory token-bucket limiter (`app/ratelimit.py`)
+throttles abuse-prone routes. Each bucket is keyed by client IP; the
+capacity is the allowed burst and refill is the sustained rate.
+
+- **Given** the limiter is enabled (default; disable with
+  `PRASHNA_RATELIMIT=off`)
+- **Then** the following per-IP buckets apply, returning `429` with a
+  human-readable `detail` when exhausted:
+
+  | Route | Burst | Sustained | Notes |
+  | --- | --- | --- | --- |
+  | `POST /api/admin/login` | 8 | 1 / 30s | Checked **before** `verify_password` (bcrypt is costly); a successful login clears the bucket so a legitimate admin is never locked out |
+  | new `Participant` row (in participant resolution) | 15 | 1 / 20s | Bounds row growth / presence inflation from a token-rotating flooder |
+  | `POST .../queries` | 6 | 1 / 10s | |
+  | `POST .../queries/{id}/vote` | 30 | 2 / s | |
+  | `POST .../quiz_runs/{id}/submit` | 20 | 1 / 2s | |
+
+- **Client IP** is the socket peer by default. Behind a reverse proxy
+  set `PRASHNA_TRUSTED_PROXY_HOPS=N` (N = number of trusted hops; `1`
+  for ngrok or the bundled nginx) so the limiter keys on the entry the
+  outermost trusted proxy recorded in `X-Forwarded-For` — a
+  client-supplied prefix to its left is ignored (spoof-resistant).
+- **Scope:** this stops single-source floods and login brute-forcing.
+  A distributed (many-IP) flood is out of scope for an in-process
+  limiter. WebSocket connects are not rate-limited.
+
+**Tests (API)**
+- Token bucket: allows `capacity` calls then denies; refills at the configured rate (deterministic injected clock); keys are independent; `enabled=False` always allows; `reset`/`clear` restore a fresh bucket.
+- `enabled_from_env`: `None`/`"on"`/`"1"` → enabled; `"off"`/`"0"`/`"false"`/`"no"` (any case) → disabled.
+- `_client_ip`: with hops=0 returns the socket peer; with hops=1 returns the rightmost `X-Forwarded-For` entry even when a spoofed value precedes it; with hops=2 the second-from-right; with hops>0 and no XFF falls back to the peer.
+- Endpoint floods (limiter re-enabled for the test): login → `429` after the burst, and a correct login resets the throttle; `POST queries` / `vote` / `submit` each return `429` under a sustained flood; rapid fresh `voter_token`s eventually `429` on participant creation. With the limiter off (suite default) none of these `429`.
 
 ---
 
@@ -1479,15 +1583,12 @@ use cases because they need a product call before they have shape.
 - **`image_url` server-side validation** — admin can set any URL on
   an item or option via PATCH. Limiting to `/uploads/<uuid>.<ext>`
   would harden against external-URL injection.
-- **Rate limiting** on session-code enumeration and login attempts.
 - **Multi-moderator audit columns** — who responded/removed/started/
   closed. Useful once delegate moderators are real.
 - **CHECK constraints** on status enums (`session.status`,
   `quiz.status`, `quizrun.status`, `quiz_question.qtype`).
 - **Image-only answers** — render correctly today, but publish
   validation accepts them; results UI shows blank cells if no text.
-- **`PRASHNA_SECRET_KEY` not warning when unset** — process boots
-  silently with a random key.
 - **Reverse-proxy `secure` cookie flag** — currently derived from
   `request.url.scheme`; behind TLS termination without
   `ProxyHeadersMiddleware`, the flag is wrong.

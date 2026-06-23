@@ -35,6 +35,9 @@ def uvicorn_url(tmp_path_factory) -> str:
     env["PRASHNA_DB_PATH"] = str(db_path)
     env["PRASHNA_UPLOADS_DIR"] = str(upload_dir)
     env["PRASHNA_SECRET_KEY"] = "ui-test-" + secrets.token_hex(8)
+    # UI tests don't exercise rate limiting; keep it off so rapid scripted
+    # clicks never trip a 429.
+    env["PRASHNA_RATELIMIT"] = "off"
 
     root = Path(__file__).resolve().parents[2]
     proc = subprocess.Popen(

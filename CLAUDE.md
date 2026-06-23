@@ -83,6 +83,17 @@ Environment:
   `<repo>/prashna.db`). Used by Docker + tests.
 - `PRASHNA_UPLOADS_DIR` — override uploads dir (default
   `<repo>/uploads`).
+- `PRASHNA_TRUSTED_PROXY_HOPS` — number of trusted reverse-proxy hops
+  for client-IP resolution (rate limiting). Default `0` (socket peer).
+  Set `1` behind ngrok or the bundled nginx so per-IP limits key on the
+  real client, not a spoofable `X-Forwarded-For` prefix (UC-X-08).
+- `PRASHNA_RATELIMIT` — set to `off` (also `0`/`false`/`no`) to disable
+  rate limiting entirely. On by default (UC-X-08).
+- `PRASHNA_GITHUB_CLIENT_ID` / `PRASHNA_GITHUB_CLIENT_SECRET` /
+  `PRASHNA_GITHUB_ADMINS` — enable GitHub OAuth admin login when all
+  three are set; `_ADMINS` is a comma-separated GitHub-login allowlist.
+  OAuth App callback: `https://<host>/api/auth/github/callback`
+  (UC-A-26).
 
 Tests:
 
@@ -129,6 +140,13 @@ Don't conflate `QuizRun` (playthrough) with `Session` (the gathering).
 - **Admin** — bcrypt password, signed cookie. First-run setup
   creates the only admin row; `POST /api/admin/setup` returns 409
   thereafter (UC-A-01).
+- **Admin via GitHub OAuth** — optional, allowlisted sign-in for
+  hosted deploys (UC-A-26, `app/oauth.py`). Enabled when
+  `PRASHNA_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_ADMINS` are set.
+  Runs **alongside** password login (fallback). The callback
+  find-or-creates a `User` keyed by `User.github_id`; such users have
+  `password_hash=""` and can't password-login. Issues the same signed
+  cookie. Don't make GitHub the *only* admin path without an ask.
 - **Moderator** — `mod_key` (16-char hex) per Session. Passed via
   `X-Mod-Key` header. Moderator routes accept **either** admin
   cookie (owner) **or** `mod_key` via `require_mod_or_owner`.

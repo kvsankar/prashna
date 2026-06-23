@@ -76,6 +76,47 @@ def test_uc_p_02_distinct_cookies_distinct_participants(admin_client, make_sessi
     assert r1["id"] != r2["id"]
 
 
+def test_uc_p_02_concurrent_first_touch_single_row(make_session, app_module):
+    """UC-P-02: concurrent first-touch sharing one fresh token → one row, no 500.
+
+    Mirrors the projector firing /queries and /quiz_runs in parallel before a
+    Participant row exists for the cookie. The insert race must resolve to a
+    single row with both requests returning 200.
+    """
+    import secrets as _secrets
+    import threading
+
+    s = make_session()
+    token = "shared-" + _secrets.token_hex(8)
+    results = []
+    barrier = threading.Barrier(2)
+
+    def hit(path):
+        with TestClient(app_module.app) as c:
+            c.cookies.set("voter_token", token)
+            barrier.wait()
+            r = c.get(f"/api/sessions/{s['code']}/{path}")
+            results.append(r.status_code)
+
+    threads = [
+        threading.Thread(target=hit, args=("queries",)),
+        threading.Thread(target=hit, args=("quiz_runs",)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert sorted(results) == [200, 200], results
+    from app.db import SessionLocal
+    from app import models as m
+    with SessionLocal() as db:
+        sess = db.query(m.Session).filter_by(code=s["code"]).one()
+        rows = db.query(m.Participant).filter_by(
+            session_id=sess.id, voter_token=token).all()
+        assert len(rows) == 1
+
+
 def test_uc_p_02_last_seen_throttle(client, admin_client, make_session):
     """UC-P-02: two calls within 5s → last_seen_at advances only once."""
     s = make_session()

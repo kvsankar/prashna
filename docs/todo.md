@@ -101,12 +101,15 @@ if a real ordering bug surfaces.
 
 ## Operational
 
-### Hetzner server bootstrap — HOLD
+### Hetzner server bootstrap — PLANNED
 *Source:* task #14 in the in-session task list.
 Docker install + nginx + TLS + container on the Hetzner VPS.
-**User decision (2026-05-12):** hold. Operator runs locally and
-exposes via ngrok for now; full VPS deploy is not the current
-distribution path. Revisit when SaaS hosting is on the table.
+**User decision (2026-06-23):** back on — user plans a single-operator
+Hetzner deploy (behind the bundled nginx) for their own use, not
+multi-tenant SaaS. (Reverses the 2026-05-12 hold.) Deploy artifacts
+now set `PRASHNA_TRUSTED_PROXY_HOPS=1` for the nginx hop; rate limiting
+is in-app (UC-X-08). Still a private single-admin instance, so the
+first-visitor-claims-admin window stays workflow-mitigated.
 
 ### Backward-compat cookie shim — CLEANUP
 *Source:* this branch.
