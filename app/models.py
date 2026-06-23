@@ -14,7 +14,12 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    # Empty for GitHub-OAuth admins (UC-A-26) — they authenticate via GitHub,
+    # not a password, so password login simply never verifies for them.
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Set for admins who signed in via GitHub OAuth; maps the immutable
+    # GitHub numeric id to this User row. NULL for password-only admins.
+    github_id: Mapped[int | None] = mapped_column(Integer, index=True, unique=True, nullable=True)
     # Bumped on every password change; included in the signed session cookie
     # so previously-issued cookies become invalid after a password change.
     session_version: Mapped[int] = mapped_column(Integer, default=1)

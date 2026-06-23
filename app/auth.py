@@ -26,8 +26,26 @@ MAX_PASSWORD_BYTES = 72
 
 # Without PRASHNA_SECRET_KEY, sessions are valid only for the process lifetime.
 # Set the env var in any real deployment so sessions survive restarts.
-_secret = os.environ.get("PRASHNA_SECRET_KEY") or pysecrets.token_urlsafe(32)
+def _resolve_secret(env_value: str | None) -> tuple[str, bool]:
+    """Return (signing_key, is_ephemeral).
+
+    Ephemeral means we generated a throwaway key because the operator
+    didn't set PRASHNA_SECRET_KEY — admin sessions won't survive a
+    restart. The boolean lets startup log a warning (UC-X-07).
+    """
+    if env_value:
+        return env_value, False
+    return pysecrets.token_urlsafe(32), True
+
+
+_secret, SECRET_KEY_IS_EPHEMERAL = _resolve_secret(os.environ.get("PRASHNA_SECRET_KEY"))
 _signer = TimestampSigner(_secret)
+
+
+def new_signer() -> TimestampSigner:
+    """A signer over the same app secret — for one-off signed tokens like
+    the GitHub OAuth `state` (CSRF) that aren't session cookies."""
+    return TimestampSigner(_secret)
 
 
 def hash_password(pw: str) -> str:

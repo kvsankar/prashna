@@ -57,7 +57,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, pathCode, openLiveSocket, toast, errorToast, renderQR } from "/static/common.js";
+    import { $, api, el, pathCode, openLiveSocket, toast, errorToast, renderQR } from "/static/common.js";
 
     const CODE = pathCode();
     let queries = [];
@@ -181,7 +181,7 @@
       body.innerHTML = "";
       const q = activeQuiz.current_question;
       body.appendChild(el("div", { class: "small muted" },
-        `${escapeHtml(activeQuiz.quiz_title)} — question ${activeQuiz.current_question_idx + 1} of ${activeQuiz.question_count}`
+        `${activeQuiz.quiz_title} — question ${activeQuiz.current_question_idx + 1} of ${activeQuiz.question_count}`
       ));
       if (!q) {
         body.appendChild(el("div", { class: "muted" }, "Waiting for moderator…"));

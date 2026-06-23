@@ -1,6 +1,7 @@
 """Prashna — live Q&A + quiz tool for training sessions."""
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import threading
@@ -31,10 +32,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession, selectinload
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from urllib.parse import quote
+
 from .db import SessionLocal, get_db, init_db
 from . import models as m
 from . import auth
+from . import oauth
 from .ws import hub
+from .ratelimit import TokenBucketLimiter, enabled_from_env
 
 BASE = Path(__file__).resolve().parent.parent
 STATIC = BASE / "static"
@@ -45,18 +50,71 @@ ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 PRESENCE_WINDOW = timedelta(seconds=30)
 LAST_SEEN_THROTTLE = timedelta(seconds=5)
 
+# ---------- rate limiting (UC-X-08) ----------
+# Single-process in-memory limiter. Keyed by client IP. See app/ratelimit.py.
+limiter = TokenBucketLimiter(enabled=enabled_from_env(os.environ.get("PRASHNA_RATELIMIT")))
+
+# Number of trusted reverse-proxy hops in front of the app. 0 (default) =
+# use the socket peer (correct for direct localhost; degrades to a global
+# throttle behind a proxy). Set to 1 when fronted by ngrok or the bundled
+# nginx (a single hop) so the limiter keys on the real client IP and not a
+# spoofable X-Forwarded-For prefix.
+TRUSTED_PROXY_HOPS = max(0, int(os.environ.get("PRASHNA_TRUSTED_PROXY_HOPS") or 0))
+
+# (capacity = burst, refill = tokens/second). Generous for a human,
+# hostile to a script. Tunable here; not per-deployment config by design.
+RL_LOGIN = (8, 1 / 30)       # admin login attempts per IP
+RL_NEW_PARTICIPANT = (15, 1 / 20)  # fresh Participant rows per IP
+RL_ASK = (6, 1 / 10)         # query submissions per IP
+RL_VOTE = (30, 2.0)          # query vote toggles per IP
+RL_SUBMIT = (20, 0.5)        # quiz-answer submissions per IP
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP for rate-limit keying.
+
+    With `TRUSTED_PROXY_HOPS = N > 0`, the client is the X-Forwarded-For
+    entry the outermost trusted proxy recorded (the N-th from the right) —
+    spoof-resistant, since a client-supplied prefix sits to its left. With
+    N = 0 we use the socket peer.
+    """
+    if TRUSTED_PROXY_HOPS > 0:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            parts = [p.strip() for p in xff.split(",") if p.strip()]
+            if parts:
+                return parts[-min(TRUSTED_PROXY_HOPS, len(parts))]
+    return request.client.host if request.client else "unknown"
+
+
+logger = logging.getLogger("prashna")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    if auth.SECRET_KEY_IS_EPHEMERAL:
+        logger.warning(
+            "PRASHNA_SECRET_KEY is not set — admin sessions use an ephemeral "
+            "signing key and will be invalidated on every restart. Set it to a "
+            "long, stable random string for any real deployment (UC-X-07)."
+        )
     yield
 
 
 app = FastAPI(title="Prashna", lifespan=lifespan)
 
 
-class UploadsSecurityHeaders(BaseHTTPMiddleware):
-    """Defense-in-depth headers for user-uploaded files."""
+class SecurityHeaders(BaseHTTPMiddleware):
+    """HTTP security headers (UC-X-03).
+
+    Two tiers: a strict isolation set for user-uploaded files under
+    `/uploads/`, and a clickjacking/sniffing baseline for every other
+    response (pages + API). The baseline deliberately omits a `script-src`
+    CSP — the no-build pages rely on inline module scripts — and uses
+    `frame-ancestors 'none'`, the high-value directive that doesn't break
+    them.
+    """
 
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -64,10 +122,15 @@ class UploadsSecurityHeaders(BaseHTTPMiddleware):
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
             response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        else:
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+            response.headers.setdefault("Referrer-Policy", "no-referrer")
         return response
 
 
-app.add_middleware(UploadsSecurityHeaders)
+app.add_middleware(SecurityHeaders)
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -164,10 +227,27 @@ def current_participant(
         m.Participant.voter_token == token,
     ))
     if not p:
+        # Bound fresh-row creation per IP: a flooder rotating voter_token
+        # cookies could otherwise mint unbounded Participants and inflate
+        # presence counts (UC-X-08 / S4).
+        if not limiter.allow(f"newp:{_client_ip(request)}", *RL_NEW_PARTICIPANT):
+            raise HTTPException(429, "Too many new participants from your network — slow down")
         p = m.Participant(session_id=session.id, voter_token=token)
         db.add(p)
-        db.commit()
-        db.refresh(p)
+        try:
+            db.commit()
+            db.refresh(p)
+        except IntegrityError:
+            # A concurrent request (e.g. the projector firing /queries and
+            # /quiz_runs in parallel) inserted the same (session, voter_token)
+            # first. Re-resolve to the winner's row instead of 500-ing.
+            db.rollback()
+            p = db.scalar(select(m.Participant).where(
+                m.Participant.session_id == session.id,
+                m.Participant.voter_token == token,
+            ))
+            if p is None:
+                raise
     else:
         nowt = datetime.utcnow()
         if nowt - p.last_seen_at >= LAST_SEEN_THROTTLE:
@@ -451,7 +531,69 @@ def admin_status(db: DbSession = Depends(get_db), me: m.User | None = Depends(au
         "initialized": auth.admin_exists(db),
         "authenticated": me is not None,
         "username": me.username if me else None,
+        "github_enabled": oauth.enabled(),
     }
+
+
+# ---------- routes: GitHub OAuth login (UC-A-26) ----------
+
+def _auth_error_redirect(message: str) -> RedirectResponse:
+    return RedirectResponse(f"/?auth_error={quote(message)}", status_code=303)
+
+
+@app.get("/api/auth/github/login")
+def github_login():
+    if not oauth.enabled():
+        raise HTTPException(404, "GitHub login is not configured")
+    return RedirectResponse(oauth.authorize_url(oauth.sign_state()), status_code=302)
+
+
+@app.get("/api/auth/github/callback")
+def github_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    db: DbSession = Depends(get_db),
+):
+    if not oauth.enabled():
+        raise HTTPException(404, "GitHub login is not configured")
+    if not code or not oauth.check_state(state):
+        return _auth_error_redirect("GitHub sign-in failed — please try again")
+    token = oauth.exchange_code(code)
+    if not token:
+        return _auth_error_redirect("GitHub sign-in failed — please try again")
+    ghuser = oauth.fetch_user(token) or {}
+    gid, login = ghuser.get("id"), ghuser.get("login")
+    if not gid or not oauth.is_allowed(login or ""):
+        return _auth_error_redirect("That GitHub account is not authorized for this server")
+    user = db.scalar(select(m.User).where(m.User.github_id == gid))
+    if user is None:
+        user = _create_github_admin(db, gid, login)
+    redirect = RedirectResponse("/", status_code=303)
+    auth.issue_session(redirect, user.id, user.session_version, secure=request.url.scheme == "https")
+    return redirect
+
+
+def _create_github_admin(db: DbSession, gid: int, login: str | None) -> m.User:
+    """Find-or-create the admin User for a GitHub id. Handles the insert race
+    (another concurrent callback won) and a username collision with an
+    existing local admin (fall back to a github-suffixed username)."""
+    username = login or f"github-{gid}"
+    user = m.User(username=username, github_id=gid, password_hash="")
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        winner = db.scalar(select(m.User).where(m.User.github_id == gid))
+        if winner is not None:
+            return winner
+        # Username collided with a local admin — retry with a unique name.
+        user = m.User(username=f"{username}-gh{gid}", github_id=gid, password_hash="")
+        db.add(user)
+        db.commit()
+    db.refresh(user)
+    return user
 
 
 # Serializes first-run admin_setup against itself. Prashna runs as a
@@ -484,11 +626,18 @@ def admin_setup(payload: dict, request: Request, response: Response, db: DbSessi
 
 @app.post("/api/admin/login")
 def admin_login(payload: dict, request: Request, response: Response, db: DbSession = Depends(get_db)):
+    # Throttle BEFORE verify_password: bcrypt is deliberately expensive, so a
+    # login flood is itself a CPU DoS. A successful login clears the bucket so
+    # a fumbling-then-correct admin is never locked out (UC-X-08).
+    ip_key = f"login:{_client_ip(request)}"
+    if not limiter.allow(ip_key, *RL_LOGIN):
+        raise HTTPException(429, "Too many login attempts — wait a moment and try again")
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
     user = db.scalar(select(m.User).where(m.User.username == username)) if username else None
     if not user or not auth.verify_password(password, user.password_hash):
         raise HTTPException(401, "Invalid username or password")
+    limiter.reset(ip_key)
     auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
     return {"username": user.username}
 
@@ -769,6 +918,8 @@ async def create_query(
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
+    if not limiter.allow(f"ask:{_client_ip(request)}", *RL_ASK):
+        raise HTTPException(429, "You're asking too fast — wait a moment and try again")
     text = (payload.get("text") or "").strip()
     if not text:
         raise HTTPException(400, "text required")
@@ -799,6 +950,8 @@ async def toggle_vote(
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
+    if not limiter.allow(f"vote:{_client_ip(request)}", *RL_VOTE):
+        raise HTTPException(429, "Too many votes — slow down and try again")
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
@@ -1533,6 +1686,8 @@ async def submit_quiz_run(
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
+    if not limiter.allow(f"submit:{_client_ip(request)}", *RL_SUBMIT):
+        raise HTTPException(429, "Too many submissions — slow down and try again")
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id or run.status != "live":
         raise HTTPException(404, "Quiz not live")
@@ -1564,22 +1719,31 @@ async def submit_quiz_run(
     if any(aid not in valid_answer_ids for aid in answer_ids):
         raise HTTPException(400, "Invalid answer")
     p = current_participant(s, request, response, voter_token, db)
-    existing = db.scalars(
-        select(m.QuizSubmission).where(
-            m.QuizSubmission.quiz_run_id == run.id,
-            m.QuizSubmission.question_id == vq.id,
-            m.QuizSubmission.participant_id == p.id,
-        )
-    ).all()
-    for r in existing:
-        db.delete(r)
+    existing = {
+        r.answer_id: r for r in db.scalars(
+            select(m.QuizSubmission).where(
+                m.QuizSubmission.quiz_run_id == run.id,
+                m.QuizSubmission.question_id == vq.id,
+                m.QuizSubmission.participant_id == p.id,
+            )
+        ).all()
+    }
+    new_ids = set(answer_ids)
+    # Diff rather than delete-all-then-reinsert: re-submitting the identical
+    # selection is then a no-op. (Delete-all-then-insert would 500 — the unit
+    # of work flushes the new INSERT before the old DELETE, colliding on
+    # UNIQUE(run, question, answer, participant).)
+    for aid, row in existing.items():
+        if aid not in new_ids:
+            db.delete(row)
     for aid in answer_ids:
-        db.add(m.QuizSubmission(
-            quiz_run_id=run.id,
-            question_id=vq.id,
-            answer_id=aid,
-            participant_id=p.id,
-        ))
+        if aid not in existing:
+            db.add(m.QuizSubmission(
+                quiz_run_id=run.id,
+                question_id=vq.id,
+                answer_id=aid,
+                participant_id=p.id,
+            ))
     db.commit()
     await broadcast_session(s, "quiz_submission")
     return {"ok": True}

@@ -84,6 +84,26 @@ def test_uc_p_08_resubmit_replaces(client, admin_client, make_quiz, make_session
     assert g2["my_selections"] == [a2]
 
 
+def test_uc_p_08_resubmit_identical_is_idempotent(client, admin_client, make_quiz, make_session):
+    """UC-P-08: re-submitting the IDENTICAL selection is a no-op, not a 500.
+
+    Delete-all-then-reinsert would collide on the UNIQUE submission index
+    because the new INSERT flushes before the old DELETE; the diff path
+    keeps it idempotent.
+    """
+    s, q, run = _live_run(admin_client, make_quiz, make_session)
+    admin_client.cookies.clear()
+    g = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    qid = g["current_question"]["id"]
+    aid = g["current_question"]["answers"][0]["id"]
+    body = {"question_id": qid, "answer_ids": [aid]}
+    for _ in range(3):
+        r = client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/submit", json=body)
+        assert r.status_code == 200, r.text
+    g2 = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    assert g2["my_selections"] == [aid]
+
+
 def test_uc_p_08_invalid_answer_400(client, admin_client, make_quiz, make_session):
     """UC-P-08: answer not in current question → 400 Invalid answer."""
     s, q, run = _live_run(admin_client, make_quiz, make_session)

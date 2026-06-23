@@ -25,6 +25,10 @@ def _env(tmp_path_factory):
     os.environ["PRASHNA_DB_PATH"] = str(db_path)
     os.environ["PRASHNA_UPLOADS_DIR"] = str(tmp_path_factory.mktemp("apiuploads"))
     os.environ["PRASHNA_SECRET_KEY"] = "api-" + secrets.token_hex(8)
+    # Rate limiting off by default for the suite (all TestClient requests share
+    # one synthetic IP, so real limits would trip unrelated tests). The
+    # dedicated rate-limit tests re-enable the limiter explicitly.
+    os.environ["PRASHNA_RATELIMIT"] = "off"
     yield
 
 
@@ -54,6 +58,8 @@ def client(_live_client, app_module) -> TestClient:
             conn.execute(table.delete())
     # Clear any cookies (admin / voter) from prior test.
     _live_client.cookies.clear()
+    # Reset rate-limit buckets so a re-enabled limiter starts fresh per test.
+    app_module.limiter.clear()
     return _live_client
 
 

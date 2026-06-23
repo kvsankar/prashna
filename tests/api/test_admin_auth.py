@@ -8,7 +8,7 @@ def test_uc_a_01_status_fresh_db(client):
     """UC-A-01: GET /api/admin/status on a fresh DB."""
     r = client.get("/api/admin/status")
     assert r.status_code == 200
-    assert r.json() == {"initialized": False, "authenticated": False, "username": None}
+    assert r.json() == {"initialized": False, "authenticated": False, "username": None, "github_enabled": False}
 
 
 def test_uc_a_01_setup_creates_admin_and_cookie(client):
@@ -25,7 +25,7 @@ def test_uc_a_01_status_after_setup(client):
     client.post("/api/admin/setup", json={"username": "alice", "password": "longenough"})
     r = client.get("/api/admin/status")
     assert r.status_code == 200
-    assert r.json() == {"initialized": True, "authenticated": True, "username": "alice"}
+    assert r.json() == {"initialized": True, "authenticated": True, "username": "alice", "github_enabled": False}
 
 
 def test_uc_a_01_second_setup_returns_409(client):

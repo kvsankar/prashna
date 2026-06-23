@@ -187,10 +187,20 @@ def test_uc_x_03_uploads_have_security_headers(admin_client):
 
 
 def test_uc_x_03_static_no_extra_headers(admin_client):
-    """UC-X-03: /static/* does NOT carry uploads headers."""
+    """UC-X-03: /static/* does NOT carry the uploads-tier strict CSP."""
     r = admin_client.get("/static/app.css")
     # If the file doesn't exist this test is moot, but assertion holds either way
     assert r.headers.get("content-security-policy") != "default-src 'none'; sandbox"
+
+
+def test_uc_x_03_baseline_headers_on_pages(client):
+    """UC-X-03: non-uploads responses carry the clickjacking/sniffing baseline."""
+    for path in ("/", "/static/app.css"):
+        r = client.get(path)
+        assert r.headers.get("x-content-type-options") == "nosniff", path
+        assert r.headers.get("x-frame-options") == "DENY", path
+        assert r.headers.get("content-security-policy") == "frame-ancestors 'none'", path
+        assert r.headers.get("referrer-policy") == "no-referrer", path
 
 
 # ---------- UC-X-04: Image upload constraints ----------
@@ -316,3 +326,14 @@ def test_uc_x_05_two_participants_same_token(admin_client, make_session):
 @pytest.mark.skip(reason="UC-X-07: requires app restart with different env vars; not feasible in shared TestClient session.")
 def test_uc_x_07_secret_key_lifecycle():
     pass
+
+
+def test_uc_x_07_resolve_secret_pure():
+    """UC-X-07: _resolve_secret reports ephemeral only when env is unset."""
+    from app import auth
+    key, ephemeral = auth._resolve_secret(None)
+    assert ephemeral is True and isinstance(key, str) and key
+    key2, ephemeral2 = auth._resolve_secret("abc")
+    assert (key2, ephemeral2) == ("abc", False)
+    # The test session sets PRASHNA_SECRET_KEY, so the live flag is False.
+    assert auth.SECRET_KEY_IS_EPHEMERAL is False

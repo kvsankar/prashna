@@ -16,6 +16,7 @@ uploads/*
 # Local env / IDE / tooling
 .env
 .env.*
+!.env.example
 .idea/
 .vscode/
 .claude/

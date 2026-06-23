@@ -52,6 +52,15 @@ if [[ ! -f "$APP_DIR/.env" ]]; then
   SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
   cat > /tmp/prashna.env <<EOF
 PRASHNA_SECRET_KEY=$SECRET
+
+# Behind nginx (one hop) — key rate limits on the real client IP (UC-X-08).
+PRASHNA_TRUSTED_PROXY_HOPS=1
+
+# GitHub OAuth admin login (UC-A-26; optional). Fill in all three to enable.
+# OAuth App callback URL: https://$DOMAIN/api/auth/github/callback
+# PRASHNA_GITHUB_CLIENT_ID=
+# PRASHNA_GITHUB_CLIENT_SECRET=
+# PRASHNA_GITHUB_ADMINS=kvsankar
 EOF
   sudo mv /tmp/prashna.env "$APP_DIR/.env"
   sudo chown "$USER:$USER" "$APP_DIR/.env"

@@ -41,6 +41,10 @@
       <div class="field"><label for="li-user">Username</label><input id="li-user" autocomplete="username"></div>
       <div class="field"><label for="li-pass">Password</label><input id="li-pass" type="password" autocomplete="current-password"></div>
       <button class="primary" id="li-btn">Log in</button>
+      <div id="github-login-wrap" style="display:none; margin-top: 12px;">
+        <div class="small muted" style="margin-bottom: 6px;">or</div>
+        <a class="ghost" id="github-login-btn" href="/api/auth/github/login">Sign in with GitHub</a>
+      </div>
     </section>
 
     <!-- Admin work surfaces — visible only when authenticated. -->
@@ -153,6 +157,13 @@
     }
     $("#join-code").addEventListener("input", () => { $("#bad-code-msg").style.display = "none"; });
 
+    // ----- GitHub OAuth error banner (from /api/auth/github/callback redirect) -----
+    const authErr = new URLSearchParams(location.search).get("auth_error");
+    if (authErr) {
+      errorToast(authErr);
+      history.replaceState({}, "", "/");
+    }
+
     // ----- visibility helpers -----
     const cards = {
       join:     $("#join-card"),
@@ -184,6 +195,7 @@
       }
       if (!s.authenticated) {
         setHeaderMeta(el("span", { class: "muted small" }, "Live Q&A and quizzes for training sessions."));
+        $("#github-login-wrap").style.display = s.github_enabled ? "" : "none";
         return show("join", "login");
       }
       // Authenticated admin

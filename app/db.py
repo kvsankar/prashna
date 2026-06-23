@@ -61,6 +61,14 @@ def _apply_additive_migrations():
     additive = [
         # (table, column, ddl-snippet)
         ("users", "session_version", "INTEGER NOT NULL DEFAULT 1"),
+        ("users", "github_id", "INTEGER"),
+    ]
+    # Unique indexes to (re)create on existing DBs — `ALTER TABLE ADD COLUMN`
+    # can't carry a UNIQUE constraint, so back it with an index. SQLite treats
+    # NULLs as distinct, so existing password-only admins (github_id NULL) are
+    # unaffected. Matches the name `create_all` uses for the mapped column.
+    indexes = [
+        ("ix_users_github_id", "users", "github_id", True),
     ]
     with engine.begin() as conn:
         for table, column, ddl in additive:
@@ -69,3 +77,7 @@ def _apply_additive_migrations():
             if column not in cols:
                 conn.exec_driver_sql(
                     f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        for name, table, column, unique in indexes:
+            uniq = "UNIQUE " if unique else ""
+            conn.exec_driver_sql(
+                f"CREATE {uniq}INDEX IF NOT EXISTS {name} ON {table} ({column})")
