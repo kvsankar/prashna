@@ -764,8 +764,14 @@ the UI shows no button.
 - With no auth → `403`.
 - Success broadcasts `{type: "quiz_run_new"}`.
 
+The "Add a quiz" composer (`#quiz-select` + `#add-quiz-btn`) is a
+**creational** control and lives in the collapsible **Set up** section
+(`#setup-section`, see UX.md §4), which is open by default while the
+session is `planning` and collapses once it goes `live`. The staged runs
+themselves render in the **operational** Quiz card (`#quiz-runs`).
+
 **Tests (UI)**
-- On `/m/<code>`, `#quiz-select` lists only ready quizzes (drafts filtered).
+- On `/m/<code>` (session `planning`, so Set up is open), `#quiz-select` lists only ready quizzes (drafts filtered).
 - Selecting a quiz and clicking `#add-quiz-btn` appends a queued row to `#quiz-runs` with `.badge-queued`.
 
 ### UC-M-04: Start a queued quiz run
@@ -967,8 +973,12 @@ recognizes which phase the current question is in.
 **Tests (API)**
 - Editing surface is owner-only — see UC-A-06 for the auth tests.
 
+The invite card (`#invite-card`) is a **creational** control and lives in
+the collapsible **Set up** section (`#setup-section`, see UX.md §4), open
+by default while the session is `planning`.
+
 **Tests (UI)**
-- On `/m/<code>` opened with the admin cookie, `#base-url` (inside its `.field` container) is visible; typing and blurring updates `#invite-url` and re-renders `#invite-qr` encoding `<base>/s/<code>`.
+- On `/m/<code>` opened with the admin cookie (session `planning`, so Set up is open), `#base-url` (inside its `.field` container) is visible; typing and blurring updates `#invite-url` and re-renders `#invite-qr` encoding `<base>/s/<code>`.
 - On `/m/<code>` opened with only a `mod_key` (no admin cookie), the `.field` wrapping `#base-url` is hidden; QR, `#invite-url`, and `#invite-copy` remain visible.
 - Clicking `#base-url-clear` (owner view) clears the override; the QR/URL fall back to `location.origin`.
 - Clicking `#invite-copy` copies `#invite-url` text to clipboard.

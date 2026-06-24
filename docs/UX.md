@@ -88,6 +88,33 @@ A **card** is the single layout unit. Pages are sequences of cards.
 - Cards stack vertically. No horizontal card grids except in galleries
   (none today).
 
+### Operational vs. creational, and the collapsible "Set up" group
+
+A work surface often mixes **creational/setup** controls (things you do
+*before or between* the live action — invite people, stage a quiz) with
+**operational** controls (things you do *during* it — start/reveal/close
+a quiz, moderate questions). Don't interleave them. Group the creational
+cards inside a collapsible `<details class="setup">` disclosure so the
+operational surface stays uncluttered.
+
+```
+<details class="setup" id="setup-section">
+  <summary class="setup-summary">
+    <span class="setup-title">Set up</span>
+    <span class="muted small">one-line hint</span>
+  </summary>
+  <section class="card">…creational card…</section>
+  <section class="card">…creational card…</section>
+</details>
+```
+
+- Each grouped block stays its own `<section class="card">` (one H2 each).
+- Default open/closed by lifecycle: open while still being prepared
+  (`planning`), collapsed once `live`. Set `.open` **once on load** — not
+  on every refresh, or you'll fight the user's manual toggle.
+- First use: the moderator page — Invite + Add-a-quiz live in "Set up";
+  the live Quiz + Q&A panels stay operational below.
+
 ---
 
 ## 5. Lists: tables vs cards-per-row
@@ -386,6 +413,8 @@ Every entity with state must show that state in three places:
 - ❌ Status as an editable dropdown.
 - ❌ Native `alert()` for non-blocking errors.
 - ❌ Stretching one detail pane to host two unrelated entities.
+- ❌ Interleaving setup/creational controls with live/operational ones on
+  a work surface (group setup behind a `<details class="setup">`, see §4).
 - ❌ Mixing densities in one page.
 - ❌ Empty states that just say "Nothing here."
 - ❌ `<div onclick>` for primary actions.
