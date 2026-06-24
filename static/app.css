@@ -127,11 +127,12 @@ details.setup[open] > summary { margin-bottom: 12px; }
 details.menu { position: relative; display: inline-block; }
 details.menu > summary {
   cursor: pointer; list-style: none;
-  padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px;
-  background: var(--panel); color: var(--muted); font-size: 13px;
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); color: var(--text); font-size: 16px; line-height: 1;
 }
 details.menu > summary::-webkit-details-marker { display: none; }
-details.menu[open] > summary { background: var(--panel-2); }
+details.menu > summary:hover { border-color: var(--muted); }
+details.menu[open] > summary { background: var(--panel-2); border-color: var(--muted); }
 details.menu > .menu-panel {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
   display: flex; flex-direction: column; gap: 4px; min-width: 210px;
@@ -140,6 +141,7 @@ details.menu > .menu-panel {
 }
 details.menu > .menu-panel button { width: 100%; text-align: left; }
 details.menu > .menu-panel label { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+details.menu > .menu-panel .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
 input.inline, select.inline { width: auto; padding: 5px 8px; font-size: 13px; }
 select.inline.narrow { min-width: 100px; }
 button.small { padding: 4px 10px; font-size: 13px; }

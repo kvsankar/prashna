@@ -258,6 +258,27 @@ def test_uc_m_05_live_counts_toggle(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_05_run_menu_closes_on_outside_click(base_url, admin_setup, page):
+    """UC-M-05: the ⋯ run-action menu closes when clicking outside it."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M05menu {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M05menus {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz["id"])
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-runs .badge-queued")
+        menu = page.locator("#quiz-runs details.menu").first
+        panel = menu.locator(".menu-panel")
+        menu.locator("summary").click()
+        expect(panel).to_be_visible()
+        # Clicking outside the menu (e.g. the page heading) closes it.
+        page.locator("h1#title").click()
+        expect(panel).to_be_hidden(timeout=5000)
+    finally:
+        c.close()
+
+
 # ---------- UC-M-06 ----------
 
 
