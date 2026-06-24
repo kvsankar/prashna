@@ -115,6 +115,31 @@ operational surface stays uncluttered.
 - First use: the moderator page — Invite + Add-a-quiz live in "Set up";
   the live Quiz + Q&A panels stay operational below.
 
+### Overflow menu (`<details class="menu">`)
+
+When a row or card has one or two **primary** actions plus several
+**rare/secondary** ones, keep the primary actions inline and move the rest
+into a **⋯ overflow menu** so the row reads cleanly. Use a `<details>`
+disclosure (not a custom popover) for keyboard/no-JS robustness.
+
+```
+<details class="menu">
+  <summary aria-label="More actions">⋯</summary>
+  <div class="menu-panel">
+    <button>Secondary action</button>
+    <label><input type="checkbox"> A toggle</label>
+    <button class="danger ghost">Destructive action</button>
+  </div>
+</details>
+```
+
+- Inline = what you do most turns; menu = end/remove/configure.
+- The panel is absolutely positioned (`right: 0`); actions re-render the
+  row, which closes the menu.
+- First use: the moderator quiz-run row keeps the morphing primary +
+  ← Prev inline; "End quiz now", the audience-counts toggle, and "Remove
+  from session" live in the ⋯ menu.
+
 ---
 
 ## 5. Lists: tables vs cards-per-row

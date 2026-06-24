@@ -324,37 +324,24 @@
         el("span", { class: "small muted" }, ` · q ${r.current_question_idx + 1}/${r.question_count}`),
         el("div", { class: "spacer" }),
       );
-      // Lifecycle verbs
+      // Only the primary drive controls stay on the row. The rare
+      // run-management actions (end early, audience counts, remove) live
+      // in the ⋯ overflow menu so the row reads cleanly.
       if (r.status === "queued") {
         head.appendChild(actBtn("primary", "Start", () => act(r.id, "start")));
       }
       if (r.status === "live") {
         // One-button Next: from answering phase, reveals; from results
-        // phase, advances to the next question.
+        // phase, advances to the next question (or closes on the last).
         const phase = r.reveal_current ? "results" : "answering";
         const nextLabel = phase === "answering"
           ? "Reveal results →"
-          : (r.current_question_idx + 1 < r.question_count ? "Next question →" : "Close →");
+          : (r.current_question_idx + 1 < r.question_count ? "Next question →" : "Close quiz →");
         head.appendChild(actBtn("primary", nextLabel, () => nextPhase(r)));
         head.appendChild(actBtn("ghost", "← Prev", () => advance(r.id, "prev")));
-        head.appendChild(actBtn("danger ghost", "Close", () => act(r.id, "close")));
       }
-      if (r.status !== "closed") {
-        const x = actBtn("danger ghost", "✕", () => del(r.id));
-        x.setAttribute("aria-label", "Remove this quiz from the session");
-        head.appendChild(x);
-      }
-      // Per-run "show live counts" toggle. Closed runs are historical, so
-      // the toggle is hidden (backend would 400 anyway).
-      if (r.status !== "closed") {
-        const lc = el("label", { class: "small muted", style: "margin-left: 12px;" });
-        const lcBox = el("input", { type: "checkbox" });
-        if (r.show_live_counts) lcBox.setAttribute("checked", "");
-        lcBox.addEventListener("change", () => toggleLiveCounts(r.id, lcBox.checked));
-        lc.appendChild(lcBox);
-        lc.appendChild(document.createTextNode(" live counts"));
-        head.appendChild(lc);
-      }
+      const menu = buildRunMenu(r);
+      if (menu) head.appendChild(menu);
       const cur = r.current_question;
       const totals = r.results?.totals || {};
       const respondents = r.results?.respondents || 0;
@@ -378,6 +365,30 @@
         detail.appendChild(el("div", { class: "small muted" }, `${respondents} respondent(s)`));
       }
       return el("section", { class: "card", style: "background: var(--panel-2);" }, head, detail);
+    }
+
+    // The ⋯ overflow menu for a run: secondary, rarely-used actions that
+    // used to clutter the row. Returns null for closed runs (no actions
+    // left — closed runs are historical).
+    function buildRunMenu(r) {
+      if (r.status === "closed") return null;
+      const panel = el("div", { class: "menu-panel" });
+      if (r.status === "live") {
+        panel.appendChild(actBtn("ghost", "End quiz now", () => act(r.id, "close")));
+      }
+      const lc = el("label", { class: "small" });
+      const lcBox = el("input", { type: "checkbox" });
+      if (r.show_live_counts) lcBox.setAttribute("checked", "");
+      lcBox.addEventListener("change", () => toggleLiveCounts(r.id, lcBox.checked));
+      lc.appendChild(lcBox);
+      lc.appendChild(document.createTextNode(" Show vote counts to audience"));
+      panel.appendChild(lc);
+      const remove = actBtn("danger ghost", "Remove from session", () => del(r.id));
+      remove.setAttribute("aria-label", "Remove this quiz from the session");
+      panel.appendChild(remove);
+      return el("details", { class: "menu" },
+        el("summary", { "aria-label": "More actions" }, "⋯"),
+        panel);
     }
 
     function actBtn(cls, label, handler) {
