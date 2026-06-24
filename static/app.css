@@ -73,6 +73,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .vote-btn .arrow { font-size: 12px; line-height: 1; color: var(--muted); }
 .vote-btn.voted .arrow { color: rgba(255,255,255,0.9); }
 
+/* Session feedback — interactive star rating (participant) + read-only
+   display (moderator / admin). */
+.stars { display: flex; gap: 4px; }
+.star { background: none; border: none; cursor: pointer; padding: 2px;
+  font-size: 30px; line-height: 1; color: var(--muted); }
+.star:hover, .star.filled { color: #f5b301; }
+.fb-avg { font-size: 16px; font-weight: 600; color: #f5b301; }
+.fb-stars-static { color: #f5b301; letter-spacing: 1px; }
+.fb-item { padding: 8px 0; border-top: 1px solid var(--border); }
+.fb-item:first-child { border-top: none; }
+
 .option {
   display: flex; gap: 12px; align-items: center;
   padding: 12px; border-radius: 8px; border: 2px solid var(--border);

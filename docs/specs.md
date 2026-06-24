@@ -996,6 +996,35 @@ by default while the session is `planning`.
 - Clicking `#base-url-clear` (owner view) clears the override; the QR/URL fall back to `location.origin`.
 - Clicking `#invite-copy` copies `#invite-url` text to clipboard.
 
+### UC-M-12: View session feedback
+
+- **Given** a moderator (delegate or admin owner) is on the moderator page
+- **Then** a **Feedback** panel (`#feedback-card`) shows the aggregate of
+  participant feedback (see UC-P-13): the average rating and response
+  count (`#feedback-summary`) plus each response — its stars, optional
+  author name, and the "went well" / "could be better" comments
+  (`#feedback-list`)
+- **And** the panel refreshes live via the `feedback` WS broadcast
+- **And** the same aggregate is shown in the admin session-detail card
+  (`#sd-feedback`) when the owner drills into a session on `/`
+- **Backend route**: `GET /api/sessions/{code}/feedback/summary`
+  (mod-or-owner auth) → `{count, average, distribution: {1..5}, items:
+  [{rating, went_well, to_improve, author_name, updated_at}, ...]}`.
+
+**Tests (API)**
+- `GET /api/sessions/{code}/feedback/summary` with two participants'
+  ratings (5 and 3) → `200 {count: 2, average: 4.0, distribution: {"5":1,
+  "3":1, ...}, items: [...]}`. Auth: mod-key OR admin cookie.
+- A named participant's item carries `author_name`.
+- With no auth (no admin cookie, no mod-key) → `403`.
+- Owner reaches it via cookie with no mod-key; empty session → `count: 0`,
+  `average: null`.
+
+**Tests (UI)**
+- After a participant submits feedback, on `/m/<code>` the `#feedback-card`
+  is visible, `#feedback-summary` shows the average, and `#feedback-list`
+  contains the comment text.
+
 ---
 
 ## Participant
@@ -1266,6 +1295,41 @@ Participant-side counterpart of UC-D-08.
 - Voting remains enabled — clicking still toggles selection and Submit is enabled.
 - With live counts off (default), the answering phase shows only question + answer texts.
 
+### UC-P-13: Rate the session (feedback)
+
+A participant can rate the session and leave course feedback. The control
+is **always available** (any session status) in its own card
+(`#feedback-card`) and uses progressive disclosure: a 1–5 **star** rating
+that, once a star is picked, expands to reveal "What went well?" and "What
+could be better?" text fields plus Submit.
+
+- **Given** the participant is on `/s/<CODE>`
+- **When** they pick a star
+- **Then** the expanded section (`#fb-expand`) appears with the two
+  optional comment fields and a Submit button
+- **When** they Submit
+- **Then** `POST /api/sessions/{code}/feedback` upserts their feedback
+  (one row per participant, keyed by `voter_token`); the status line
+  confirms "Saved" and the button becomes "Update feedback"
+- **And** reloading prefills their prior rating + comments (via
+  `GET /api/sessions/{code}/feedback/mine`)
+- **And** comments are optional — a bare rating is valid; `rating` must be
+  an integer 1–5 or the POST returns `400`
+- **And** submitting broadcasts `{type: "feedback"}` (UC-X-01) so the
+  host's view (UC-M-12) updates live
+
+**Tests (API)**
+- `POST /api/sessions/{code}/feedback` with `{"rating": 4, "went_well": "...", "to_improve": "..."}` → `200 {rating, went_well, to_improve, updated_at}`. Auth: none (cookie issued on first call).
+- A bare `{"rating": 5}` → `200` with null comment fields.
+- Allowed on an `ended` session (the card is always available).
+- Resubmitting updates the same row (summary `count` stays 1; latest values win).
+- `rating` of `0`, `6`, missing, a string, a float, or a bool → `400 "rating must be an integer from 1 to 5"`.
+- `GET .../feedback/mine` → `null` before submitting, then the row.
+
+**Tests (UI)**
+- On `/s/<CODE>`, `#fb-expand` is hidden until a star in `#fb-stars` is clicked, then visible; filling `#fb-went-well` and clicking `#fb-submit` shows a "Saved" status and the button reads "Update feedback".
+- After reload, the prior rating (filled stars count) and comment values are prefilled.
+
 ---
 
 ## Projector
@@ -1440,8 +1504,8 @@ are the rules every user-facing UC silently relies on.
   `session_state`, `participant`, `query_new`, `query_vote`,
   `query_responded`, `query_removed`, `query_deleted`,
   `quiz_run_new`, `quiz_run_update`, `quiz_run_deleted`,
-  `quiz_submission`); each frontend treats the message as a refresh
-  hint and re-fetches the data it cares about
+  `quiz_submission`, `feedback`); each frontend treats the message as a
+  refresh hint and re-fetches the data it cares about
 - **And** the client auto-reconnects with exponential backoff if the
   socket drops; **on every reconnect after the first**, the client
   fires its refresh callback with a synthetic `{type: "reconnect"}`
@@ -1463,6 +1527,7 @@ are the rules every user-facing UC silently relies on.
 - `DELETE .../quiz_runs/{id}` → frame `{"type": "quiz_run_deleted"}`.
 - `POST .../quiz_runs/{id}/submit` → frame `{"type": "quiz_submission"}`.
 - `PATCH .../me` → frame `{"type": "participant"}`.
+- `POST .../feedback` → frame `{"type": "feedback"}`.
 
 ### UC-X-02: WebSocket upgrade rejections
 

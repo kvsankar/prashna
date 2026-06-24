@@ -108,6 +108,7 @@
           <button id="sd-copy" class="ghost small" style="margin-top: 8px;">Copy URL</button>
         </div>
       </div>
+      <div id="sd-feedback" style="margin-top: 16px;"></div>
     </section>
 
     <section class="card compact" id="confirm-delete-card" style="display:none;">
@@ -326,6 +327,35 @@
       $("#sd-url").textContent = url;
       try { await renderQR($("#sd-qr"), url, { cellSize: 4, margin: 2 }); }
       catch { $("#sd-qr").textContent = "QR unavailable"; }
+      loadDetailFeedback(s.code);
+    }
+
+    async function loadDetailFeedback(code) {
+      const root = $("#sd-feedback");
+      root.innerHTML = "";
+      let sum;
+      try { sum = await api(`/api/sessions/${code}/feedback/summary`); }
+      catch { return; }
+      root.appendChild(el("div", { class: "card-head" }, el("h2", {}, "Feedback")));
+      if (!sum.count) {
+        root.appendChild(el("div", { class: "muted small" }, "No feedback yet."));
+        return;
+      }
+      root.appendChild(el("div", {},
+        el("span", { class: "fb-avg" }, `★ ${sum.average}`),
+        el("span", { class: "small muted" }, ` · ${sum.count} response(s)`),
+      ));
+      for (const it of sum.items) {
+        const stars = "★".repeat(it.rating) + "☆".repeat(5 - it.rating);
+        root.appendChild(el("div", { class: "fb-item" },
+          el("div", {},
+            el("span", { class: "fb-stars-static" }, stars),
+            it.author_name ? el("span", { class: "small muted" }, "  — " + it.author_name) : null,
+          ),
+          it.went_well ? el("div", { class: "small" }, el("strong", {}, "Went well: "), it.went_well) : null,
+          it.to_improve ? el("div", { class: "small" }, el("strong", {}, "Improve: "), it.to_improve) : null,
+        ));
+      }
     }
 
     function renderLifecycleActions(s) {

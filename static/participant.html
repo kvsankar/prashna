@@ -45,6 +45,22 @@
       <div id="queries"></div>
     </section>
 
+    <section class="card" id="feedback-card">
+      <div class="card-head"><h2>Rate this session</h2></div>
+      <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
+      <div id="fb-expand" style="display:none; margin-top: 12px;">
+        <label for="fb-went-well" class="small muted">What went well?</label>
+        <textarea id="fb-went-well" maxlength="2000" placeholder="What worked for you…"></textarea>
+        <label for="fb-to-improve" class="small muted" style="display:block; margin-top: 8px;">What could be better?</label>
+        <textarea id="fb-to-improve" maxlength="2000" placeholder="What you'd change…"></textarea>
+        <div class="row" style="margin-top: 8px;">
+          <span id="fb-status" class="muted small"></span>
+          <div class="spacer"></div>
+          <button class="primary" id="fb-submit">Submit feedback</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card" id="invite-card">
       <div class="card-head"><h2>Invite others</h2></div>
       <div class="row gap" style="align-items: center;">
@@ -255,11 +271,64 @@
       } catch (e) { errorToast(e.message); }
     }
 
+    // ---- session feedback (star rating → went-well / improve) ----
+    let myRating = 0;
+    function renderStars() {
+      const root = $("#fb-stars");
+      root.innerHTML = "";
+      for (let i = 1; i <= 5; i++) {
+        root.appendChild(el("button", {
+          type: "button",
+          class: "star" + (i <= myRating ? " filled" : ""),
+          role: "radio",
+          "aria-checked": String(i === myRating),
+          "aria-label": `${i} star${i > 1 ? "s" : ""}`,
+          onclick: () => { myRating = i; $("#fb-expand").style.display = ""; renderStars(); },
+        }, "★"));
+      }
+    }
+    function markFeedbackSaved() {
+      $("#fb-status").textContent = "Saved — thanks for your feedback.";
+      $("#fb-submit").textContent = "Update feedback";
+    }
+    async function loadFeedback() {
+      // Loaded once at startup — not on every WS refresh, so it never
+      // clobbers what the participant is typing.
+      try {
+        const f = await api(`/api/sessions/${CODE}/feedback/mine`);
+        if (f) {
+          myRating = f.rating;
+          $("#fb-went-well").value = f.went_well || "";
+          $("#fb-to-improve").value = f.to_improve || "";
+          $("#fb-expand").style.display = "";
+          markFeedbackSaved();
+        }
+      } catch {}
+      renderStars();
+    }
+    async function submitFeedback() {
+      if (!myRating) { errorToast("Pick a star rating first."); return; }
+      try {
+        await api(`/api/sessions/${CODE}/feedback`, {
+          method: "POST",
+          body: {
+            rating: myRating,
+            went_well: $("#fb-went-well").value || null,
+            to_improve: $("#fb-to-improve").value || null,
+          },
+        });
+        markFeedbackSaved();
+        toast("Thanks for your feedback");
+      } catch (e) { errorToast(e.message); }
+    }
+    $("#fb-submit").addEventListener("click", submitFeedback);
+
     function refreshAll() { loadSession(); loadQueries(); loadQuiz(); }
 
     (async function () {
       await loadSession();
       await loadMe();
+      loadFeedback();
       refreshAll();
       openLiveSocket(CODE, refreshAll);
     })();

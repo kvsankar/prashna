@@ -399,6 +399,27 @@ def test_uc_m_09_remove_query_marks_hidden_with_restore(base_url, admin_setup, p
         c.close()
 
 
+# ---------- UC-M-12: feedback panel ----------
+
+
+def test_uc_m_12_feedback_panel_shows_summary(base_url, admin_setup, page):
+    """UC-M-12: the moderator Feedback panel shows the average + comments."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M12 {secrets.token_hex(3)}")
+    # A participant submits feedback (own client → own voter_token).
+    with httpx.Client(base_url=base_url) as pc:
+        pc.post(f"/api/sessions/{s['code']}/feedback",
+                json={"rating": 5, "went_well": "Great pace"}).raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#feedback-card:visible")
+        expect(page.locator("#feedback-summary")).to_contain_text("5", timeout=5000)
+        expect(page.locator("#feedback-list")).to_contain_text("Great pace")
+    finally:
+        c.close()
+
+
 # ---------- UC-M-10 ----------
 
 
