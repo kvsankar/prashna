@@ -56,16 +56,16 @@ def test_uc_d_01_bad_code_redirects(base_url, admin_setup, page):
 
 
 def test_uc_d_02_qr_click_opens_lightbox(base_url, admin_setup, page):
-    """UC-D-02: clicking #join-qr opens #qr-lightbox; Esc closes it."""
+    """UC-D-02: clicking #join-qr opens .qr-lightbox; Esc closes it."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-D02 {secrets.token_hex(3)}")
     try:
         page.goto(f"{base_url}/p/{s['code']}")
         page.wait_for_selector("#join-qr svg")
         page.click("#join-qr")
-        expect(page.locator("#qr-lightbox")).to_be_visible()
+        expect(page.locator(".qr-lightbox")).to_be_visible()
         page.keyboard.press("Escape")
-        expect(page.locator("#qr-lightbox")).to_be_hidden()
+        expect(page.locator(".qr-lightbox")).to_be_hidden()
     finally:
         c.close()
 
@@ -79,25 +79,25 @@ def test_uc_d_02_qr_keyboard_open(base_url, admin_setup, page):
         page.wait_for_selector("#join-qr svg")
         page.focus("#join-qr")
         page.keyboard.press("Enter")
-        expect(page.locator("#qr-lightbox")).to_be_visible()
+        expect(page.locator(".qr-lightbox")).to_be_visible()
         # Space also works (test via click instead — Space sometimes triggers scroll).
         page.keyboard.press("Escape")
-        expect(page.locator("#qr-lightbox")).to_be_hidden()
+        expect(page.locator(".qr-lightbox")).to_be_hidden()
     finally:
         c.close()
 
 
 def test_uc_d_02_click_inside_lightbox_closes(base_url, admin_setup, page):
-    """UC-D-02: clicking anywhere inside #qr-lightbox dismisses it."""
+    """UC-D-02: clicking anywhere inside .qr-lightbox dismisses it."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-D02c {secrets.token_hex(3)}")
     try:
         page.goto(f"{base_url}/p/{s['code']}")
         page.wait_for_selector("#join-qr svg")
         page.click("#join-qr")
-        expect(page.locator("#qr-lightbox")).to_be_visible()
-        page.locator("#qr-lightbox").click()
-        expect(page.locator("#qr-lightbox")).to_be_hidden()
+        expect(page.locator(".qr-lightbox")).to_be_visible()
+        page.locator(".qr-lightbox").click()
+        expect(page.locator(".qr-lightbox")).to_be_hidden()
     finally:
         c.close()
 

@@ -1261,17 +1261,23 @@ session.
 
 ### UC-D-02: QR lightbox
 
-- **Given** the projector page
-- **When** someone clicks the QR (or Tab + Enter / Space)
-- **Then** a full-screen lightbox shows the QR at ≈ 90% of the
-  smaller viewport dimension; Esc, click anywhere, or the
-  `cursor: zoom-out` area dismisses it
+- **Given** **any** QR code rendered via the shared `renderQR` helper —
+  the projector join QR (`#join-qr`), the participant invite QR
+  (`#share-qr`), the moderator invite QR (`#invite-qr`), and the landing
+  session-detail QR (`#sd-qr`)
+- **When** someone clicks it (or focuses it via Tab and presses Enter /
+  Space — every rendered QR is `role="button"`, `tabindex="0"`, with
+  `cursor: zoom-in`)
+- **Then** a shared full-screen lightbox (`.qr-lightbox`, appended to
+  `body` on first use) shows the QR at ≈ 90% of the smaller viewport
+  dimension; Esc, click anywhere, or the `cursor: zoom-out` area
+  dismisses it
 
 **Tests (UI)**
-- On `/p/<CODE>`, clicking `#join-qr` opens `#qr-lightbox` (display flips from `none`).
-- Pressing Tab to focus `#join-qr` then pressing Enter or Space opens the lightbox.
-- Pressing Escape closes `#qr-lightbox`.
-- Clicking anywhere inside `#qr-lightbox` (the zoom-out area) closes it.
+- On `/p/<CODE>`, clicking `#join-qr` opens the `.qr-lightbox` overlay (display flips from `none`).
+- Tab-focusing a rendered QR then pressing Enter or Space opens the lightbox.
+- Pressing Escape closes the `.qr-lightbox` overlay; clicking anywhere inside it (the zoom-out area) also closes it.
+- The same enlarge behavior works on `/s/<CODE>` (`#share-qr`), `/m/<code>` (`#invite-qr`), and `/` session detail (`#sd-qr`).
 
 ### UC-D-03: Live updates via WebSocket
 

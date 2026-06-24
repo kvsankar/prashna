@@ -334,6 +334,21 @@ def test_uc_p_10_share_qr_renders(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_d_02_share_qr_expands(base_url, admin_setup, page):
+    """UC-D-02: the participant invite QR is click-to-enlarge via the shared lightbox."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P10x {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#share-qr svg")
+        page.click("#share-qr")
+        expect(page.locator(".qr-lightbox")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page.locator(".qr-lightbox")).to_be_hidden()
+    finally:
+        c.close()
+
+
 # ---------- UC-P-11 ----------
 
 

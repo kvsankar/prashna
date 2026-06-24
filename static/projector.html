@@ -9,22 +9,6 @@
     body { background: var(--proj-bg); }
     main.proj { max-width: none; }
     .qa-list { max-height: 75vh; overflow: auto; }
-    #join-qr { cursor: zoom-in; }
-    #join-qr:hover { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
-    .lightbox {
-      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 1000; cursor: zoom-out; padding: 40px;
-    }
-    .lightbox-inner {
-      width: min(90vh, 90vw); height: min(90vh, 90vw);
-      display: flex; align-items: center; justify-content: center;
-    }
-    .lightbox-inner svg { width: 100%; height: 100%; }
-    .lightbox-hint {
-      position: fixed; bottom: 28px; left: 0; right: 0;
-      text-align: center; color: var(--proj-hint); font-size: 13px;
-    }
   </style>
 </head>
 <body>
@@ -34,12 +18,7 @@
       <div style="flex:1;">
         <div class="code-display">Join: <strong id="code"></strong> at <span id="origin"></span></div>
       </div>
-      <div id="join-qr" style="width: 220px; min-width: 220px;" title="Click to enlarge" tabindex="0" role="button" aria-label="Enlarge QR code"></div>
-    </div>
-
-    <div class="lightbox" id="qr-lightbox" style="display:none;">
-      <div class="lightbox-inner" id="qr-lightbox-inner"></div>
-      <div class="lightbox-hint">Click anywhere or press Esc to close</div>
+      <div id="join-qr" style="width: 220px; min-width: 220px;"></div>
     </div>
 
     <section id="quiz-section" class="card" style="display:none;">
@@ -149,29 +128,7 @@
       if (showCounts) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
     }
 
-    // Lightbox: enlarge the join QR on click.
-    function openLightbox() {
-      const src = $("#join-qr").querySelector("svg");
-      if (!src) return;
-      const inner = $("#qr-lightbox-inner");
-      inner.innerHTML = "";
-      const clone = src.cloneNode(true);
-      // The thumbnail SVG had inline height:auto; clear it so the big
-      // copy fills the square container instead of staying short.
-      clone.style.cssText = "width: 100%; height: 100%; display: block; background: white; border-radius: 8px;";
-      inner.appendChild(clone);
-      $("#qr-lightbox").style.display = "";
-    }
-    function closeLightbox() { $("#qr-lightbox").style.display = "none"; }
-    $("#join-qr").addEventListener("click", openLightbox);
-    $("#join-qr").addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openLightbox(); }
-    });
-    $("#qr-lightbox").addEventListener("click", closeLightbox);
-    document.addEventListener("keydown", e => {
-      if (e.key === "Escape" && $("#qr-lightbox").style.display !== "none") closeLightbox();
-    });
-
+    // The join QR is click-to-enlarge via the shared lightbox in renderQR.
     loadAll();
     openLiveSocket(CODE, loadAll);
   </script>
