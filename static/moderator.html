@@ -133,6 +133,19 @@
     $("#modkey-submit").addEventListener("click", trySubmitKey);
     $("#modkey-input").addEventListener("keydown", e => { if (e.key === "Enter") trySubmitKey(); });
 
+    // Close any open ⋯ run-action menu when clicking outside it or pressing
+    // Esc. Native <details> only closes on a re-click of its own summary.
+    // Bound once at document level so it survives the per-refresh re-render.
+    document.addEventListener("click", (e) => {
+      for (const d of document.querySelectorAll("details.menu[open]")) {
+        if (!d.contains(e.target)) d.open = false;
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      for (const d of document.querySelectorAll("details.menu[open]")) d.open = false;
+    });
+
     async function loadSession() {
       sessionState = await api(`/api/sessions/${CODE}`);
       document.title = `Mod — ${sessionState.title}`;
@@ -392,9 +405,11 @@
       const delLabel = r.status === "live" ? "Delete run (discard results)" : "Delete run";
       const del_ = actBtn("danger ghost", delLabel, () => del(r.id));
       del_.setAttribute("aria-label", "Delete this quiz run");
+      // Separate the destructive action from the safe ones above it.
+      panel.appendChild(el("div", { class: "menu-sep" }));
       panel.appendChild(del_);
       return el("details", { class: "menu" },
-        el("summary", { "aria-label": "More actions" }, "⋯"),
+        el("summary", { "aria-label": "More actions", title: "Run actions" }, "⋯"),
         panel);
     }
 

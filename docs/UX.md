@@ -133,12 +133,21 @@ disclosure (not a custom popover) for keyboard/no-JS robustness.
 </details>
 ```
 
-- Inline = what you do most turns; menu = end/configure/delete.
+- Inline = what you do most turns; menu = end/configure/delete. Keep the
+  inline set to ~2–4 actions; relegate the rest (per NN/g + PatternFly).
 - Menu items are **verb buttons**, including toggles — a state toggle
   reads "Show X" / "Hide X" (which flips on click) rather than a checkbox,
   which is clumsy in a menu and hides its meaning.
-- The panel is absolutely positioned (`right: 0`); actions re-render the
-  row, which closes the menu, so confirm a silent toggle with a toast.
+- **Separate the destructive action** with a `.menu-sep` divider above it,
+  and color it (`danger`), so it isn't mis-clicked next to safe items.
+- The `⋯` summary carries both an `aria-label` and a visible `title`
+  tooltip (NN/g: don't ship a bare icon with no text cue), and stays
+  visible without hover with enough contrast/hit-area.
+- The panel is absolutely positioned (`right: 0`). Close it on **outside
+  click and Esc** (native `<details>` only toggles on its own summary) —
+  bind those handlers once at document level so they survive re-renders.
+  Actions also re-render the row, which closes the menu, so confirm a
+  silent toggle with a toast.
 - First use: the moderator quiz-run row keeps the morphing primary +
   ← Prev inline; "Finish quiz", the Show/Hide vote-counts toggle, and
   "Delete run" live in the ⋯ menu.
