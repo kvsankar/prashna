@@ -228,8 +228,8 @@ def test_uc_m_05_reveal_next_close_walk(base_url, admin_setup, page):
         next_btn.click()
         # Back to answering; Reveal again.
         page.locator("#quiz-runs button", has_text="Reveal results").click()
-        # Last question → Close.
-        close_btn = page.locator("#quiz-runs button", has_text="Close →")
+        # Last question → Close quiz.
+        close_btn = page.locator("#quiz-runs button", has_text="Close quiz")
         expect(close_btn).to_be_visible(timeout=5000)
         # Don't click Close here — UC-M-06 tests Close. Verify Prev exists.
         expect(page.locator("#quiz-runs button", has_text="Prev")).to_be_visible()
@@ -247,7 +247,10 @@ def test_uc_m_05_live_counts_toggle(base_url, admin_setup, page):
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-queued")
-        cb = page.locator("#quiz-runs input[type=checkbox]").first
+        # The live-counts toggle now lives in the run's ⋯ overflow menu.
+        row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-queued"))
+        row.locator("details.menu > summary").click()
+        cb = row.locator("input[type=checkbox]").first
         expect(cb).not_to_be_checked()
         cb.check()
         # Verify via API.
@@ -260,8 +263,9 @@ def test_uc_m_05_live_counts_toggle(base_url, admin_setup, page):
 # ---------- UC-M-06 ----------
 
 
-def test_uc_m_06_close_run_flips_badge_and_hides_x(base_url, admin_setup, page):
-    """UC-M-06: closing a live run flips badge to .badge-closed and removes ✕."""
+def test_uc_m_06_close_run_flips_badge_and_hides_menu(base_url, admin_setup, page):
+    """UC-M-06: closing a live run (via ⋯ → End quiz now) flips badge to
+    .badge-closed and removes the run's ⋯ overflow menu."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-M06 {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-M06s {secrets.token_hex(3)}")
@@ -271,10 +275,13 @@ def test_uc_m_06_close_run_flips_badge_and_hides_x(base_url, admin_setup, page):
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-live")
-        page.locator("#quiz-runs button.danger", has_text="Close").click()
+        live_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-live"))
+        live_row.locator("details.menu > summary").click()
+        live_row.locator("button", has_text="End quiz now").click()
         expect(page.locator("#quiz-runs .badge-closed")).to_be_visible(timeout=5000)
-        # No ✕ rendered for closed rows.
+        # No ⋯ menu (and no Remove control) rendered for closed rows.
         closed_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-closed"))
+        expect(closed_row.locator("details.menu")).to_have_count(0)
         expect(closed_row.locator("button[aria-label*='Remove']")).to_have_count(0)
     finally:
         c.close()
@@ -294,7 +301,10 @@ def test_uc_m_07_delete_queued_run_removes_row(base_url, admin_setup, page):
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-queued")
         page.on("dialog", lambda d: d.accept())
-        page.locator("#quiz-runs button[aria-label*='Remove']").click()
+        # Remove now lives in the run's ⋯ overflow menu.
+        queued_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-queued"))
+        queued_row.locator("details.menu > summary").click()
+        queued_row.locator("button[aria-label*='Remove']").click()
         expect(page.locator("#quiz-runs .badge-queued")).to_have_count(0, timeout=5000)
     finally:
         c.close()
