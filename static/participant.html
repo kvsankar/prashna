@@ -19,6 +19,25 @@
   </header>
 
   <main>
+    <details class="card" id="feedback-card" open>
+      <summary class="card-head">
+        <h2>Rate this session</h2>
+        <span class="fb-chevron" aria-hidden="true"></span>
+      </summary>
+      <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
+      <div id="fb-expand" style="display:none; margin-top: 12px;">
+        <label for="fb-went-well" class="small muted">What went well?</label>
+        <textarea id="fb-went-well" maxlength="2000" placeholder="What worked for you…"></textarea>
+        <label for="fb-to-improve" class="small muted" style="display:block; margin-top: 8px;">What could be better?</label>
+        <textarea id="fb-to-improve" maxlength="2000" placeholder="What you'd change…"></textarea>
+        <div class="row" style="margin-top: 8px;">
+          <span id="fb-status" class="muted small"></span>
+          <div class="spacer"></div>
+          <button class="primary" id="fb-submit">Submit feedback</button>
+        </div>
+      </div>
+    </details>
+
     <section class="card" id="quiz-card" style="display:none;">
       <div class="card-head"><h2>Live quiz</h2></div>
       <div id="quiz-body"></div>
@@ -43,22 +62,6 @@
     <section class="card">
       <div class="card-head"><h2>Questions</h2></div>
       <div id="queries"></div>
-    </section>
-
-    <section class="card" id="feedback-card">
-      <div class="card-head"><h2>Rate this session</h2></div>
-      <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
-      <div id="fb-expand" style="display:none; margin-top: 12px;">
-        <label for="fb-went-well" class="small muted">What went well?</label>
-        <textarea id="fb-went-well" maxlength="2000" placeholder="What worked for you…"></textarea>
-        <label for="fb-to-improve" class="small muted" style="display:block; margin-top: 8px;">What could be better?</label>
-        <textarea id="fb-to-improve" maxlength="2000" placeholder="What you'd change…"></textarea>
-        <div class="row" style="margin-top: 8px;">
-          <span id="fb-status" class="muted small"></span>
-          <div class="spacer"></div>
-          <button class="primary" id="fb-submit">Submit feedback</button>
-        </div>
-      </div>
     </section>
 
     <section class="card" id="invite-card">
@@ -276,16 +279,24 @@
     function renderStars() {
       const root = $("#fb-stars");
       root.innerHTML = "";
+      const btns = [];
+      // Fill stars 1..n (used for both the chosen rating and hover preview).
+      const paint = (n) => btns.forEach((b, idx) => b.classList.toggle("filled", idx < n));
       for (let i = 1; i <= 5; i++) {
-        root.appendChild(el("button", {
+        const b = el("button", {
           type: "button",
-          class: "star" + (i <= myRating ? " filled" : ""),
+          class: "star",
           role: "radio",
           "aria-checked": String(i === myRating),
           "aria-label": `${i} star${i > 1 ? "s" : ""}`,
           onclick: () => { myRating = i; $("#fb-expand").style.display = ""; renderStars(); },
-        }, "★"));
+        }, "★");
+        b.addEventListener("mouseenter", () => paint(i));
+        btns.push(b);
+        root.appendChild(b);
       }
+      root.onmouseleave = () => paint(myRating);
+      paint(myRating);
     }
     function markFeedbackSaved() {
       $("#fb-status").textContent = "Saved — thanks for your feedback.";

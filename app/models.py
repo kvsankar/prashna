@@ -48,6 +48,7 @@ class Session(Base):
     quiz_runs: Mapped[list["QuizRun"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     participants: Mapped[list["Participant"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     feedback: Mapped[list["SessionFeedback"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    feedback_versions: Mapped[list["SessionFeedbackVersion"]] = relationship(back_populates="session", cascade="all, delete-orphan")
 
 
 # ---------- participants (audience members, scoped per session) ----------
@@ -101,6 +102,24 @@ class SessionFeedback(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
     session: Mapped[Session] = relationship(back_populates="feedback")
+    participant: Mapped[Participant] = relationship()
+
+
+class SessionFeedbackVersion(Base):
+    """Append-only history of every feedback submission. The latest version
+    per participant is mirrored into SessionFeedback (the 'current' view);
+    this table retains all prior submissions so participants can resubmit
+    freely and the backend keeps the full trail."""
+    __tablename__ = "session_feedback_versions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
+    participant_id: Mapped[int] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), index=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    went_well: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_improve: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+    session: Mapped[Session] = relationship(back_populates="feedback_versions")
     participant: Mapped[Participant] = relationship()
 
 

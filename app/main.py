@@ -944,6 +944,12 @@ async def submit_feedback(
     went_well = (payload.get("went_well") or "").strip()[:2000] or None
     to_improve = (payload.get("to_improve") or "").strip()[:2000] or None
     p = current_participant(s, request, response, voter_token, db)
+    # Record an immutable version for every submission (participants may
+    # resubmit any number of times; the backend keeps the full trail).
+    db.add(m.SessionFeedbackVersion(session_id=s.id, participant_id=p.id, rating=rating,
+                                    went_well=went_well, to_improve=to_improve))
+    db.commit()
+    # Mirror the latest into the "current" row used by mine/summary.
     f = db.scalar(select(m.SessionFeedback).where(
         m.SessionFeedback.session_id == s.id,
         m.SessionFeedback.participant_id == p.id,
