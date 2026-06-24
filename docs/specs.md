@@ -375,28 +375,36 @@ own use case so tests and PRs can cite one ID per behavior.
 - **Then** a `Question` is added at the end (`order_index = max + 1`);
   parent's `last_edited_at` advances
 - **And** a `qtype` not in `("single", "multi")` returns `400`
+- **And** `graded` (default `true`) marks whether the question has a
+  correct answer; `graded: false` is a **poll/survey** question (options
+  but no correct answer — e.g. age / experience range)
 
 **Tests (API)**
-- `POST /api/quizzes/{id}/questions` with `{}` → `200 {id}`; new Question appended with `order_index = max+1`, `text = ""` (empty), `qtype = "single"`, parent `last_edited_at` advances. Auth: admin cookie. Note: the **backend** defaults `text` to empty string; the UI passes `{"text": "New question"}` so users see a sensible placeholder, but that string is a frontend choice.
+- `POST /api/quizzes/{id}/questions` with `{}` → `200 {id}`; new Question appended with `order_index = max+1`, `text = ""` (empty), `qtype = "single"`, `graded = true`, parent `last_edited_at` advances. Auth: admin cookie. Note: the **backend** defaults `text` to empty string; the UI passes `{"text": "New question"}` so users see a sensible placeholder, but that string is a frontend choice.
 - `POST /api/quizzes/{id}/questions` with `{"text": "X", "qtype": "multi"}` → `200`; created with `text: "X"`, `qtype: "multi"`.
+- `POST /api/quizzes/{id}/questions` with `{"graded": false}` → `200`; created as a poll question (`graded: false`), surfaced by `GET /api/quizzes/{id}`.
 - `POST /api/quizzes/{id}/questions` with `{"qtype": "bogus"}` → `400 "qtype must be single or multi"`.
 - For a non-owner quiz → `404`.
 
 **Tests (UI)**
 - In `#editor-body`, clicking `+ Add question` appends a new question row. The frontend submits `{"text": "New question", "qtype": "single"}`, so the new row's text input shows "New question" as the editable starting value.
+- Each question row has a **Poll** checkbox next to the type selector; ticking it PATCHes `{graded: false}` and re-renders the row so the per-answer "correct" checkboxes disappear (a poll has no correct answer). Unticking restores them.
 
 ### UC-A-15: Edit a quiz question
 
 - **Given** the admin focuses a question's text, type, image, or order
 - **When** `PATCH /api/quiz_questions/{id}` is called with any subset of
-  `text` / `qtype` / `image_url` / `order_index`
+  `text` / `qtype` / `graded` / `image_url` / `order_index`
 - **Then** the fields update; parent quiz `last_edited_at` advances
 - **And** invalid `qtype` returns `400`; non-int `order_index`
   returns `400`
+- **And** `graded` toggles whether the question is scored (has a correct
+  answer) or a poll/survey question
 
 **Tests (API)**
 - `PATCH /api/quiz_questions/{qid}` with `{"text": "Why?"}` → `200 {ok: true}` and updates text + parent `last_edited_at`. Auth: admin cookie.
 - With `{"qtype": "multi"}` → updates qtype.
+- With `{"graded": false}` → marks the question as a poll; `GET /api/quizzes/{id}` then reports `graded: false` for it.
 - With `{"qtype": "bogus"}` → `400 "qtype must be single or multi"`.
 - With `{"order_index": "x"}` → `400 "order_index must be an integer"`.
 - With `{"image_url": null}` → clears image_url; with `{"image_url": "/uploads/x.png"}` → sets it.
@@ -497,9 +505,11 @@ Used by question and answer editors to set `image_url`.
 - **Given** a Draft quiz
 - **When** the admin clicks Publish (`POST /api/quizzes/{id}/publish`)
 - **Then** validation runs: ≥ 1 question; each question with non-empty text;
-  each question with ≥ 2 answers; each `single` question with exactly one
-  `is_correct` answer; each `multi` question with ≥ 1 correct answer;
-  each answer with non-empty text OR `image_url`
+  each question with ≥ 2 answers; for **graded** questions, each `single`
+  with exactly one `is_correct` answer and each `multi` with ≥ 1 correct
+  answer; each answer with non-empty text OR `image_url`
+- **And** a **poll** question (`graded: false`) is exempt from the
+  correct-answer rules — it needs only text + ≥ 2 non-empty answers
 - **And** on pass, status → `ready`
 - **And** on fail, returns `400` with the specific failing rule
   message ("Question 2 (single choice) needs exactly one correct answer")
@@ -511,6 +521,7 @@ Used by question and answer editors to set `image_url`.
 - Question 1 with 1 answer → `400 "Question 1 needs at least 2 answers"`.
 - `single` question with 0 or 2 correct answers → `400 "Question N (single choice) needs exactly one correct answer"`.
 - `multi` question with 0 correct answers → `400 "Question N (multiple choice) needs at least one correct answer"`.
+- A **poll** question (`graded: false`) with text + 2 non-empty answers and **no correct answer** → publish `200 {status: "ready"}` (correct-answer rules skipped). On a launched run the serialized current question reports `graded: false` and its answers carry **no** `is_correct` even after reveal/close; `GET /api/quiz_runs/{id}/results` reports `is_correct: false` for every poll answer.
 - Answer with empty text and no `image_url` → `400 "Question N, answer M is empty"`.
 - For a non-owner quiz → `404`.
 

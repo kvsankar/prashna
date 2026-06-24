@@ -294,6 +294,7 @@ def serialize_quiz(quiz: m.Quiz, include_correct: bool = False) -> dict:
                 "text": qq.text,
                 "image_url": qq.image_url,
                 "qtype": qq.qtype,
+                "graded": qq.graded,
                 "order_index": qq.order_index,
                 "answers": [
                     {
@@ -361,17 +362,21 @@ def serialize_quiz_run(
     # would let a participant peek at upcoming items via the API.
     expose_question = current is not None and (is_mod or run.status in ("live", "closed"))
     if expose_question:
+        # A poll question (not graded) never reveals correctness — there's no
+        # right answer; the reveal just shows the distribution.
+        reveal_correct = show_correct and current.graded
         payload["current_question"] = {
             "id": current.id,
             "text": current.text,
             "image_url": current.image_url,
             "qtype": current.qtype,
+            "graded": current.graded,
             "answers": [
                 {
                     "id": a.id,
                     "text": a.text,
                     "image_url": a.image_url,
-                    **({"is_correct": a.is_correct} if show_correct else {}),
+                    **({"is_correct": a.is_correct} if reveal_correct else {}),
                 }
                 for a in current.answers
             ],
@@ -415,11 +420,14 @@ def _validate_quiz_publishable(quiz: m.Quiz) -> None:
             raise HTTPException(400, f"Question {idx} is missing text")
         if len(qq.answers) < 2:
             raise HTTPException(400, f"Question {idx} needs at least 2 answers")
-        correct = [a for a in qq.answers if a.is_correct]
-        if qq.qtype == "single" and len(correct) != 1:
-            raise HTTPException(400, f"Question {idx} (single choice) needs exactly one correct answer")
-        if qq.qtype == "multi" and len(correct) < 1:
-            raise HTTPException(400, f"Question {idx} (multiple choice) needs at least one correct answer")
+        # Poll/survey questions (graded=False) intentionally have no correct
+        # answer — skip the correctness requirement for them.
+        if qq.graded:
+            correct = [a for a in qq.answers if a.is_correct]
+            if qq.qtype == "single" and len(correct) != 1:
+                raise HTTPException(400, f"Question {idx} (single choice) needs exactly one correct answer")
+            if qq.qtype == "multi" and len(correct) < 1:
+                raise HTTPException(400, f"Question {idx} (multiple choice) needs at least one correct answer")
         for ai, a in enumerate(qq.answers, start=1):
             if not a.text.strip() and not a.image_url:
                 raise HTTPException(400, f"Question {idx}, answer {ai} is empty")
@@ -459,6 +467,7 @@ def _ensure_current_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion:
             text=qq.text,
             image_url=qq.image_url,
             qtype=qq.qtype,
+            graded=qq.graded,
             order_index=qq.order_index,
         )
         db.add(vq)
@@ -468,7 +477,9 @@ def _ensure_current_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion:
                 question_id=vq.id,
                 text=a.text,
                 image_url=a.image_url,
-                is_correct=a.is_correct,
+                # A poll question has no correct answer; freeze it clean even if
+                # a stale is_correct lingers on the editable template.
+                is_correct=a.is_correct if qq.graded else False,
                 order_index=a.order_index,
             ))
     db.commit()
@@ -1189,6 +1200,7 @@ def add_quiz_question(
         text=(payload.get("text") or "").strip(),
         image_url=payload.get("image_url"),
         qtype=qtype,
+        graded=bool(payload.get("graded", True)),
         order_index=payload.get("order_index", next_order),
     )
     db.add(qq)
@@ -1222,6 +1234,8 @@ def update_quiz_question(
         if payload["qtype"] not in ("single", "multi"):
             raise HTTPException(400, "qtype must be single or multi")
         qq.qtype = payload["qtype"]
+    if "graded" in payload:
+        qq.graded = bool(payload["graded"])
     if "order_index" in payload:
         try:
             qq.order_index = int(payload["order_index"])
@@ -1401,12 +1415,13 @@ def quiz_run_results(
             "text": vq.text,
             "image_url": vq.image_url,
             "qtype": vq.qtype,
+            "graded": vq.graded,
             "answers": [
                 {
                     "id": a.id,
                     "text": a.text,
                     "image_url": a.image_url,
-                    "is_correct": a.is_correct,
+                    "is_correct": vq.graded and a.is_correct,
                     "count": tally["totals"].get(a.id, 0),
                 }
                 for a in vq.answers

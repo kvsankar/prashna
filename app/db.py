@@ -62,6 +62,8 @@ def _apply_additive_migrations():
         # (table, column, ddl-snippet)
         ("users", "session_version", "INTEGER NOT NULL DEFAULT 1"),
         ("users", "github_id", "INTEGER"),
+        ("quiz_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),
+        ("quiz_version_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),
     ]
     # Unique indexes to (re)create on existing DBs — `ALTER TABLE ADD COLUMN`
     # can't carry a UNIQUE constraint, so back it with an index. SQLite treats

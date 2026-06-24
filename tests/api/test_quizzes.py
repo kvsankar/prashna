@@ -240,6 +240,26 @@ def test_uc_a_14_add_question_multi(admin_client):
     assert r.status_code == 200
 
 
+def test_uc_a_14_add_poll_question(admin_client):
+    """UC-A-14: graded=false creates a poll question; default stays graded."""
+    qz = admin_client.post("/api/quizzes", json={"title": "Q"}).json()
+    admin_client.post(f"/api/quizzes/{qz['id']}/questions",
+                      json={"text": "Age?", "graded": False})
+    admin_client.post(f"/api/quizzes/{qz['id']}/questions", json={"text": "2+2?"})
+    qs = admin_client.get(f"/api/quizzes/{qz['id']}").json()["questions"]
+    assert qs[0]["graded"] is False
+    assert qs[1]["graded"] is True  # default
+
+
+def test_uc_a_15_toggle_graded(admin_client):
+    """UC-A-15: PATCH graded toggles poll/scored."""
+    qz = admin_client.post("/api/quizzes", json={"title": "Q"}).json()
+    q = admin_client.post(f"/api/quizzes/{qz['id']}/questions", json={"text": "Age?"}).json()
+    admin_client.patch(f"/api/quiz_questions/{q['id']}", json={"graded": False})
+    qs = admin_client.get(f"/api/quizzes/{qz['id']}").json()["questions"]
+    assert qs[0]["graded"] is False
+
+
 def test_uc_a_14_bad_qtype_400(admin_client):
     """UC-A-14: bogus qtype → 400."""
     qz = admin_client.post("/api/quizzes", json={"title": "Q"}).json()
@@ -541,6 +561,19 @@ def test_uc_a_21_publish_valid(admin_client):
                       json={"text": "b", "is_correct": True})
     r = admin_client.post(f"/api/quizzes/{qz['id']}/publish")
     assert r.status_code == 200
+    assert r.json() == {"status": "ready"}
+
+
+def test_uc_a_21_publish_poll_question_no_correct(admin_client):
+    """UC-A-21: a poll question (graded=false) publishes with no correct answer."""
+    qz = admin_client.post("/api/quizzes", json={"title": "Survey"}).json()
+    q = admin_client.post(f"/api/quizzes/{qz['id']}/questions",
+                          json={"text": "Experience level?", "qtype": "single",
+                                "graded": False}).json()
+    admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "Beginner"})
+    admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "Expert"})
+    r = admin_client.post(f"/api/quizzes/{qz['id']}/publish")
+    assert r.status_code == 200, r.text
     assert r.json() == {"status": "ready"}
 
 
