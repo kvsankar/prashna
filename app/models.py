@@ -47,6 +47,7 @@ class Session(Base):
     queries: Mapped[list["Query"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     quiz_runs: Mapped[list["QuizRun"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     participants: Mapped[list["Participant"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    feedback: Mapped[list["SessionFeedback"]] = relationship(back_populates="session", cascade="all, delete-orphan")
 
 
 # ---------- participants (audience members, scoped per session) ----------
@@ -83,6 +84,24 @@ class Query(Base):
     session: Mapped[Session] = relationship(back_populates="queries")
     participant: Mapped[Participant] = relationship()
     votes: Mapped[list["QueryVote"]] = relationship(back_populates="query", cascade="all, delete-orphan")
+
+
+class SessionFeedback(Base):
+    """A participant's rating + free-text feedback for a session. One row
+    per (session, participant), upserted on resubmit. rating is 1..5."""
+    __tablename__ = "session_feedback"
+    __table_args__ = (UniqueConstraint("session_id", "participant_id", name="uq_session_feedback"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
+    participant_id: Mapped[int] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), index=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    went_well: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_improve: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    session: Mapped[Session] = relationship(back_populates="feedback")
+    participant: Mapped[Participant] = relationship()
 
 
 class QueryVote(Base):

@@ -68,6 +68,7 @@ RL_NEW_PARTICIPANT = (15, 1 / 20)  # fresh Participant rows per IP
 RL_ASK = (6, 1 / 10)         # query submissions per IP
 RL_VOTE = (30, 2.0)          # query vote toggles per IP
 RL_SUBMIT = (20, 0.5)        # quiz-answer submissions per IP
+RL_FEEDBACK = (10, 0.5)      # session-feedback submissions per IP
 
 
 def _client_ip(request: Request) -> str:
@@ -889,6 +890,118 @@ async def update_my_participant(
     db.refresh(p)
     await broadcast_session(s, "participant")
     return {"id": p.id, "name": p.name}
+
+
+# ---------- routes: session feedback (participant rating + comments) ----------
+
+def serialize_feedback(f: m.SessionFeedback, *, include_author: bool = False) -> dict:
+    d = {
+        "rating": f.rating,
+        "went_well": f.went_well,
+        "to_improve": f.to_improve,
+        "updated_at": f.updated_at.isoformat() if f.updated_at else None,
+    }
+    if include_author:
+        d["author_name"] = f.participant.name if f.participant else None
+    return d
+
+
+@app.get("/api/sessions/{code}/feedback/mine")
+def my_feedback(
+    code: str,
+    request: Request,
+    response: Response,
+    voter_token: Annotated[str | None, Cookie()] = None,
+    db: DbSession = Depends(get_db),
+):
+    """The caller's own feedback for this session, or null if none yet."""
+    s = get_session_by_code(db, code)
+    p = current_participant(s, request, response, voter_token, db)
+    f = db.scalar(select(m.SessionFeedback).where(
+        m.SessionFeedback.session_id == s.id,
+        m.SessionFeedback.participant_id == p.id,
+    ))
+    return serialize_feedback(f) if f else None
+
+
+@app.post("/api/sessions/{code}/feedback")
+async def submit_feedback(
+    code: str,
+    payload: dict,
+    request: Request,
+    response: Response,
+    voter_token: Annotated[str | None, Cookie()] = None,
+    db: DbSession = Depends(get_db),
+):
+    """Upsert the caller's feedback (one row per participant). Allowed in
+    any session status — the feedback card is always available."""
+    s = get_session_by_code(db, code)
+    if not limiter.allow(f"fb:{_client_ip(request)}", *RL_FEEDBACK):
+        raise HTTPException(429, "You're submitting feedback too fast — wait a moment and try again")
+    rating = payload.get("rating")
+    if not isinstance(rating, int) or isinstance(rating, bool) or rating < 1 or rating > 5:
+        raise HTTPException(400, "rating must be an integer from 1 to 5")
+    went_well = (payload.get("went_well") or "").strip()[:2000] or None
+    to_improve = (payload.get("to_improve") or "").strip()[:2000] or None
+    p = current_participant(s, request, response, voter_token, db)
+    f = db.scalar(select(m.SessionFeedback).where(
+        m.SessionFeedback.session_id == s.id,
+        m.SessionFeedback.participant_id == p.id,
+    ))
+    if f is None:
+        f = m.SessionFeedback(session_id=s.id, participant_id=p.id, rating=rating,
+                              went_well=went_well, to_improve=to_improve)
+        db.add(f)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Concurrent insert won under UNIQUE(session, participant) —
+            # re-resolve and update that row instead of 500-ing.
+            db.rollback()
+            f = db.scalar(select(m.SessionFeedback).where(
+                m.SessionFeedback.session_id == s.id,
+                m.SessionFeedback.participant_id == p.id,
+            ))
+            if f is None:
+                raise
+            f.rating, f.went_well, f.to_improve = rating, went_well, to_improve
+            db.commit()
+    else:
+        f.rating, f.went_well, f.to_improve = rating, went_well, to_improve
+        db.commit()
+    db.refresh(f)
+    await broadcast_session(s, "feedback")
+    return serialize_feedback(f)
+
+
+@app.get("/api/sessions/{code}/feedback/summary")
+def feedback_summary(
+    code: str,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    """Aggregate feedback for the host (mod-key or admin owner): count,
+    average, star distribution, and the individual responses."""
+    s = get_session_by_code(db, code)
+    require_mod_or_owner(s, x_mod_key, me)
+    rows = db.scalars(
+        select(m.SessionFeedback)
+        .where(m.SessionFeedback.session_id == s.id)
+        .options(selectinload(m.SessionFeedback.participant))
+        .order_by(m.SessionFeedback.updated_at.desc())
+    ).all()
+    count = len(rows)
+    average = round(sum(r.rating for r in rows) / count, 2) if count else None
+    distribution = {i: 0 for i in range(1, 6)}
+    for r in rows:
+        distribution[r.rating] += 1
+    return {
+        "count": count,
+        "average": average,
+        "distribution": distribution,
+        "items": [serialize_feedback(r, include_author=True) for r in rows],
+    }
 
 
 # ---------- routes: queries (the Q&A board) ----------

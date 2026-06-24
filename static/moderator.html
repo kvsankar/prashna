@@ -88,6 +88,11 @@
       <div class="card-head"><h2>Questions</h2></div>
       <div id="queries"></div>
     </section>
+
+    <section class="card" id="feedback-card" style="display:none;">
+      <div class="card-head"><h2>Feedback</h2><div class="card-tools" id="feedback-summary"></div></div>
+      <div id="feedback-list"></div>
+    </section>
   </main>
 
   <script type="module">
@@ -115,7 +120,7 @@
     const pendingResponseText = new Map();
 
     function showWorkSurfaces(visible) {
-      for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card"]) $("#" + id).style.display = visible ? "" : "none";
+      for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "feedback-card"]) $("#" + id).style.display = visible ? "" : "none";
     }
     function showKeyGate() {
       $("#modkey-code").textContent = CODE;
@@ -481,7 +486,35 @@
     // Includes loadSession so session_state events (Start/End/title change
     // from another actor, or reconnect after a missed broadcast) refresh
     // the header badge, lifecycle controls, and invite QR too.
-    function refresh() { loadSession(); loadQueries(); loadQuizRuns(); loadPresence(); }
+    async function loadFeedback() {
+      try {
+        const sum = await api(`/api/sessions/${CODE}/feedback/summary`, { headers: modHeaders() });
+        renderFeedback(sum);
+      } catch (e) { /* non-fatal: feedback panel just stays as-is */ }
+    }
+    function renderFeedback(sum) {
+      const head = $("#feedback-summary"); head.innerHTML = "";
+      const root = $("#feedback-list"); root.innerHTML = "";
+      if (!sum || !sum.count) {
+        root.appendChild(el("div", { class: "muted small" }, "No feedback yet."));
+        return;
+      }
+      head.appendChild(el("span", { class: "fb-avg" }, `★ ${sum.average}`));
+      head.appendChild(el("span", { class: "small muted" }, ` · ${sum.count} response(s)`));
+      for (const it of sum.items) {
+        const stars = "★".repeat(it.rating) + "☆".repeat(5 - it.rating);
+        root.appendChild(el("div", { class: "fb-item" },
+          el("div", {},
+            el("span", { class: "fb-stars-static" }, stars),
+            it.author_name ? el("span", { class: "small muted" }, "  — " + it.author_name) : null,
+          ),
+          it.went_well ? el("div", { class: "small" }, el("strong", {}, "Went well: "), it.went_well) : null,
+          it.to_improve ? el("div", { class: "small" }, el("strong", {}, "Improve: "), it.to_improve) : null,
+        ));
+      }
+    }
+
+    function refresh() { loadSession(); loadQueries(); loadQuizRuns(); loadPresence(); loadFeedback(); }
 
     async function boot() {
       // Detect admin-owner context up-front so renderInvite() can hide
