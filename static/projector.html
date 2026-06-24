@@ -142,7 +142,7 @@
         aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
         if (showCounts) {
           const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
-          aDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
+          aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
         }
         body.appendChild(aDiv);
       }

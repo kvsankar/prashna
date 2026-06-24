@@ -222,9 +222,12 @@
         }
         if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
         aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
-        if (showCounts) aDiv.appendChild(el("div", { class: "opt-pct" }, `${pct}%`));
+        if (showCounts) aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
         body.appendChild(aDiv);
       }
+      // Total responses for this question (raw count, not the %-denominator clamp).
+      if (showCounts) body.appendChild(el("div", { class: "small muted", style: "margin-top: 8px;" },
+        `${activeQuiz.results.respondents} respondent(s)`));
       if (!locked) {
         const submitBtn = el("button", { class: "primary", onclick: submitQuiz },
           submitted ? "Update answer" : "Submit");

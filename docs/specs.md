@@ -1212,8 +1212,9 @@ Participant-side counterpart of UC-D-08.
 - **Given** a QuizRun is `live` with `show_live_counts = true`
 - **When** the participant view renders the current question's
   answering phase
-- **Then** each answer shows a running vote-share bar and percentage
-  **without** correctness markers
+- **Then** each answer shows a running vote-share bar with its **absolute
+  count and percentage** (e.g. `5 (50%)`), and a **total respondent
+  count** below, **without** correctness markers
 - **And** voting remains open — clicking still toggles selection and
   Submit is enabled
 - **And** when `show_live_counts = false` (default), the answering
@@ -1224,7 +1225,7 @@ Participant-side counterpart of UC-D-08.
 - With `show_live_counts=false` (default), `results` is `null` in the answering phase.
 
 **Tests (UI)**
-- On `/s/<CODE>` with live counts on, the answering phase shows running vote-share bars and percentages per answer; no correctness markers.
+- On `/s/<CODE>` with live counts on, the answering phase shows running vote-share bars with each answer's count and percentage (`<count> (<pct>%)`) and a total respondent count; no correctness markers.
 - Voting remains enabled — clicking still toggles selection and Submit is enabled.
 - With live counts off (default), the answering phase shows only question + answer texts.
 
@@ -1364,8 +1365,9 @@ Configurable per QuizRun via `show_live_counts` (default off).
 - **Given** the moderator toggles "live counts" on for a QuizRun
 - **When** the run is in answering phase
 - **Then** the projector and participant pages display running vote
-  totals (bars + percentages) for each answer, **without** revealing
-  correctness
+  totals — a bar with each answer's **absolute count and percentage**
+  (`<count> (<pct>%)`) plus a **total respondent count** — **without**
+  revealing correctness
 - **And** voting remains open — participants can still pick / change
   their answer until the moderator advances or reveals
 - **And** when counts are off (default), the answering phase shows
@@ -1376,7 +1378,7 @@ Configurable per QuizRun via `show_live_counts` (default off).
 - See UC-M-05 tests for `POST .../live_counts`.
 
 **Tests (UI)**
-- On `/p/<CODE>` with `show_live_counts=true`, the answering phase in `#quiz-body` shows running totals (bars + percentages) per answer without correctness markers.
+- On `/p/<CODE>` with `show_live_counts=true`, the answering phase in `#quiz-body` shows running totals — bar + `<count> (<pct>%)` per answer and a total respondent count — without correctness markers.
 - Toggling live counts off on the moderator UI triggers a WS refresh; the projector reverts to bare question + answers.
 
 ---
