@@ -247,8 +247,18 @@
       }
       typeSel.addEventListener("change", () => patchQuestion(qq.id, { qtype: typeSel.value }));
 
+      // Poll toggle: a poll question has options but no correct answer
+      // (e.g. age / experience range). Hides the per-answer "correct" boxes.
+      const pollBox = el("input", { type: "checkbox" });
+      if (!qq.graded) pollBox.setAttribute("checked", "");
+      pollBox.addEventListener("change", async () => {
+        await patchQuestion(qq.id, { graded: !pollBox.checked });
+        openQuizDetail(editing.id);
+      });
+      const pollLabel = el("label", { class: "small muted", title: "Poll — collect responses with no correct answer" }, pollBox, " Poll");
+
       const head = el("div", { class: "row gap" },
-        el("strong", {}, `Q${qq.order_index + 1}`), typeSel, el("div", { class: "spacer" }),
+        el("strong", {}, `Q${qq.order_index + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
         el("button", { class: "danger ghost xsmall", onclick: async () => {
           if (!confirm("Delete this question?")) return;
           await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" });
@@ -286,12 +296,15 @@
 
     function renderAnswer(qq, op) {
       const row = el("div", { class: "editor-opt" });
-      const correctBox = el("input", { type: "checkbox" });
-      if (op.is_correct) correctBox.setAttribute("checked", "");
-      correctBox.addEventListener("change", () => patchAnswer(op.id, { is_correct: correctBox.checked }));
       const txt = el("input", { type: "text", value: op.text, class: "inline" });
       txt.addEventListener("change", () => patchAnswer(op.id, { text: txt.value }));
-      row.appendChild(el("label", { class: "small", title: "Correct" }, correctBox));
+      // Correct-answer toggle only for graded questions; polls have none.
+      if (qq.graded) {
+        const correctBox = el("input", { type: "checkbox" });
+        if (op.is_correct) correctBox.setAttribute("checked", "");
+        correctBox.addEventListener("change", () => patchAnswer(op.id, { is_correct: correctBox.checked }));
+        row.appendChild(el("label", { class: "small", title: "Correct" }, correctBox));
+      }
       row.appendChild(txt);
       if (op.image_url) row.appendChild(el("img", { src: op.image_url, class: "thumb-sm", alt: "" }));
       // Image upload / clear, mirroring the item-level affordance.

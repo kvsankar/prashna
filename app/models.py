@@ -128,6 +128,10 @@ class Question(Base):
     text: Mapped[str] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     qtype: Mapped[str] = mapped_column(String(10), default="single")  # "single" | "multi"
+    # False = poll/survey question: has options but no correct answer (e.g.
+    # collecting age/experience range). Publish skips the correct-answer
+    # requirement and reveal shows the distribution without correctness.
+    graded: Mapped[bool] = mapped_column(Boolean, default=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
     quiz: Mapped[Quiz] = relationship(back_populates="questions")
@@ -177,6 +181,8 @@ class QuizVersionQuestion(Base):
     text: Mapped[str] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     qtype: Mapped[str] = mapped_column(String(10), default="single")
+    # Frozen copy of Question.graded (poll vs scored). See Question.graded.
+    graded: Mapped[bool] = mapped_column(Boolean, default=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
     version: Mapped[QuizVersion] = relationship(back_populates="questions")

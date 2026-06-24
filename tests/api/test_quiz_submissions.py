@@ -245,6 +245,31 @@ def test_uc_p_09_closed_run_results(client, admin_client, make_quiz, make_sessio
     assert g["results"] is not None
 
 
+def test_uc_a_21_poll_run_hides_correctness(admin_client, make_session):
+    """UC-A-21: a poll question (graded=false) never exposes is_correct on a
+    run — not even to a moderator on reveal — and results mark nothing correct."""
+    qz = admin_client.post("/api/quizzes", json={"title": "Poll"}).json()
+    q = admin_client.post(f"/api/quizzes/{qz['id']}/questions",
+                          json={"text": "Age range?", "qtype": "single", "graded": False}).json()
+    admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "18-29"})
+    admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "30-49"})
+    admin_client.post(f"/api/quizzes/{qz['id']}/publish").raise_for_status()
+    s = make_session()
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                            json={"quiz_id": qz["id"]}).json()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/reveal",
+                      json={"reveal": True})
+    g = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    cq = g["current_question"]
+    assert cq["graded"] is False
+    assert all("is_correct" not in a for a in cq["answers"]), cq["answers"]
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close").raise_for_status()
+    res = admin_client.get(f"/api/quiz_runs/{run['id']}/results").json()
+    assert res["questions"][0]["graded"] is False
+    assert all(a["is_correct"] is False for a in res["questions"][0]["answers"])
+
+
 # ---------- UC-P-12: Live counts ----------
 
 def test_uc_p_12_live_counts_on(client, admin_client, make_quiz, make_session):
