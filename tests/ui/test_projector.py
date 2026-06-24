@@ -131,7 +131,7 @@ def test_uc_d_04_planning_has_no_queries_no_quiz(base_url, admin_setup, page):
         page.goto(f"{base_url}/p/{s['code']}")
         expect(page.locator("#title")).to_contain_text(s["title"], timeout=5000)
         # Wait for first load to settle.
-        expect(page.locator("#queries")).to_contain_text("Waiting for queries", timeout=5000)
+        expect(page.locator("#queries")).to_contain_text("Waiting for questions", timeout=5000)
         expect(page.locator("#quiz-section")).to_be_hidden()
     finally:
         c.close()

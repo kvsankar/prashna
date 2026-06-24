@@ -173,3 +173,16 @@ export function toast(msg, { error = false, duration = 2800 } = {}) {
 }
 
 export function errorToast(msg) { toast(msg, { error: true, duration: 4000 }); }
+
+// Friendly labels for lifecycle enums (Session + QuizRun). Badge CSS
+// classes still use the raw status value (e.g. `badge-live`), which the
+// tests assert on; only the displayed text changes.
+export const STATUS_LABELS = {
+  planning: "Not started",
+  live: "Live",
+  ended: "Ended",
+  queued: "Queued",
+  closed: "Closed",
+};
+
+export const statusLabel = (s) => STATUS_LABELS[s] || s;
