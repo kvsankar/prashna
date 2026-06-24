@@ -103,6 +103,35 @@ function _loadQR() {
   return _qrcodePromise;
 }
 
+// Shared QR lightbox — click/Enter any rendered QR to blow it up fullscreen
+// for easy scanning (like a picture lightbox). Created lazily, reused across
+// all QRs on the page.
+let _qrLightbox = null;
+function _qrLightboxEl() {
+  if (_qrLightbox) return _qrLightbox;
+  const inner = el("div", { class: "qr-lightbox-inner" });
+  const overlay = el("div", { class: "qr-lightbox", style: "display:none;" },
+    inner, el("div", { class: "qr-lightbox-hint" }, "Click anywhere or press Esc to close"));
+  const close = () => { overlay.style.display = "none"; inner.innerHTML = ""; };
+  overlay.addEventListener("click", close);
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && overlay.style.display !== "none") close();
+  });
+  document.body.appendChild(overlay);
+  _qrLightbox = { overlay, inner };
+  return _qrLightbox;
+}
+
+function _expandQR(svg) {
+  const { overlay, inner } = _qrLightboxEl();
+  inner.innerHTML = "";
+  const clone = svg.cloneNode(true);
+  // Fill the square container; the thumbnail had height:auto.
+  clone.style.cssText = "width:100%;height:100%;display:block;background:white;border-radius:8px;";
+  inner.appendChild(clone);
+  overlay.style.display = "";
+}
+
 export async function renderQR(target, text, { cellSize = 4, margin = 2 } = {}) {
   if (!target) return;
   const qrcode = await _loadQR();
@@ -119,6 +148,17 @@ export async function renderQR(target, text, { cellSize = 4, margin = 2 } = {}) 
     svg.style.display = "block";
     svg.style.background = "white";
     svg.style.borderRadius = "8px";
+    // Make every QR expandable to fullscreen. Assign (not addEventListener)
+    // so re-renders of the same target don't stack handlers.
+    target.classList.add("qr-expandable");
+    target.setAttribute("role", "button");
+    target.setAttribute("tabindex", "0");
+    target.setAttribute("aria-label", "Enlarge QR code for scanning");
+    target.title = "Click to enlarge";
+    target.onclick = () => _expandQR(svg);
+    target.onkeydown = e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); _expandQR(svg); }
+    };
   }
 }
 
