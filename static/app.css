@@ -70,6 +70,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .vote-btn .count { font-weight: 600; }
 .vote-btn .label { font-size: 11px; color: var(--muted); }
 .vote-btn.voted .label { color: rgba(255,255,255,0.8); }
+.vote-btn .arrow { font-size: 12px; line-height: 1; color: var(--muted); }
+.vote-btn.voted .arrow { color: rgba(255,255,255,0.9); }
 
 .option {
   display: flex; gap: 12px; align-items: center;

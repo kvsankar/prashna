@@ -52,7 +52,21 @@ Selectors cited in `**Tests (UI)**` blocks are real IDs / classes in
 `static/*.html`. Some elements are JS-rendered (badges, quiz-run rows,
 query rows); test authors should rely on the documented class names
 (`.badge-live`, `.question`, etc.) and text content rather than DOM
-positions.
+positions. **Status badges** (Session + QuizRun lifecycle) keep the raw
+status in their CSS class (`badge-planning`, `badge-queued`, …) but
+*display* a friendly label ("Not started", "Queued", "Live", "Closed",
+"Ended" — see `statusLabel` in `common.js`). Assert lifecycle on the
+class, never the badge text.
+
+**UI copy vs. entity names.** The `Query` entity is internal vocabulary.
+On the participant, projector, and moderator surfaces the user-facing
+copy says **"question" / "questions"** (audiences ask questions, not
+"queries"). Element IDs, CSS classes, API routes, and DB columns keep the
+`query` name (`#queries`, `#query-text`, `/api/sessions/{code}/queries`,
+`query_count`). When a `**Tests (UI)**` bullet pins visible text it uses
+the displayed wording ("question"); when it pins a selector or route it
+uses the `query` name. This split is intentional — don't rename the
+entity to match the copy.
 
 When a bullet writes `"a"*201` or similar, it's Python `str * int`
 notation (a 201-character string).
@@ -1153,7 +1167,7 @@ recognizes which phase the current question is in.
 - Broadcasts `{type: "quiz_submission"}` on success.
 
 **Tests (UI)**
-- On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive and Submit becomes enabled; clicking Submit POSTs and toasts.
+- On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive and the **Submit answer** button becomes enabled; clicking it POSTs and toasts. (The button reads "Submit answer", then "Update answer" after a prior submission; tests locate it via `#quiz-body button.primary`, not its text.)
 - With multi-choice, clicking answers toggles each independently.
 - After moderator reveals, the answer inputs become disabled.
 

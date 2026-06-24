@@ -26,7 +26,7 @@
     </section>
 
     <section class="card">
-      <h2>Top queries</h2>
+      <h2>Top questions</h2>
       <div id="queries" class="qa-list"></div>
     </section>
   </main>
@@ -80,7 +80,7 @@
       root.innerHTML = "";
       const top = qs.filter(q => !q.responded).sort((a, b) => b.vote_count - a.vote_count).slice(0, 8);
       if (!top.length) {
-        root.appendChild(el("div", { class: "muted" }, "Waiting for queries…"));
+        root.appendChild(el("div", { class: "muted" }, "Waiting for questions…"));
         return;
       }
       for (const q of top) {

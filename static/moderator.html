@@ -72,13 +72,13 @@
     </section>
 
     <section class="card" id="queries-card" style="display:none;">
-      <div class="card-head"><h2>Queries</h2></div>
+      <div class="card-head"><h2>Questions</h2></div>
       <div id="queries"></div>
     </section>
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast, renderQR } from "/static/common.js";
+    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast, renderQR, statusLabel } from "/static/common.js";
 
     const CODE = pathCode();
 
@@ -167,7 +167,7 @@
 
     function renderLifecycle() {
       const status = sessionState.status;
-      $("#session-status").textContent = status;
+      $("#session-status").textContent = statusLabel(status);
       $("#session-status").className = "badge badge-" + status;
       const actions = $("#lifecycle-actions"); actions.innerHTML = "";
       const hint = $("#lifecycle-hint");
@@ -180,7 +180,7 @@
         hint.textContent = "Session is live. End it when you're done.";
         const btn = el("button", { class: "danger ghost small" }, "End session");
         btn.addEventListener("click", async () => {
-          if (!confirm("End the session? Participants can no longer ask queries.")) return;
+          if (!confirm("End the session? Participants can no longer ask questions.")) return;
           transition("end");
         });
         actions.appendChild(btn);
@@ -213,7 +213,7 @@
       const root = $("#queries");
       root.innerHTML = "";
       if (!queries.length) {
-        root.appendChild(el("div", { class: "muted small" }, "No queries yet. Share the participant URL to invite queries."));
+        root.appendChild(el("div", { class: "muted small" }, "No questions yet. Share the participant URL to invite questions."));
         return;
       }
       const sorted = [...queries].sort((a, b) => {
@@ -303,7 +303,7 @@
     }
 
     function renderQuizRun(r) {
-      const tag = el("span", { class: "badge badge-" + r.status }, r.status);
+      const tag = el("span", { class: "badge badge-" + r.status }, statusLabel(r.status));
       const head = el("div", { class: "row", style: "margin-bottom: 8px; gap: 6px;" },
         el("strong", {}, r.quiz_title),
         el("span", { class: "small muted" }, ` v${r.version_no}`),

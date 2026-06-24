@@ -60,7 +60,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, toast, errorToast } from "/static/common.js";
+    import { $, api, el, escapeHtml, toast, errorToast, statusLabel } from "/static/common.js";
 
     let quizzes = [];
     let qsessions = [];
@@ -113,7 +113,7 @@
         tr.appendChild(el("td", {},
           el("span", { class: "muted small" }, r.session_title + " "),
           el("code", { class: "small" }, r.session_code)));
-        tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + r.status }, r.status)));
+        tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + r.status }, statusLabel(r.status))));
         const progress = r.status === "queued" ? "—"
           : `${Math.min(r.current_question_idx + 1, r.question_count)}/${r.question_count}`;
         tr.appendChild(el("td", { class: "num muted" }, progress));
@@ -377,7 +377,7 @@
       const body = $("#results-body");
       body.innerHTML = "";
       const head = el("div", { class: "row gap" },
-        el("span", { class: "badge badge-" + r.status }, r.status),
+        el("span", { class: "badge badge-" + r.status }, statusLabel(r.status)),
         el("span", { class: "muted small" },
           `${r.session_title} · `,
           el("code", { class: "small" }, r.session_code)),

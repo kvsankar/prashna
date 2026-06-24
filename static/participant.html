@@ -26,22 +26,22 @@
 
     <section class="card" id="ended-card" style="display:none;">
       <div class="card-head"><h2>Session ended</h2></div>
-      <p class="muted small" style="margin: 0;">This session has ended. You can still see what was asked, but you can't add new queries or vote.</p>
+      <p class="muted small" style="margin: 0;">This session has ended. You can still see what was asked, but you can't add new questions or vote.</p>
     </section>
 
     <section class="card" id="ask-card">
       <div class="card-head"><h2>Ask</h2></div>
-      <label for="query-text" class="small muted">Your query</label>
-      <textarea id="query-text" aria-label="Your query" placeholder="Type your query… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
+      <label for="query-text" class="small muted">Your question</label>
+      <textarea id="query-text" aria-label="Your question" placeholder="Type your question… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
       <div class="row" style="margin-top: 8px;">
         <span class="muted small">Anonymous unless you set a name above.</span>
         <div class="spacer"></div>
-        <button class="primary" id="ask-btn">Submit</button>
+        <button class="primary" id="ask-btn">Ask</button>
       </div>
     </section>
 
     <section class="card">
-      <div class="card-head"><h2>Queries</h2></div>
+      <div class="card-head"><h2>Questions</h2></div>
       <div id="queries"></div>
     </section>
 
@@ -101,7 +101,7 @@
       const root = $("#queries");
       root.innerHTML = "";
       if (!queries.length) {
-        root.appendChild(el("div", { class: "muted small" }, "No queries yet. Be the first to ask."));
+        root.appendChild(el("div", { class: "muted small" }, "No questions yet. Be the first to ask."));
         return;
       }
       const sorted = [...queries].sort((a, b) => {
@@ -118,8 +118,8 @@
         "aria-label": q.voted ? `Remove vote (currently ${q.vote_count})` : `Upvote (currently ${q.vote_count})`,
         onclick: () => toggleVote(q.id),
       },
+        el("div", { class: "arrow", "aria-hidden": "true" }, "▲"),
         el("div", { class: "count" }, String(q.vote_count)),
-        el("div", { class: "label" }, q.voted ? "voted" : "vote"),
       );
       const body = el("div", { class: "body" },
         el("div", { class: "text" }, q.text),
@@ -150,7 +150,7 @@
         });
         $("#query-text").value = "";
         loadQueries();
-        toast("Query submitted");
+        toast("Question submitted");
       } catch (e) { errorToast(e.message); }
     }
     $("#ask-btn").addEventListener("click", askQuery);
@@ -230,7 +230,7 @@
         `${activeQuiz.results.respondents} respondent(s)`));
       if (!locked) {
         const submitBtn = el("button", { class: "primary", onclick: submitQuiz },
-          submitted ? "Update answer" : "Submit");
+          submitted ? "Update answer" : "Submit answer");
         // First submission needs at least one selection. Updating a prior
         // submission is allowed to clear the selection (`answer_ids: []`)
         // — backend supports it and that's the only way to retract a
