@@ -78,7 +78,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .stars { display: flex; gap: 4px; }
 .star { background: none; border: none; cursor: pointer; padding: 2px;
   font-size: 30px; line-height: 1; color: var(--muted); }
-.star:hover, .star.filled { color: #f5b301; }
+/* .filled is driven in JS so hovering the Nth star lights stars 1..N. */
+.star.filled { color: #f5b301; }
+/* Collapsible "Rate this session" card (participant). */
+details#feedback-card > summary { cursor: pointer; list-style: none; }
+details#feedback-card > summary::-webkit-details-marker { display: none; }
+.fb-chevron { margin-left: auto; color: var(--muted); }
+.fb-chevron::before { content: "▾"; }
+details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 .fb-avg { font-size: 16px; font-weight: 600; color: #f5b301; }
 .fb-stars-static { color: #f5b301; letter-spacing: 1px; }
 .fb-item { padding: 8px 0; border-top: 1px solid var(--border); }

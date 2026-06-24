@@ -63,6 +63,25 @@ def test_uc_p_13_upsert_one_per_participant(client, admin_client, make_session):
     assert sumr["items"][0]["went_well"] == "great"
 
 
+def test_uc_p_13_every_submission_is_versioned(client, admin_client, make_session):
+    """Resubmitting appends a history row each time, while the current view
+    stays one row per participant."""
+    from sqlalchemy import func, select as _select
+
+    from app import db as _db
+    from app import models as _m
+
+    s = make_session()
+    admin_client.cookies.clear()
+    for rating in (3, 4, 5):
+        client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": rating})
+    with _db.SessionLocal() as dbs:
+        versions = dbs.scalar(_select(func.count()).select_from(_m.SessionFeedbackVersion))
+        current = dbs.scalar(_select(func.count()).select_from(_m.SessionFeedback))
+    assert versions == 3   # full history retained
+    assert current == 1    # one current row per participant
+
+
 def test_uc_p_13_rating_out_of_range_400(client, admin_client, make_session):
     s = make_session()
     admin_client.cookies.clear()

@@ -1298,21 +1298,27 @@ Participant-side counterpart of UC-D-08.
 ### UC-P-13: Rate the session (feedback)
 
 A participant can rate the session and leave course feedback. The control
-is **always available** (any session status) in its own card
-(`#feedback-card`) and uses progressive disclosure: a 1–5 **star** rating
+is **always available** (any session status) as the **first element on the
+page** in a **collapsible card** (`#feedback-card`, a `<details>` that is
+**open by default**) and uses progressive disclosure: a 1–5 **star** rating
 that, once a star is picked, expands to reveal "What went well?" and "What
-could be better?" text fields plus Submit.
+could be better?" text fields plus Submit. Hovering a star previews the
+fill up to that star (hovering the 5th lights all five).
 
 - **Given** the participant is on `/s/<CODE>`
 - **When** they pick a star
 - **Then** the expanded section (`#fb-expand`) appears with the two
   optional comment fields and a Submit button
 - **When** they Submit
-- **Then** `POST /api/sessions/{code}/feedback` upserts their feedback
-  (one row per participant, keyed by `voter_token`); the status line
-  confirms "Saved" and the button becomes "Update feedback"
+- **Then** `POST /api/sessions/{code}/feedback` records the submission;
+  the status line confirms "Saved" and the button becomes "Update feedback"
+- **And** participants may **resubmit any number of times**: each
+  submission is appended to an immutable history (`SessionFeedbackVersion`)
+  and the **latest** version is mirrored into the current view
+  (`SessionFeedback`, one per participant keyed by `voter_token`) used by
+  `mine`/`summary`
 - **And** reloading prefills their prior rating + comments (via
-  `GET /api/sessions/{code}/feedback/mine`)
+  `GET /api/sessions/{code}/feedback/mine`, which returns the latest)
 - **And** comments are optional — a bare rating is valid; `rating` must be
   an integer 1–5 or the POST returns `400`
 - **And** submitting broadcasts `{type: "feedback"}` (UC-X-01) so the
@@ -1322,12 +1328,13 @@ could be better?" text fields plus Submit.
 - `POST /api/sessions/{code}/feedback` with `{"rating": 4, "went_well": "...", "to_improve": "..."}` → `200 {rating, went_well, to_improve, updated_at}`. Auth: none (cookie issued on first call).
 - A bare `{"rating": 5}` → `200` with null comment fields.
 - Allowed on an `ended` session (the card is always available).
-- Resubmitting updates the same row (summary `count` stays 1; latest values win).
+- Resubmitting is allowed any number of times: each call appends a `SessionFeedbackVersion` (history retained), while the current view stays one row per participant — `summary.count` stays 1 and the latest values win.
 - `rating` of `0`, `6`, missing, a string, a float, or a bool → `400 "rating must be an integer from 1 to 5"`.
 - `GET .../feedback/mine` → `null` before submitting, then the row.
 
 **Tests (UI)**
-- On `/s/<CODE>`, `#fb-expand` is hidden until a star in `#fb-stars` is clicked, then visible; filling `#fb-went-well` and clicking `#fb-submit` shows a "Saved" status and the button reads "Update feedback".
+- `#feedback-card` is the first card on `/s/<CODE>` and is a collapsible `<details>` that is open by default.
+- `#fb-expand` is hidden until a star in `#fb-stars` is clicked, then visible; filling `#fb-went-well` and clicking `#fb-submit` shows a "Saved" status and the button reads "Update feedback".
 - After reload, the prior rating (filled stars count) and comment values are prefilled.
 
 ---
