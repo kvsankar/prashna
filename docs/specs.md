@@ -815,22 +815,26 @@ recognizes which phase the current question is in.
   to false → the next question's answering phase begins.
 - **Given** the QuizRun is in results phase and the current question
   **is** the last
-- **When** the moderator clicks **Close quiz →**
+- **When** the moderator clicks **Finish quiz →**
 - **Then** the run closes (see UC-M-06).
 - **Prev** moves `current_question_idx` backwards (mod can revisit a
   question). Any advance call (next / prev / to) resets
   `reveal_current = False` server-side.
 - **Row controls.** Only the primary drive controls stay on the row: the
-  morphing primary (Reveal results → / Next question → / Close quiz →) and
-  **← Prev**. The rare run-management actions live in a **⋯ overflow
-  menu** (`details.menu`, see UX.md §4): **End quiz now** (live only),
-  the **Show vote counts to audience** checkbox, and **Remove from
-  session**.
+  morphing primary (Reveal results → / Next question → / Finish quiz →)
+  and **← Prev**. The rare run-management actions live in a **⋯ overflow
+  menu** (`details.menu`, see UX.md §4): **Finish quiz** (close while
+  keeping results — shown only when the primary isn't already the finish
+  step, so it never appears twice), a **Show / Hide vote counts** audience
+  toggle, and **Delete run** (discard the run entirely). "Finish" and
+  "Delete" are the two distinct outcomes — finishing keeps results;
+  deleting discards them.
 - **Live counts** are toggled independently per QuizRun via
   `POST /api/sessions/{code}/quiz_runs/{id}/live_counts` with body
   `{show: bool}` (mod-or-owner auth). Default off. The moderator UI
-  surfaces this as a **Show vote counts to audience** checkbox inside the
-  run's ⋯ overflow menu. See UC-D-08 / UC-P-12 for the rendered behavior.
+  surfaces this as a **Show vote counts to audience** / **Hide vote counts
+  from audience** verb button inside the run's ⋯ overflow menu. See
+  UC-D-08 / UC-P-12 for the rendered behavior.
 - **Backend routes called by this UC**: `/start` (queued → live),
   `/advance` (`{direction: "next" | "prev" | "to", index?: int}`),
   `/reveal` (`{reveal: bool}`), `/close`, `/live_counts`. All POST,
@@ -850,15 +854,16 @@ recognizes which phase the current question is in.
 **Tests (UI)**
 - On `/m/<code>` with a live run in answering phase (`reveal_current=false`), the primary control reads "Reveal results →"; clicking it flips the row to results phase.
 - In results phase on a non-last question, the control reads "Next question →"; clicking advances `current_question_idx` and resets to answering phase for the next question.
-- In results phase on the last question, the control reads "Close quiz →"; clicking closes the run (see UC-M-06).
+- In results phase on the last question, the control reads "Finish quiz →"; clicking closes the run keeping results (see UC-M-06).
 - A Prev control moves backwards through questions.
-- A "Show vote counts to audience" checkbox inside the run's ⋯ overflow menu (`details.menu`) toggles `show_live_counts`; default is off. Opening the menu (`details.menu > summary`) reveals it. The ⋯ menu is **not rendered for closed runs** (the backend would 400 anyway since closed runs are historical).
+- A "Show vote counts to audience" / "Hide vote counts from audience" verb button inside the run's ⋯ overflow menu (`details.menu`) toggles `show_live_counts`; default is off. Opening the menu (`details.menu > summary`) reveals it. The ⋯ menu is **not rendered for closed runs** (the backend would 400 anyway since closed runs are historical).
 
 ### UC-M-06: Close a quiz run
 
 - **Given** a live QuizRun
-- **When** the moderator clicks **Close quiz →** (the primary, on the last
-  question) or **End quiz now** (in the ⋯ overflow menu, to end early)
+- **When** the moderator clicks **Finish quiz →** (the primary, on the
+  last question) or **Finish quiz** (in the ⋯ overflow menu, to end
+  early) — both keep results
 - **Then** status → `closed`, `reveal_current → True`, `closed_at` is
   set
 - **And** the run's ⋯ overflow menu disappears — closed runs are
@@ -874,14 +879,14 @@ recognizes which phase the current question is in.
 - With no auth → `403`.
 
 **Tests (UI)**
-- In `#quiz-runs`, after closing (via the ⋯ menu's "End quiz now", or the primary "Close quiz →" on the last question) the row's badge flips to `.badge-closed` and the run's ⋯ menu (`details.menu`) disappears.
+- In `#quiz-runs`, after closing (via the ⋯ menu's "Finish quiz", or the primary "Finish quiz →" on the last question) the row's badge flips to `.badge-closed` and the run's ⋯ menu (`details.menu`) disappears.
 - The participant page (in another tab) refreshes via WS and continues to show the last question with results.
 
 ### UC-M-07: Remove a quiz run (only when queued / live)
 
 - **Given** a queued or live QuizRun
 - **When** the moderator opens the run's ⋯ overflow menu, clicks
-  **Remove from session**, and confirms
+  **Delete run**, and confirms
 - **Then** `DELETE /api/sessions/{code}/quiz_runs/{id}` deletes the
   run and its responses
 - **And** a closed run returns `400 Closed quiz runs are historical
@@ -895,8 +900,8 @@ recognizes which phase the current question is in.
 - With no auth → `403`.
 
 **Tests (UI)**
-- In `#quiz-runs`, opening the ⋯ menu on a queued/live row and clicking "Remove from session" (after native confirm) removes the row. The Remove control keeps an `aria-label` containing "Remove".
-- No ⋯ menu (and thus no Remove control) is rendered on `.badge-closed` rows.
+- In `#quiz-runs`, opening the ⋯ menu on a queued/live row and clicking "Delete run" (after native confirm) removes the row. The control has `aria-label="Delete this quiz run"`.
+- No ⋯ menu (and thus no Delete control) is rendered on `.badge-closed` rows.
 
 ### UC-M-08: Respond to a query
 

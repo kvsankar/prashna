@@ -127,18 +127,21 @@ disclosure (not a custom popover) for keyboard/no-JS robustness.
   <summary aria-label="More actions">⋯</summary>
   <div class="menu-panel">
     <button>Secondary action</button>
-    <label><input type="checkbox"> A toggle</label>
+    <button>Show X to audience</button>   <!-- verb toggle, not a checkbox -->
     <button class="danger ghost">Destructive action</button>
   </div>
 </details>
 ```
 
-- Inline = what you do most turns; menu = end/remove/configure.
+- Inline = what you do most turns; menu = end/configure/delete.
+- Menu items are **verb buttons**, including toggles — a state toggle
+  reads "Show X" / "Hide X" (which flips on click) rather than a checkbox,
+  which is clumsy in a menu and hides its meaning.
 - The panel is absolutely positioned (`right: 0`); actions re-render the
-  row, which closes the menu.
+  row, which closes the menu, so confirm a silent toggle with a toast.
 - First use: the moderator quiz-run row keeps the morphing primary +
-  ← Prev inline; "End quiz now", the audience-counts toggle, and "Remove
-  from session" live in the ⋯ menu.
+  ← Prev inline; "Finish quiz", the Show/Hide vote-counts toggle, and
+  "Delete run" live in the ⋯ menu.
 
 ---
 
