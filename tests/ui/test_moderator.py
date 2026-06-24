@@ -228,10 +228,10 @@ def test_uc_m_05_reveal_next_close_walk(base_url, admin_setup, page):
         next_btn.click()
         # Back to answering; Reveal again.
         page.locator("#quiz-runs button", has_text="Reveal results").click()
-        # Last question → Close quiz.
-        close_btn = page.locator("#quiz-runs button", has_text="Close quiz")
-        expect(close_btn).to_be_visible(timeout=5000)
-        # Don't click Close here — UC-M-06 tests Close. Verify Prev exists.
+        # Last question → Finish quiz.
+        finish_btn = page.locator("#quiz-runs button", has_text="Finish quiz")
+        expect(finish_btn).to_be_visible(timeout=5000)
+        # Don't click Finish here — UC-M-06 tests closing. Verify Prev exists.
         expect(page.locator("#quiz-runs button", has_text="Prev")).to_be_visible()
     finally:
         c.close()
@@ -247,12 +247,10 @@ def test_uc_m_05_live_counts_toggle(base_url, admin_setup, page):
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-queued")
-        # The live-counts toggle now lives in the run's ⋯ overflow menu.
+        # The audience vote-count toggle is a verb button in the ⋯ menu.
         row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-queued"))
         row.locator("details.menu > summary").click()
-        cb = row.locator("input[type=checkbox]").first
-        expect(cb).not_to_be_checked()
-        cb.check()
+        row.locator("button", has_text="Show vote counts to audience").click()
         # Verify via API.
         runs = c.get(f"/api/sessions/{s['code']}/quiz_runs").json()
         assert runs[0]["show_live_counts"] is True
@@ -264,7 +262,7 @@ def test_uc_m_05_live_counts_toggle(base_url, admin_setup, page):
 
 
 def test_uc_m_06_close_run_flips_badge_and_hides_menu(base_url, admin_setup, page):
-    """UC-M-06: closing a live run (via ⋯ → End quiz now) flips badge to
+    """UC-M-06: closing a live run (via ⋯ → Finish quiz) flips badge to
     .badge-closed and removes the run's ⋯ overflow menu."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-M06 {secrets.token_hex(3)}", publish=True)
@@ -277,7 +275,7 @@ def test_uc_m_06_close_run_flips_badge_and_hides_menu(base_url, admin_setup, pag
         page.wait_for_selector("#quiz-runs .badge-live")
         live_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-live"))
         live_row.locator("details.menu > summary").click()
-        live_row.locator("button", has_text="End quiz now").click()
+        live_row.locator("button", has_text="Finish quiz").click()
         expect(page.locator("#quiz-runs .badge-closed")).to_be_visible(timeout=5000)
         # No ⋯ menu (and no Remove control) rendered for closed rows.
         closed_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-closed"))
@@ -301,17 +299,17 @@ def test_uc_m_07_delete_queued_run_removes_row(base_url, admin_setup, page):
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-queued")
         page.on("dialog", lambda d: d.accept())
-        # Remove now lives in the run's ⋯ overflow menu.
+        # Delete now lives in the run's ⋯ overflow menu.
         queued_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-queued"))
         queued_row.locator("details.menu > summary").click()
-        queued_row.locator("button[aria-label*='Remove']").click()
+        queued_row.locator("button", has_text="Delete run").click()
         expect(page.locator("#quiz-runs .badge-queued")).to_have_count(0, timeout=5000)
     finally:
         c.close()
 
 
-def test_uc_m_07_no_x_on_closed_rows(base_url, admin_setup, page):
-    """UC-M-07: no ✕ rendered on .badge-closed rows."""
+def test_uc_m_07_no_menu_on_closed_rows(base_url, admin_setup, page):
+    """UC-M-07: no ⋯ overflow menu (and thus no Delete) on .badge-closed rows."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-M07c {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-M07cs {secrets.token_hex(3)}")
@@ -323,7 +321,7 @@ def test_uc_m_07_no_x_on_closed_rows(base_url, admin_setup, page):
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-closed")
         closed_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-closed"))
-        expect(closed_row.locator("button[aria-label*='Remove']")).to_have_count(0)
+        expect(closed_row.locator("details.menu")).to_have_count(0)
     finally:
         c.close()
 

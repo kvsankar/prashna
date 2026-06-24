@@ -336,7 +336,7 @@
         const phase = r.reveal_current ? "results" : "answering";
         const nextLabel = phase === "answering"
           ? "Reveal results →"
-          : (r.current_question_idx + 1 < r.question_count ? "Next question →" : "Close quiz →");
+          : (r.current_question_idx + 1 < r.question_count ? "Next question →" : "Finish quiz →");
         head.appendChild(actBtn("primary", nextLabel, () => nextPhase(r)));
         head.appendChild(actBtn("ghost", "← Prev", () => advance(r.id, "prev")));
       }
@@ -373,19 +373,26 @@
     function buildRunMenu(r) {
       if (r.status === "closed") return null;
       const panel = el("div", { class: "menu-panel" });
-      if (r.status === "live") {
-        panel.appendChild(actBtn("ghost", "End quiz now", () => act(r.id, "close")));
+      // "Finish quiz" closes the run but KEEPS results (status → closed) —
+      // the same action as the primary "Finish quiz →". Shown here only
+      // when the primary isn't already that finish step (last question,
+      // revealed), so "Finish quiz" never appears in two places at once.
+      const onFinishStep = r.status === "live" && r.reveal_current
+        && r.current_question_idx + 1 >= r.question_count;
+      if (r.status === "live" && !onFinishStep) {
+        panel.appendChild(actBtn("ghost", "Finish quiz", () => act(r.id, "close")));
       }
-      const lc = el("label", { class: "small" });
-      const lcBox = el("input", { type: "checkbox" });
-      if (r.show_live_counts) lcBox.setAttribute("checked", "");
-      lcBox.addEventListener("change", () => toggleLiveCounts(r.id, lcBox.checked));
-      lc.appendChild(lcBox);
-      lc.appendChild(document.createTextNode(" Show vote counts to audience"));
-      panel.appendChild(lc);
-      const remove = actBtn("danger ghost", "Remove from session", () => del(r.id));
-      remove.setAttribute("aria-label", "Remove this quiz from the session");
-      panel.appendChild(remove);
+      // Audience vote-count visibility — a verb toggle, not a checkbox.
+      const countsLabel = r.show_live_counts
+        ? "Hide vote counts from audience"
+        : "Show vote counts to audience";
+      panel.appendChild(actBtn("ghost", countsLabel, () => toggleLiveCounts(r.id, !r.show_live_counts)));
+      // Destructive: discard the run entirely (responses included) — the
+      // opposite of Finish, which preserves results.
+      const delLabel = r.status === "live" ? "Delete run (discard results)" : "Delete run";
+      const del_ = actBtn("danger ghost", delLabel, () => del(r.id));
+      del_.setAttribute("aria-label", "Delete this quiz run");
+      panel.appendChild(del_);
       return el("details", { class: "menu" },
         el("summary", { "aria-label": "More actions" }, "⋯"),
         panel);
@@ -433,10 +440,11 @@
           method: "POST", headers: modHeaders(), body: { show },
         });
         await loadQuizRuns();
+        toast(show ? "Vote counts shown to audience" : "Vote counts hidden");
       } catch (e) { errorToast(e.message); }
     }
     async function del(id) {
-      if (!confirm("Remove this quiz from the session?")) return;
+      if (!confirm("Delete this quiz run? Its responses are discarded and it leaves the session.")) return;
       try {
         await api(`/api/sessions/${CODE}/quiz_runs/${id}`, { method: "DELETE", headers: modHeaders() });
         await loadQuizRuns();
