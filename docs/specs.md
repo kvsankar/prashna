@@ -834,6 +834,10 @@ recognizes which phase the current question is in.
   toggle, and **Delete run** (discard the run entirely). "Finish" and
   "Delete" are the two distinct outcomes — finishing keeps results;
   deleting discards them.
+- **In-flight guard.** Every run-control button ignores repeat clicks while
+  an action is pending and disables itself for the duration. This prevents
+  a slow request (server briefly busy) from being clicked several times and
+  then advancing through multiple questions at once.
 - **Live counts** are toggled independently per QuizRun via
   `POST /api/sessions/{code}/quiz_runs/{id}/live_counts` with body
   `{show: bool}` (mod-or-owner auth). Default off. The moderator UI
