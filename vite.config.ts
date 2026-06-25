@@ -42,6 +42,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(ROOT, "index.html"),
+        participant: resolve(ROOT, "participant.html"),
         projector: resolve(ROOT, "projector.html"),
       },
     },

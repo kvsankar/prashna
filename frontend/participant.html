@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — participant</title>
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Loading…</h1>
+    <div class="meta">
+      <span id="code"></span>
+      &nbsp;·&nbsp;
+      <span class="small muted">You: </span>
+      <label for="my-name" class="small muted">Your name</label>
+      <input id="my-name" class="inline" aria-label="Your display name (optional)" placeholder="(anonymous)" maxlength="80">
+    </div>
+  </header>
+
+  <main>
+    <details class="card" id="feedback-card" open>
+      <summary class="card-head">
+        <h2>Rate this session</h2>
+        <span class="fb-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="fb-rate-row">
+        <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
+        <span id="fb-status" class="muted small"></span>
+        <button id="fb-clear" type="button" class="ghost xsmall" style="display:none;">Clear rating</button>
+        <span id="fb-clear-confirm" class="small muted" style="display:none;">Clear feedback?
+          <button id="fb-clear-yes" type="button" class="danger ghost xsmall">Yes</button>
+          <button id="fb-clear-no" type="button" class="ghost xsmall">No</button>
+        </span>
+      </div>
+      <div id="fb-expand" style="display:none; margin-top: 12px;">
+        <label for="fb-went-well" class="small muted">What went well?</label>
+        <textarea id="fb-went-well" maxlength="2000" placeholder="What worked for you…"></textarea>
+        <label for="fb-to-improve" class="small muted" style="display:block; margin-top: 8px;">What could be better?</label>
+        <textarea id="fb-to-improve" maxlength="2000" placeholder="What you'd change…"></textarea>
+        <div class="muted small" style="margin-top: 6px;">Comments save automatically when you click away.</div>
+      </div>
+    </details>
+
+    <section class="card" id="quiz-card" style="display:none;">
+      <div class="card-head"><h2>Live quiz</h2></div>
+      <div id="quiz-body"></div>
+    </section>
+
+    <section class="card" id="ended-card" style="display:none;">
+      <div class="card-head"><h2>Session ended</h2></div>
+      <p class="muted small" style="margin: 0;">This session has ended. You can still see what was asked, but you can't add new questions or vote.</p>
+    </section>
+
+    <section class="card" id="ask-card">
+      <div class="card-head"><h2>Ask</h2></div>
+      <label for="query-text" class="small muted">Your question</label>
+      <textarea id="query-text" aria-label="Your question" placeholder="Type your question… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
+      <div class="row" style="margin-top: 8px;">
+        <span class="muted small">Anonymous unless you set a name above.</span>
+        <div class="spacer"></div>
+        <button class="primary" id="ask-btn">Ask</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Questions</h2></div>
+      <div id="queries"></div>
+    </section>
+
+    <section class="card" id="invite-card">
+      <div class="card-head"><h2>Invite others</h2></div>
+      <div class="row gap" style="align-items: center;">
+        <div id="share-qr" style="width: 120px; min-width: 120px;"></div>
+        <div class="small muted" style="flex:1;">
+          Show this QR to someone nearby — they'll join this session by scanning it.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/src/participant.ts"></script>
+</body>
+</html>
