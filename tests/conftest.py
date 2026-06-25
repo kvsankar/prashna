@@ -12,7 +12,10 @@ clobber a real prashna.db.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
+
+import pytest
 
 # Always isolate tests from any real DB on disk. Individual test files / fixtures
 # override this with a per-test temp path, but this is the safety net.
@@ -21,5 +24,15 @@ os.environ.setdefault("PRASHNA_SECRET_KEY", "test-secret-do-not-use-in-prod")
 
 # Keep upload writes inside the tests folder when API tests need a real file path.
 TESTS_DIR = Path(__file__).resolve().parent
+ROOT = TESTS_DIR.parent
 os.environ.setdefault("PRASHNA_UPLOADS_DIR", str(TESTS_DIR / "_tmp_uploads"))
 (TESTS_DIR / "_tmp_uploads").mkdir(parents=True, exist_ok=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _build_frontend() -> None:
+    """Build the Vite frontend once before any test. The page routes (and a
+    few API tests that fetch them) serve frontend/dist, so it must exist.
+    Requires Node + `npm install` (devDependencies) on the machine."""
+    subprocess.run(["npm", "run", "build"], cwd=ROOT, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)

@@ -40,10 +40,7 @@ def uvicorn_url(tmp_path_factory) -> str:
     env["PRASHNA_RATELIMIT"] = "off"
 
     root = Path(__file__).resolve().parents[2]
-    # Build the Vite frontend so FastAPI can serve the built pages (the UI
-    # tests assert against the real built app, not the TS source).
-    subprocess.run(["npm", "run", "build"], cwd=root, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    # The frontend is built once per session by tests/conftest.py.
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port), "--log-level", "warning"],
         cwd=root,
