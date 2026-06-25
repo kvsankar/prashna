@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna</title>
+</head>
+<body>
+  <header class="top">
+    <h1>Prashna</h1>
+    <div class="meta" id="header-meta">
+      <span class="muted small">Live Q&amp;A and quizzes for training sessions.</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card" id="join-card" style="display:none;">
+      <div class="card-head"><h2>Join a session</h2></div>
+      <div id="bad-code-msg" class="error-banner" style="display:none;"></div>
+      <div class="field">
+        <label for="join-code">Session code</label>
+        <input id="join-code" placeholder="e.g. ABC123" autocapitalize="characters" autocomplete="off">
+      </div>
+      <button class="primary" id="join-btn">Join</button>
+    </section>
+
+    <section class="card" id="setup-card" style="display:none;">
+      <div class="card-head"><h2>Set up admin account</h2></div>
+      <p class="muted small">First run — create the admin who can host sessions and author quizzes.</p>
+      <div class="field"><label for="su-user">Username</label><input id="su-user" autocomplete="username"></div>
+      <div class="field"><label for="su-pass">Password</label><input id="su-pass" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="su-pass2">Confirm password</label><input id="su-pass2" type="password" autocomplete="new-password"></div>
+      <button class="primary" id="su-btn">Create admin</button>
+      <div class="small muted" style="margin-top: 8px;">Password must be at least 8 characters.</div>
+    </section>
+
+    <section class="card" id="login-card" style="display:none;">
+      <div class="card-head"><h2>Admin login</h2></div>
+      <div class="field"><label for="li-user">Username</label><input id="li-user" autocomplete="username"></div>
+      <div class="field"><label for="li-pass">Password</label><input id="li-pass" type="password" autocomplete="current-password"></div>
+      <button class="primary" id="li-btn">Log in</button>
+      <div id="github-login-wrap" style="display:none; margin-top: 12px;">
+        <div class="small muted" style="margin-bottom: 6px;">or</div>
+        <a class="ghost" id="github-login-btn" href="/api/auth/github/login">Sign in with GitHub</a>
+      </div>
+    </section>
+
+    <section class="card compact" id="sessions-card" style="display:none;">
+      <div class="card-head">
+        <h2>Your sessions</h2>
+        <div class="card-tools">
+          <input id="new-session-title" class="inline" placeholder="New session title">
+          <button class="primary small" id="new-session-btn">+ New session</button>
+        </div>
+      </div>
+      <table class="ctable">
+        <thead><tr>
+          <th>Title</th>
+          <th>Code</th>
+          <th>Status</th>
+          <th class="num">Questions</th>
+          <th class="num">Quiz runs</th>
+          <th>Created</th>
+          <th class="actions">Actions</th>
+        </tr></thead>
+        <tbody id="session-rows"><tr><td colspan="7" class="muted small">Loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section class="card compact" id="session-detail-card" style="display:none;">
+      <div class="card-head">
+        <h2 id="sd-title">Session settings</h2>
+        <button class="ghost small" id="sd-close">Close</button>
+      </div>
+      <div class="field row gap">
+        <label class="small muted" for="sd-session-title" style="min-width: 110px;">Title</label>
+        <input id="sd-session-title" class="inline" style="flex:1;" maxlength="200">
+      </div>
+      <div class="field row gap" id="sd-lifecycle">
+        <label class="small muted" style="min-width: 110px;">Lifecycle</label>
+        <span id="sd-status" class="badge"></span>
+        <span id="sd-lifecycle-hint" class="small muted"></span>
+        <div class="spacer"></div>
+        <span id="sd-lifecycle-actions"></span>
+      </div>
+      <div class="field row gap">
+        <label class="small muted" style="min-width: 110px;">Moderator</label>
+        <a id="sd-open-mod" class="small" href="#">Open moderator →</a>
+        <button id="sd-share-mod" class="ghost xsmall">Share moderator URL</button>
+        <span class="small muted">(use this to delegate moderation to someone without an admin account)</span>
+      </div>
+      <p class="muted small" style="margin: 12px 0 8px;">
+        Participants join at the URL shown below. Override the base URL if this server is reached via a different public address (LAN IP, reverse proxy, tunnel, vanity domain). Leave blank to use whatever address you're currently browsing from.
+      </p>
+      <div class="field row gap">
+        <label class="small muted" for="sd-base-url" style="min-width: 110px;">Base URL</label>
+        <input id="sd-base-url" class="inline" style="flex:1;" placeholder="e.g. https://prashna.sankara.net">
+        <button id="sd-clear" class="ghost small">Use default</button>
+      </div>
+      <div class="row gap" style="align-items: flex-start; margin-top: 12px;">
+        <div id="sd-qr" style="width: 180px; min-width: 180px;"></div>
+        <div style="flex:1;">
+          <div class="small muted" style="margin-bottom: 4px;">Participant URL</div>
+          <code id="sd-url" class="small" style="display:block; padding: 8px; background: var(--panel-2); border-radius: 6px; word-break: break-all;"></code>
+          <button id="sd-copy" class="ghost small" style="margin-top: 8px;">Copy URL</button>
+        </div>
+      </div>
+      <div id="sd-feedback" style="margin-top: 16px;"></div>
+    </section>
+
+    <section class="card compact" id="confirm-delete-card" style="display:none;">
+      <div class="card-head">
+        <h2>Delete session?</h2>
+        <button class="ghost small" id="cd-cancel">Cancel</button>
+      </div>
+      <div class="error-banner" id="cd-warn"></div>
+      <div class="field">
+        <label for="cd-confirm">Type the title exactly to confirm:</label>
+        <input id="cd-confirm" autocomplete="off">
+      </div>
+      <button class="danger" id="cd-go" disabled>Delete forever</button>
+    </section>
+
+    <section class="card compact" id="library-card" style="display:none;">
+      <div class="card-head">
+        <h2>Quiz library</h2>
+        <div class="card-tools"><a href="/quizzes" class="small">Open quiz authoring →</a></div>
+      </div>
+      <p class="muted small" style="margin: 0;">Reusable quiz templates that you can launch inside any session.</p>
+    </section>
+
+    <section class="card compact" id="change-pw-card" style="display:none;">
+      <div class="card-head">
+        <h2>Change password</h2>
+        <button class="ghost small" id="cp-close">Close</button>
+      </div>
+      <div class="field"><label for="cp-current">Current password</label><input id="cp-current" type="password" autocomplete="current-password"></div>
+      <div class="field"><label for="cp-new">New password</label><input id="cp-new" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="cp-new2">Confirm new password</label><input id="cp-new2" type="password" autocomplete="new-password"></div>
+      <button class="primary" id="cp-submit">Update password</button>
+      <p class="small muted" style="margin: 8px 0 0;">Minimum 8 characters.</p>
+    </section>
+  </main>
+
+  <script type="module" src="/src/index.ts"></script>
+</body>
+</html>
