@@ -30,11 +30,7 @@
         <textarea id="fb-went-well" maxlength="2000" placeholder="What worked for you…"></textarea>
         <label for="fb-to-improve" class="small muted" style="display:block; margin-top: 8px;">What could be better?</label>
         <textarea id="fb-to-improve" maxlength="2000" placeholder="What you'd change…"></textarea>
-        <div class="row" style="margin-top: 8px;">
-          <span id="fb-status" class="muted small"></span>
-          <div class="spacer"></div>
-          <button class="primary" id="fb-submit">Submit feedback</button>
-        </div>
+        <div id="fb-status" class="muted small" style="margin-top: 8px;"></div>
       </div>
     </details>
 
@@ -275,7 +271,18 @@
     }
 
     // ---- session feedback (star rating → went-well / improve) ----
+    // Auto-saves: the rating persists the instant a star is tapped, and
+    // comments persist on blur. No Submit button (app convention: persist
+    // on blur). `lastSaved` guards against redundant POSTs / versions.
     let myRating = 0;
+    let lastSaved = null;
+    function currentFeedback() {
+      return {
+        rating: myRating,
+        went_well: $("#fb-went-well").value.trim() || null,
+        to_improve: $("#fb-to-improve").value.trim() || null,
+      };
+    }
     function renderStars() {
       const root = $("#fb-stars");
       root.innerHTML = "";
@@ -289,7 +296,7 @@
           role: "radio",
           "aria-checked": String(i === myRating),
           "aria-label": `${i} star${i > 1 ? "s" : ""}`,
-          onclick: () => { myRating = i; $("#fb-expand").style.display = ""; renderStars(); },
+          onclick: () => { myRating = i; $("#fb-expand").style.display = ""; renderStars(); saveFeedback({ toast: true }); },
         }, "★");
         b.addEventListener("mouseenter", () => paint(i));
         btns.push(b);
@@ -298,9 +305,19 @@
       root.onmouseleave = () => paint(myRating);
       paint(myRating);
     }
-    function markFeedbackSaved() {
-      $("#fb-status").textContent = "Saved — thanks for your feedback.";
-      $("#fb-submit").textContent = "Update feedback";
+    async function saveFeedback({ toast: notify } = {}) {
+      if (!myRating) return;
+      const cur = currentFeedback();
+      if (lastSaved
+          && lastSaved.rating === cur.rating
+          && lastSaved.went_well === cur.went_well
+          && lastSaved.to_improve === cur.to_improve) return;
+      try {
+        await api(`/api/sessions/${CODE}/feedback`, { method: "POST", body: cur });
+        lastSaved = cur;
+        $("#fb-status").textContent = "Saved — thanks for your feedback.";
+        if (notify) toast("Thanks for your feedback");
+      } catch (e) { errorToast(e.message); }
     }
     async function loadFeedback() {
       // Loaded once at startup — not on every WS refresh, so it never
@@ -312,27 +329,15 @@
           $("#fb-went-well").value = f.went_well || "";
           $("#fb-to-improve").value = f.to_improve || "";
           $("#fb-expand").style.display = "";
-          markFeedbackSaved();
+          lastSaved = currentFeedback();
+          $("#fb-status").textContent = "Saved — thanks for your feedback.";
         }
       } catch {}
       renderStars();
     }
-    async function submitFeedback() {
-      if (!myRating) { errorToast("Pick a star rating first."); return; }
-      try {
-        await api(`/api/sessions/${CODE}/feedback`, {
-          method: "POST",
-          body: {
-            rating: myRating,
-            went_well: $("#fb-went-well").value || null,
-            to_improve: $("#fb-to-improve").value || null,
-          },
-        });
-        markFeedbackSaved();
-        toast("Thanks for your feedback");
-      } catch (e) { errorToast(e.message); }
-    }
-    $("#fb-submit").addEventListener("click", submitFeedback);
+    // Comments persist on blur (the `change` event fires on blur after an edit).
+    $("#fb-went-well").addEventListener("change", () => saveFeedback());
+    $("#fb-to-improve").addEventListener("change", () => saveFeedback());
 
     function refreshAll() { loadSession(); loadQueries(); loadQuiz(); }
 

@@ -1307,16 +1307,17 @@ fill up to that star (hovering the 5th lights all five).
 
 - **Given** the participant is on `/s/<CODE>`
 - **When** they pick a star
-- **Then** the expanded section (`#fb-expand`) appears with the two
-  optional comment fields and a Submit button
-- **When** they Submit
-- **Then** `POST /api/sessions/{code}/feedback` records the submission;
-  the status line confirms "Saved" and the button becomes "Update feedback"
-- **And** participants may **resubmit any number of times**: each
-  submission is appended to an immutable history (`SessionFeedbackVersion`)
+- **Then** the rating **auto-saves immediately** (`POST
+  /api/sessions/{code}/feedback`) — there is **no Submit button** (per the
+  app's persist-on-blur convention) — and the expanded section
+  (`#fb-expand`) appears with the two optional comment fields; the status
+  line confirms "Saved"
+- **And** editing a comment auto-saves it **on blur**
+- **And** participants may **change their feedback any number of times**:
+  each save is appended to an immutable history (`SessionFeedbackVersion`)
   and the **latest** version is mirrored into the current view
   (`SessionFeedback`, one per participant keyed by `voter_token`) used by
-  `mine`/`summary`
+  `mine`/`summary`; redundant saves (no change) are skipped client-side
 - **And** reloading prefills their prior rating + comments (via
   `GET /api/sessions/{code}/feedback/mine`, which returns the latest)
 - **And** comments are optional — a bare rating is valid; `rating` must be
@@ -1334,7 +1335,7 @@ fill up to that star (hovering the 5th lights all five).
 
 **Tests (UI)**
 - `#feedback-card` is the first card on `/s/<CODE>` and is a collapsible `<details>` that is open by default.
-- `#fb-expand` is hidden until a star in `#fb-stars` is clicked, then visible; filling `#fb-went-well` and clicking `#fb-submit` shows a "Saved" status and the button reads "Update feedback".
+- There is no `#fb-submit` button. `#fb-expand` is hidden until a star in `#fb-stars` is clicked; clicking a star fires a `POST .../feedback` and reveals `#fb-expand` with a "Saved" status. Editing `#fb-went-well` and blurring fires another `POST .../feedback`.
 - After reload, the prior rating (filled stars count) and comment values are prefilled.
 
 ---
