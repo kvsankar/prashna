@@ -60,7 +60,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, toast, errorToast, statusLabel } from "/static/common.js";
+    import { $, api, el, toast, errorToast, statusLabel, guardClick } from "/static/common.js";
 
     let quizzes = [];
     let qsessions = [];
@@ -90,8 +90,9 @@
           ? el("button", { class: "ghost xsmall", onclick: ev => { ev.stopPropagation(); unpublishQuiz(q.id); } }, "Unpublish")
           : el("button", { class: "primary xsmall", onclick: ev => { ev.stopPropagation(); publishQuiz(q.id); } }, "Publish");
         actions.appendChild(toggleBtn);
-        actions.appendChild(el("button", { class: "danger ghost xsmall",
-          onclick: ev => { ev.stopPropagation(); removeQuiz(q.id); } }, "Delete"));
+        actions.appendChild(guardClick(
+          el("button", { class: "danger ghost xsmall" }, "Delete"),
+          ev => { ev.stopPropagation(); return removeQuiz(q.id); }));
         tr.appendChild(actions);
         tr.addEventListener("click", () => openQuizDetail(q.id));
         tbody.appendChild(tr);
@@ -163,7 +164,7 @@
         openQuizDetail(q.id);
       } catch (e) { errorToast(e.message); }
     }
-    $("#create-quiz").addEventListener("click", createQuiz);
+    guardClick($("#create-quiz"), createQuiz);
     $("#new-quiz-title").addEventListener("keydown", e => { if (e.key === "Enter") createQuiz(); });
 
     async function removeQuiz(id) {
@@ -230,7 +231,7 @@
       for (const it of editing.questions) body.appendChild(renderQuestion(it));
 
       body.appendChild(el("div", { class: "row gap", style: "margin-top: 10px;" },
-        el("button", { class: "primary small", onclick: addQuestion }, "+ Add question")));
+        guardClick(el("button", { class: "primary small" }, "+ Add question"), addQuestion)));
     }
 
     function renderQuestion(qq) {
@@ -259,11 +260,11 @@
 
       const head = el("div", { class: "row gap" },
         el("strong", {}, `Q${qq.order_index + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
-        el("button", { class: "danger ghost xsmall", onclick: async () => {
+        guardClick(el("button", { class: "danger ghost xsmall" }, "Delete"), async () => {
           if (!confirm("Delete this question?")) return;
           await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" });
           openQuizDetail(editing.id);
-        } }, "Delete"));
+        }));
       wrap.appendChild(head);
       wrap.appendChild(textInp);
 
@@ -286,11 +287,12 @@
       const opts = el("div", { class: "options" });
       for (const op of qq.answers) opts.appendChild(renderAnswer(qq, op));
       wrap.appendChild(opts);
-      wrap.appendChild(el("button", { class: "ghost xsmall", style: "margin-top: 4px;",
-        onclick: async () => {
+      wrap.appendChild(guardClick(
+        el("button", { class: "ghost xsmall", style: "margin-top: 4px;" }, "+ Answer"),
+        async () => {
           await api(`/api/quiz_questions/${qq.id}/answers`, { method: "POST", body: { text: "New answer" } });
           openQuizDetail(editing.id);
-        } }, "+ Answer"));
+        }));
       return wrap;
     }
 
@@ -325,12 +327,12 @@
             openQuizDetail(editing.id);
           } }, "Clear"));
       }
-      row.appendChild(el("button", { class: "danger ghost xsmall",
-        "aria-label": "Delete answer",
-        onclick: async () => {
+      row.appendChild(guardClick(
+        el("button", { class: "danger ghost xsmall", "aria-label": "Delete answer" }, "✕"),
+        async () => {
           await api(`/api/quiz_answers/${op.id}`, { method: "DELETE" });
           openQuizDetail(editing.id);
-        } }, "✕"));
+        }));
       return row;
     }
 

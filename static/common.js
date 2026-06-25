@@ -187,3 +187,20 @@ export const STATUS_LABELS = {
 };
 
 export const statusLabel = (s) => STATUS_LABELS[s] || s;
+
+// Attach a click handler guarded against rapid repeat clicks: while the
+// (async) handler runs, the button is disabled and further clicks are
+// ignored. Use for any button that performs a non-idempotent server
+// mutation (create / append / delete / advance) so a slow request can't be
+// double-submitted. Returns the button for chaining.
+export function guardClick(button, handler) {
+  let busy = false;
+  button.addEventListener("click", async (ev) => {
+    if (busy) return;
+    busy = true;
+    button.disabled = true;
+    try { await handler(ev); }
+    finally { busy = false; button.disabled = false; }
+  });
+  return button;
+}

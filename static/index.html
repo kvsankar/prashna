@@ -146,7 +146,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, toast, errorToast, renderQR, statusLabel } from "/static/common.js";
+    import { $, api, el, escapeHtml, toast, errorToast, renderQR, statusLabel, guardClick } from "/static/common.js";
 
     // ----- bad code banner from /s/BOGUS redirect -----
     const bad = new URLSearchParams(location.search).get("bad_code");
@@ -237,7 +237,7 @@
         refresh();
       } catch (e) { errorToast(e.message); }
     }
-    $("#su-btn").addEventListener("click", submitSetup);
+    guardClick($("#su-btn"), submitSetup);
     $("#su-pass2").addEventListener("keydown", e => { if (e.key === "Enter") submitSetup(); });
 
     // ----- login -----
@@ -264,7 +264,7 @@
         loadSessions();
       } catch (e) { errorToast(e.message); }
     }
-    $("#new-session-btn").addEventListener("click", createSession);
+    guardClick($("#new-session-btn"), createSession);
     $("#new-session-title").addEventListener("keydown", e => { if (e.key === "Enter") createSession(); });
 
     // ----- sessions: list -----
@@ -546,7 +546,7 @@
         closeChangePassword();
       } catch (e) { errorToast(e.message); }
     }
-    $("#cp-submit").addEventListener("click", submitChangePassword);
+    guardClick($("#cp-submit"), submitChangePassword);
     $("#cp-new2").addEventListener("keydown", e => { if (e.key === "Enter") submitChangePassword(); });
 
     // Escape closes whichever drill-down is open.
