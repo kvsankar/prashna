@@ -11,16 +11,23 @@ repos:
         types: [python]
         require_serial: true
 
+      - id: tsc
+        name: tsc (typecheck frontend)
+        entry: npm run --silent typecheck
+        language: system
+        files: ^(frontend/|tsconfig\.json|vite\.config\.ts)
+        pass_filenames: false
+
       - id: eslint
-        name: eslint (static js/html)
+        name: eslint (frontend ts)
         entry: npm run --silent lint:js
         language: system
-        files: ^static/.*\.(js|html)$
+        files: ^frontend/src/.*\.ts$
         pass_filenames: false
 
       - id: stylelint
-        name: stylelint (static css)
+        name: stylelint (frontend css)
         entry: npm run --silent lint:css
         language: system
-        files: ^static/.*\.css$
+        files: ^frontend/.*\.css$
         pass_filenames: false
