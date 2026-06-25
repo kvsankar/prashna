@@ -96,7 +96,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast, renderQR, statusLabel } from "/static/common.js";
+    import { $, api, el, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast, renderQR, statusLabel, guardClick } from "/static/common.js";
 
     const CODE = pathCode();
 
@@ -430,23 +430,13 @@
         panel);
     }
 
-    // Guards every run-control button against rapid repeat clicks: while an
-    // action is in flight, further clicks are ignored and the button is
-    // disabled for immediate feedback. Without this, a slow request (the
-    // server briefly busy fanning out to participants) gave no response, so
-    // repeated clicks each queued another advance — and they all eventually
-    // ran, jumping several questions at once.
-    let actionPending = false;
+    // Run-control buttons are guarded against rapid repeat clicks (see
+    // guardClick in common.js): while an action is in flight the button is
+    // disabled and further clicks ignored. Without this, a slow request gave
+    // no response, so repeated clicks each queued another advance — and they
+    // all eventually ran, jumping several questions at once.
     function actBtn(cls, label, handler) {
-      const b = el("button", { class: cls + " small" }, label);
-      b.addEventListener("click", async () => {
-        if (actionPending) return;
-        actionPending = true;
-        b.disabled = true;
-        try { await handler(); }
-        finally { actionPending = false; }
-      });
-      return b;
+      return guardClick(el("button", { class: cls + " small" }, label), handler);
     }
 
     async function act(id, verb) {
@@ -496,7 +486,7 @@
       } catch (e) { errorToast(e.message); }
     }
 
-    $("#add-quiz-btn").addEventListener("click", async () => {
+    guardClick($("#add-quiz-btn"), async () => {
       const quizId = parseInt($("#quiz-select").value, 10);
       if (!quizId) { errorToast("Pick a quiz first."); return; }
       try {

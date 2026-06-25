@@ -364,6 +364,14 @@ editing will revert it to Draft."
 - Verb-first labels: "Publish", "Delete", "Open moderator →".
 - One primary button per card. Two primaries on one surface is a smell.
 - Cancel / dismiss is a `.ghost`, never colored.
+- **Mutating buttons are guarded against double-submit.** Any button whose
+  handler performs a *non-idempotent* server mutation (create / append /
+  delete / advance) must be wired through `guardClick(button, handler)`
+  from `common.js` — it disables the button while the async handler runs
+  and ignores repeat clicks, so a slow request can't be fired twice
+  (duplicate rows, double-advance, etc.). Idempotent actions (login,
+  lifecycle start/end, toggles, set-value, copy, navigation) don't need
+  it. Don't hand-roll per-button `disabled` flags — reuse `guardClick`.
 
 ---
 

@@ -80,7 +80,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, pathCode, openLiveSocket, toast, errorToast, renderQR } from "/static/common.js";
+    import { $, api, el, pathCode, openLiveSocket, toast, errorToast, renderQR, guardClick } from "/static/common.js";
 
     const CODE = pathCode();
     let queries = [];
@@ -176,7 +176,7 @@
         toast("Question submitted");
       } catch (e) { errorToast(e.message); }
     }
-    $("#ask-btn").addEventListener("click", askQuery);
+    guardClick($("#ask-btn"), askQuery);
     $("#query-text").addEventListener("keydown", e => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); askQuery(); }
     });
@@ -256,8 +256,9 @@
         // reads as "broken" to participants. The empty-first-submit case is
         // caught in submitQuiz() with a toast instead. (Updating a prior
         // submission may clear the selection — that's the retract path.)
-        const submitBtn = el("button", { class: "primary", onclick: submitQuiz },
-          submitted ? "Update answer" : "Submit answer");
+        const submitBtn = guardClick(
+          el("button", { class: "primary" }, submitted ? "Update answer" : "Submit answer"),
+          submitQuiz);
         const needPick = !submitted && pendingSelection.size === 0;
         const note = submitted
           ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Your answer is recorded.")
