@@ -342,6 +342,13 @@
         el("span", { class: "small muted" }, ` · q ${r.current_question_idx + 1}/${r.question_count}`),
         el("div", { class: "spacer" }),
       );
+      // Make the locked-voting state visible so the moderator knows that
+      // "Reveal results →" has closed submissions for this question.
+      if (r.status === "live" && r.reveal_current) {
+        head.insertBefore(
+          el("span", { class: "small", style: "color: var(--accent);" }, "voting closed"),
+          head.querySelector(".spacer"));
+      }
       // Only the primary drive controls stay on the row. The rare
       // run-management actions (end early, audience counts, remove) live
       // in the ⋯ overflow menu so the row reads cleanly.
@@ -399,6 +406,11 @@
         && r.current_question_idx + 1 >= r.question_count;
       if (r.status === "live" && !onFinishStep) {
         panel.appendChild(actBtn("ghost", "Finish quiz", () => act(r.id, "close")));
+      }
+      // Recovery: "Reveal results →" closes voting; this reopens it for the
+      // current question (the backend supports reveal:false).
+      if (r.status === "live" && r.reveal_current) {
+        panel.appendChild(actBtn("ghost", "Reopen voting", () => reveal(r.id, false)));
       }
       // Audience vote-count visibility — a verb toggle, not a checkbox.
       const countsLabel = r.show_live_counts
@@ -515,6 +527,14 @@
     }
 
     function refresh() { loadSession(); loadQueries(); loadQuizRuns(); loadPresence(); loadFeedback(); }
+    // Coalesce WS-driven refreshes: during a live quiz the room emits a
+    // quiz_submission per participant answer, and this console is in that
+    // room — debounce so bursts collapse into ~one refresh.
+    let refreshTimer = null;
+    function refreshSoon() {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => { refreshTimer = null; refresh(); }, 400);
+    }
 
     async function boot() {
       // Detect admin-owner context up-front so renderInvite() can hide
@@ -530,7 +550,7 @@
       $("#setup-section").open = sessionState.status === "planning";
       await loadQuizzes();
       refresh();
-      openLiveSocket(CODE, refresh);
+      openLiveSocket(CODE, refreshSoon);
       if (presenceTimer) clearInterval(presenceTimer);
       presenceTimer = setInterval(loadPresence, 15000);
       showWorkSurfaces(true);

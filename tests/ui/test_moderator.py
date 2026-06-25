@@ -279,6 +279,29 @@ def test_uc_m_05_run_menu_closes_on_outside_click(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_05_reveal_closes_voting_and_reopen(base_url, admin_setup, page):
+    """UC-M-05: 'Reveal results →' closes voting (shows a 'voting closed'
+    marker); the ⋯ menu's 'Reopen voting' reopens it."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M05r {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M05rs {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-runs .badge-live")
+        page.locator("#quiz-runs button", has_text="Reveal results").click()
+        expect(page.locator("#quiz-runs")).to_contain_text("voting closed", timeout=5000)
+        # Reopen via the ⋯ overflow menu.
+        page.locator("#quiz-runs details.menu > summary").click()
+        page.locator("#quiz-runs button", has_text="Reopen voting").click()
+        expect(page.locator("#quiz-runs")).not_to_contain_text("voting closed", timeout=5000)
+        expect(page.locator("#quiz-runs button", has_text="Reveal results")).to_be_visible()
+    finally:
+        c.close()
+
+
 # ---------- UC-M-06 ----------
 
 

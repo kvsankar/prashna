@@ -252,20 +252,29 @@
       if (showCounts) body.appendChild(el("div", { class: "small muted", style: "margin-top: 8px;" },
         `${activeQuiz.results.respondents} respondent(s)`));
       if (!locked) {
+        // Submit stays ENABLED even with no selection — a disabled button
+        // reads as "broken" to participants. The empty-first-submit case is
+        // caught in submitQuiz() with a toast instead. (Updating a prior
+        // submission may clear the selection — that's the retract path.)
         const submitBtn = el("button", { class: "primary", onclick: submitQuiz },
           submitted ? "Update answer" : "Submit answer");
-        // First submission needs at least one selection. Updating a prior
-        // submission is allowed to clear the selection (`answer_ids: []`)
-        // — backend supports it and that's the only way to retract a
-        // multi-choice answer once submitted.
-        submitBtn.disabled = !submitted && pendingSelection.size === 0;
-        body.appendChild(el("div", { style: "margin-top: 12px;" }, submitBtn,
-          submitted ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Your answer is recorded.") : null));
+        const needPick = !submitted && pendingSelection.size === 0;
+        const note = submitted
+          ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Your answer is recorded.")
+          : (needPick ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Pick an answer, then Submit.") : null);
+        body.appendChild(el("div", { style: "margin-top: 12px;" }, submitBtn, note));
+      } else {
+        // Voting locked (results revealed) — tell the participant why there's
+        // no Submit, rather than leaving a silent gap.
+        body.appendChild(el("div", { class: "small muted", style: "margin-top: 12px;" },
+          "Voting closed — the answer has been revealed."));
       }
     }
 
     async function submitQuiz() {
       if (!activeQuiz || !activeQuiz.current_question) return;
+      const alreadySubmitted = (activeQuiz.my_selections || []).length > 0;
+      if (!alreadySubmitted && pendingSelection.size === 0) { toast("Pick an answer first"); return; }
       try {
         await api(`/api/sessions/${CODE}/quiz_runs/${activeQuiz.id}/submit`, {
           method: "POST",
@@ -379,12 +388,42 @@
 
     function refreshAll() { loadSession(); loadQueries(); loadQuiz(); }
 
+    // Coalesce live-count refreshes to at most one per second.
+    let quizCountTimer = null;
+    function scheduleQuizRefresh() {
+      if (quizCountTimer) return;
+      quizCountTimer = setTimeout(() => { quizCountTimer = null; loadQuiz(); }, 1000);
+    }
+
+    // Refetch only what each event actually affects. Crucially, a *peer's*
+    // quiz answer ("quiz_submission") is ignored unless this participant is
+    // being shown live counts — otherwise every submit in the room would make
+    // every client refetch, an O(N^2) request storm under a large audience.
+    function onLive(msg) {
+      switch (msg && msg.type) {
+        case "query_new": case "query_vote": case "query_responded":
+        case "query_removed": case "query_deleted":
+          loadQueries(); break;
+        case "quiz_run_new": case "quiz_run_update": case "quiz_run_deleted":
+          loadQuiz(); break;
+        case "session_state":
+          loadSession(); loadQuiz(); break;
+        case "quiz_submission":
+          if (activeQuiz && activeQuiz.results) scheduleQuizRefresh(); break;
+        case "feedback": case "participant":
+          break;   // nothing this participant needs to refetch
+        default:    // "reconnect" or unknown → full resync
+          refreshAll(); break;
+      }
+    }
+
     (async function () {
       await loadSession();
       await loadMe();
       loadFeedback();
-      refreshAll();
-      openLiveSocket(CODE, refreshAll);
+      loadQueries();
+      loadQuiz();
+      openLiveSocket(CODE, onLive);
     })();
   </script>
 </body>

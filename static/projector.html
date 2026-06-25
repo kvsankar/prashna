@@ -129,8 +129,15 @@
     }
 
     // The join QR is click-to-enlarge via the shared lightbox in renderQR.
+    // Coalesce WS-driven reloads: a live quiz emits a broadcast per
+    // participant answer, and the projector is in that room — debounce.
+    let reloadTimer = null;
+    function loadAllSoon() {
+      if (reloadTimer) return;
+      reloadTimer = setTimeout(() => { reloadTimer = null; loadAll(); }, 400);
+    }
     loadAll();
-    openLiveSocket(CODE, loadAll);
+    openLiveSocket(CODE, loadAllSoon);
   </script>
 </body>
 </html>
