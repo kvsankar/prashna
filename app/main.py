@@ -45,7 +45,7 @@ STATIC = BASE / "static"
 # Vite build output (TypeScript frontend). During the JS→TS migration only
 # the converted pages live here; the rest are still served from STATIC.
 DIST = BASE / "frontend" / "dist"
-MIGRATED_PAGES = {"projector"}
+MIGRATED_PAGES = {"projector", "index"}
 UPLOADS = Path(os.environ.get("PRASHNA_UPLOADS_DIR") or (BASE / "uploads"))
 UPLOADS.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024

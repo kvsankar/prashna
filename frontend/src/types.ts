@@ -62,3 +62,25 @@ export interface Feedback {
   updated_at: string | null;
   author_name?: string | null;
 }
+
+export interface FeedbackSummary {
+  count: number;
+  average: number | null;
+  distribution: Record<number, number>;
+  items: Feedback[];
+}
+
+export interface AdminStatus {
+  initialized: boolean;
+  authenticated: boolean;
+  username: string | null;
+  github_enabled: boolean;
+}
+
+// A session row from GET /api/sessions (admin list).
+export interface SessionRow extends Session {
+  mod_key: string;
+  query_count: number;
+  quiz_run_count: number;
+  created_at: string;
+}

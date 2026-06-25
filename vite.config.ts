@@ -41,6 +41,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
+        index: resolve(ROOT, "index.html"),
         projector: resolve(ROOT, "projector.html"),
       },
     },
