@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — moderator</title>
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Loading…</h1>
+    <div class="meta">
+      <span id="code"></span>
+      &nbsp;·&nbsp;
+      <span id="session-status" class="badge"></span>
+      &nbsp;·&nbsp;
+      <span id="live-count" class="small muted">— online</span>
+      &nbsp;·&nbsp;
+      <a id="participant-link" href="#">participant view</a>
+      &nbsp;·&nbsp;
+      <a id="projector-link" href="#">projector</a>
+    </div>
+  </header>
+
+  <main class="wide">
+    <section class="card" id="modkey-card" style="display:none;">
+      <div class="card-head"><h2>Moderator key required</h2></div>
+      <p class="muted small">Paste the moderator key for session <strong id="modkey-code"></strong>. (Find it in the moderator URL after <code>#k=</code> or via the <em>Moderator URL</em> button on the home page.)</p>
+      <div class="field"><label for="modkey-input">Moderator key</label><input id="modkey-input" aria-label="Moderator key" placeholder="e.g. a1b2c3d4e5f6g7h8"></div>
+      <button class="primary" id="modkey-submit">Continue</button>
+    </section>
+
+    <section class="card" id="lifecycle-card" style="display:none;">
+      <div class="card-head">
+        <h2>Session lifecycle</h2>
+        <div class="card-tools" id="lifecycle-actions"></div>
+      </div>
+      <p class="muted small" id="lifecycle-hint" style="margin: 0;"></p>
+    </section>
+
+    <details class="setup" id="setup-section" style="display:none;">
+      <summary class="setup-summary">
+        <span class="setup-title">Set up</span>
+        <span class="muted small">Invite participants · add quizzes</span>
+      </summary>
+
+      <section class="card" id="invite-card">
+        <div class="card-head"><h2>Invite participants</h2></div>
+        <p class="muted small" style="margin: 0 0 8px;">
+          Override the base URL if this server is reached via a different public address (e.g. a reverse proxy, LAN IP, or tunnel). Leave blank to use the address shown in the moderator's address bar.
+        </p>
+        <div class="field row gap">
+          <label for="base-url" class="small muted" style="margin-right: 4px;">Base URL</label>
+          <input id="base-url" class="inline" style="flex:1;" aria-label="Participant base URL" placeholder="e.g. https://prashna.sankara.net">
+          <button id="base-url-clear" class="ghost small">Use default</button>
+        </div>
+        <div class="row gap" style="align-items: flex-start;">
+          <div id="invite-qr" style="width: 180px; min-width: 180px;"></div>
+          <div style="flex:1;">
+            <div class="small muted" style="margin-bottom: 4px;">Participants join at:</div>
+            <code id="invite-url" class="small" style="display:block; padding: 8px; background: var(--panel-2); border-radius: 6px; word-break: break-all;"></code>
+            <button id="invite-copy" class="ghost small" style="margin-top: 8px;">Copy URL</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="quiz-composer">
+        <div class="card-head"><h2>Add a quiz</h2></div>
+        <p class="muted small" style="margin: 0 0 10px;">Stage a Ready quiz onto this session, then <strong>Start</strong> it from the Quiz panel when the audience is ready.</p>
+        <div class="row gap">
+          <select id="quiz-select" class="inline" style="flex:1; min-width: 200px;"></select>
+          <button class="primary small" id="add-quiz-btn">Add to session</button>
+          <a href="/quizzes" target="_blank" class="small">Edit library →</a>
+        </div>
+      </section>
+    </details>
+
+    <section class="card" id="quizzes-card" style="display:none;">
+      <div class="card-head"><h2>Quiz</h2></div>
+      <p class="muted small" style="margin: 0 0 10px;">Quizzes you add appear here. <strong>Start</strong> one when the audience is ready, then drive it with the buttons on its row.</p>
+      <div id="quiz-runs"></div>
+    </section>
+
+    <section class="card" id="queries-card" style="display:none;">
+      <div class="card-head"><h2>Questions</h2></div>
+      <div id="queries"></div>
+    </section>
+
+    <section class="card" id="feedback-card" style="display:none;">
+      <div class="card-head"><h2>Feedback</h2><div class="card-tools" id="feedback-summary"></div></div>
+      <div id="feedback-list"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/src/moderator.ts"></script>
+</body>
+</html>
