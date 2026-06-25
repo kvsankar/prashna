@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — quiz library</title>
+</head>
+<body>
+  <header class="top">
+    <h1>Quiz library</h1>
+    <div class="meta"><a href="/">← home</a></div>
+  </header>
+
+  <main class="wide">
+    <section class="card compact">
+      <div class="card-head">
+        <h2>Quizzes</h2>
+        <div class="card-tools">
+          <input id="new-quiz-title" placeholder="New quiz title" class="inline">
+          <button class="primary small" id="create-quiz">+ New</button>
+        </div>
+      </div>
+      <table class="ctable" id="quiz-table">
+        <thead><tr>
+          <th>Title</th><th>Status</th><th class="num">Questions</th><th class="actions">Actions</th>
+        </tr></thead>
+        <tbody id="quiz-rows"><tr><td colspan="4" class="muted small">Loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section class="card compact">
+      <div class="card-head">
+        <h2>Quiz runs</h2>
+        <span class="muted small">Each row is one playthrough of a quiz inside a session.</span>
+      </div>
+      <table class="ctable" id="qs-table">
+        <thead><tr>
+          <th>Quiz</th><th>Ver</th><th>In session</th><th>Status</th><th class="num">Progress</th><th class="num">Resp.</th><th>Created</th>
+        </tr></thead>
+        <tbody id="qs-rows"><tr><td colspan="7" class="muted small">Loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section class="card compact" id="editor-card" style="display:none;">
+      <div class="card-head">
+        <h2 id="editor-title">Editing quiz</h2>
+        <button class="ghost small" id="editor-close">Close</button>
+      </div>
+      <div id="editor-body"></div>
+    </section>
+
+    <section class="card compact" id="results-card" style="display:none;">
+      <div class="card-head">
+        <h2 id="results-title">Quiz session results</h2>
+        <button class="ghost small" id="results-close">Close</button>
+      </div>
+      <div id="results-body"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/src/quizzes.ts"></script>
+</body>
+</html>
