@@ -1,8 +1,6 @@
 """UC-P-07, UC-P-08, UC-P-09, UC-P-12: participant quiz submissions and visibility."""
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
 
 def _live_run(admin_client, make_quiz, make_session):
     q = make_quiz()

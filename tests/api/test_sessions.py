@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 
-
 # ---------- UC-A-03: Create a session ----------
 
 def test_uc_a_03_create_session_ok(admin_client):
@@ -71,9 +70,9 @@ def test_uc_a_04_only_my_sessions(client, admin_client, make_session):
     """UC-A-04: only sessions owned by me."""
     make_session("mine")
     # create a second admin via DB to simulate other owner
-    from app.db import SessionLocal
-    from app import models as m
     from app import auth
+    from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other", password_hash=auth.hash_password("longenough"))
         db.add(other)
@@ -268,9 +267,9 @@ def test_uc_a_07_delete_correct_confirm_ok(admin_client, make_session):
 def test_uc_a_07_delete_non_owner_403(admin_client, make_session):
     """UC-A-07: non-owner admin → 403 Not your session."""
     s = make_session()
-    from app.db import SessionLocal
-    from app import models as m
     from app import auth
+    from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other2", password_hash=auth.hash_password("longenough"))
         db.add(other)

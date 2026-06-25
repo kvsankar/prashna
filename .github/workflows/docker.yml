@@ -1,18 +1,50 @@
-name: Build & publish Docker image
+name: CI & publish image
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # One in-flight run per ref keeps the image cache warm and avoids races.
 concurrency:
-  group: docker-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    name: Python lint + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync
+      - name: Ruff (lint)
+        run: uv run ruff check .
+      - name: Install Playwright browser
+        run: uv run playwright install --with-deps chromium
+      - name: Pytest (with coverage)
+        run: uv run pytest --cov=app --cov-report=term-missing
+
+  frontend-lint:
+    name: ESLint + Stylelint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
   build-and-push:
+    name: Build & publish Docker image
+    needs: [test, frontend-lint]
+    # Only publish on push to main / tags / manual — not on PRs.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

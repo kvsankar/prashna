@@ -66,7 +66,8 @@ def test_uc_p_13_upsert_one_per_participant(client, admin_client, make_session):
 def test_uc_p_13_every_submission_is_versioned(client, admin_client, make_session):
     """Resubmitting appends a history row each time, while the current view
     stays one row per participant."""
-    from sqlalchemy import func, select as _select
+    from sqlalchemy import func
+    from sqlalchemy import select as _select
 
     from app import db as _db
     from app import models as _m
@@ -102,7 +103,8 @@ def test_uc_p_13_rating_missing_or_non_int_400(client, admin_client, make_sessio
 def test_uc_p_13_delete_retracts_feedback(client, admin_client, make_session, mod_headers):
     """DELETE retracts the caller's current feedback; mine→null, summary
     count drops, but version history is retained."""
-    from sqlalchemy import func, select as _select
+    from sqlalchemy import func
+    from sqlalchemy import select as _select
 
     from app import db as _db
     from app import models as _m

@@ -7,7 +7,6 @@ import re
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-
 PNG_BYTES = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
     "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
@@ -235,8 +234,8 @@ def test_uc_x_05_two_live_quiz_runs_integrity(admin_client, make_quiz, make_sess
     """UC-X-05: two QuizRun status='live' on same session → IntegrityError."""
     q = make_quiz()
     s = make_session()
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         ver = m.QuizVersion(quiz_id=q["id"], version_no=99, quiz_title="x")
@@ -251,8 +250,8 @@ def test_uc_x_05_two_live_quiz_runs_integrity(admin_client, make_quiz, make_sess
 def test_uc_x_05_two_versions_same_quiz_no(admin_client, make_quiz):
     """UC-X-05: two QuizVersion with same (quiz_id, version_no) → IntegrityError."""
     q = make_quiz()
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         v1 = m.QuizVersion(quiz_id=q["id"], version_no=42, quiz_title="x")
         v2 = m.QuizVersion(quiz_id=q["id"], version_no=42, quiz_title="x")
@@ -266,8 +265,8 @@ def test_uc_x_05_two_query_votes(admin_client, make_session):
     s = make_session()
     q = admin_client.post(f"/api/sessions/{s['code']}/queries",
                           json={"text": "Q?"}).json()
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         # need a participant
@@ -289,8 +288,8 @@ def test_uc_x_05_two_quiz_submissions(admin_client, make_quiz, make_session):
     run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                             json={"quiz_id": q["id"]}).json()
     admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         p = m.Participant(session_id=sess.id, voter_token="qq1")
@@ -310,8 +309,8 @@ def test_uc_x_05_two_quiz_submissions(admin_client, make_quiz, make_session):
 def test_uc_x_05_two_participants_same_token(admin_client, make_session):
     """UC-X-05: two Participant rows same (session, voter_token) → IntegrityError."""
     s = make_session()
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         p1 = m.Participant(session_id=sess.id, voter_token="dup")

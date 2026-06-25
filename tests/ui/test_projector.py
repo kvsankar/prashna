@@ -19,7 +19,6 @@ from ._helpers import (
     ask_query_api,
 )
 
-
 # ---------- UC-D-01 ----------
 
 

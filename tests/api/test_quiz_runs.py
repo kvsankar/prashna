@@ -1,8 +1,9 @@
 """UC-A-23, UC-A-24, UC-M-03..UC-M-07, UC-X-06: quiz runs."""
 from __future__ import annotations
 
-import pytest
+import time
 
+import pytest
 
 # ---------- UC-A-23: Global quiz runs report ----------
 
@@ -27,8 +28,9 @@ def test_uc_a_23_other_admin_runs_excluded(admin_client, make_quiz, make_session
     s = make_session()
     admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]})
     # Re-own the session to another user
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth23", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -78,8 +80,9 @@ def test_uc_a_24_other_admin_404(admin_client, make_quiz, make_session):
     s = make_session()
     run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                             json={"quiz_id": q["id"]}).json()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth24", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -122,7 +125,7 @@ def test_uc_m_03_edit_creates_new_version(admin_client, make_quiz, make_session)
     r1 = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                            json={"quiz_id": q["id"]}).json()
     # edit a question
-    import time; time.sleep(0.01)
+    time.sleep(0.01)
     admin_client.patch(f"/api/quiz_questions/{q['question_id']}",
                        json={"text": "Changed?"})
     r2 = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
@@ -153,8 +156,9 @@ def test_uc_m_03_quiz_other_owner_404(admin_client, make_quiz, make_session):
     """UC-M-03: quiz owned by other admin → 404."""
     q = make_quiz()
     s = make_session()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="othM03", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -442,7 +446,7 @@ def test_uc_x_06_edit_creates_v2(admin_client, make_quiz, make_session):
     s = make_session()
     admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                       json={"quiz_id": q["id"]})
-    import time; time.sleep(0.01)
+    time.sleep(0.01)
     admin_client.patch(f"/api/quiz_questions/{q['question_id']}",
                        json={"text": "Edited"})
     r2 = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",

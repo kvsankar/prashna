@@ -1,7 +1,6 @@
 """UC-A-01, UC-A-02, UC-A-25: admin setup, login/logout, change password."""
 from __future__ import annotations
 
-
 # ---------- UC-A-01: First-run admin setup ----------
 
 def test_uc_a_01_status_fresh_db(client):
@@ -59,6 +58,7 @@ def test_uc_a_01_concurrent_setup_different_usernames(app_module):
     caller sees the first's row and gets 409.
     """
     import threading
+
     from fastapi.testclient import TestClient
 
     results = []
@@ -81,8 +81,8 @@ def test_uc_a_01_concurrent_setup_different_usernames(app_module):
     # Exactly one 200 and one 409 — no double-admin outcome.
     assert sorted(results) == [200, 409]
     # And exactly one User row exists.
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         assert db.query(m.User).count() == 1
 

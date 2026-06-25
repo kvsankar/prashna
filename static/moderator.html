@@ -96,7 +96,7 @@
   </main>
 
   <script type="module">
-    import { $, api, el, escapeHtml, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast, renderQR, statusLabel } from "/static/common.js";
+    import { $, api, el, pathCode, modKey, setModKey, modHeaders, openLiveSocket, toast, errorToast, renderQR, statusLabel } from "/static/common.js";
 
     const CODE = pathCode();
 
@@ -559,7 +559,7 @@
     // Try to boot regardless of mod_key presence — admin owners are authed
     // by their cookie and need no key. Only show the gate if boot fails the
     // auth check (i.e., not admin owner and either no key or wrong key).
-    boot().catch(e => {
+    boot().catch(() => {
       showKeyGate();
       if (modKey()) errorToast("Couldn't load session — re-enter the moderator key.");
     });

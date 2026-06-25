@@ -24,3 +24,13 @@ uploads/*
 .vscode/
 .claude/
 .mcp.json
+
+# Frontend dev-lint tooling (no runtime/build artifacts — dev only)
+node_modules/
+
+# Lint / test caches & coverage
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/

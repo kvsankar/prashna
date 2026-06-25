@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
-from fastapi import WebSocket
 
+from fastapi import WebSocket
 
 # Per-send timeout — a stalled client cannot delay other clients' messages
 # nor block the API handler that called broadcast.

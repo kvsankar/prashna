@@ -1,0 +1,26 @@
+# Pre-commit hooks. Install once with: uv run pre-commit install
+# All hooks use the project's own tools (language: system) so versions match
+# what CI and local dev already have — no separate managed envs.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (python lint)
+        entry: uv run ruff check --force-exclude
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: eslint
+        name: eslint (static js/html)
+        entry: npm run --silent lint:js
+        language: system
+        files: ^static/.*\.(js|html)$
+        pass_filenames: false
+
+      - id: stylelint
+        name: stylelint (static css)
+        entry: npm run --silent lint:css
+        language: system
+        files: ^static/.*\.css$
+        pass_filenames: false

@@ -7,11 +7,12 @@ import secrets
 import threading
 import uuid
 from collections import Counter
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
-from contextlib import asynccontextmanager
 from fastapi import (
     Cookie,
     Depends,
@@ -29,17 +30,15 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session as DbSession, selectinload
+from sqlalchemy.orm import Session as DbSession
+from sqlalchemy.orm import selectinload
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from urllib.parse import quote
-
-from .db import SessionLocal, get_db, init_db
+from . import auth, oauth
 from . import models as m
-from . import auth
-from . import oauth
-from .ws import hub
+from .db import SessionLocal, get_db, init_db
 from .ratelimit import TokenBucketLimiter, enabled_from_env
+from .ws import hub
 
 BASE = Path(__file__).resolve().parent.parent
 STATIC = BASE / "static"

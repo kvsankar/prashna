@@ -16,7 +16,6 @@ from typing import Any
 
 import httpx
 
-
 ADMIN = {"username": "admin", "password": "testpass1"}
 
 
