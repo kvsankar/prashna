@@ -32,6 +32,7 @@ export interface Answer {
 export interface Question {
   id: number;
   text: string;
+  qtype: string; // single | multiple
   image_url: string | null;
   answers: Answer[];
 }
