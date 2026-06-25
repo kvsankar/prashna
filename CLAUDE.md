@@ -27,8 +27,11 @@ Authoritative docs in `docs/`:
 
 - **Backend:** Python 3.12+, FastAPI, SQLAlchemy 2 (sync), SQLite.
   Single-process. WebSockets for live broadcast.
-- **Frontend:** Vanilla JS ES modules, no build step. Plain HTML +
-  CSS. One page per role.
+- **Frontend:** TypeScript ES modules, built with **Vite** (multi-page,
+  one entry per role). Plain HTML + CSS, no framework. FastAPI serves the
+  Vite build output (`frontend/dist`) under `/static`. Dev uses the Vite
+  dev server (`npm run dev`) with HMR, proxying `/api`, `/ws`, `/uploads`
+  to the backend.
 - **Auth:** bcrypt password hashing + `itsdangerous`-signed session
   cookie for admin; `mod_key` URL fragment for delegate moderators;
   `voter_token` cookie for anonymous participants.
@@ -45,15 +48,20 @@ app/
   auth.py        # password hashing + signed cookie helpers
   db.py          # engine, SessionLocal, get_db, init_db
   ws.py          # in-memory pub/sub hub keyed by session code
-static/
-  index.html     # landing — admin setup / login / session list
+frontend/        # Vite + TypeScript frontend (source)
+  index.html     # landing — admin setup / login / session list (Vite entry)
   participant.html
   moderator.html
   projector.html
   quizzes.html   # quiz template authoring
-  common.js      # shared helpers (api, el, toast, ws, modKey)
-  app.css        # shared styles
-  vendor/qrcode.js  # vendored QR generator (MIT, Kazuhiko Arase)
+  src/
+    common.ts    # shared helpers (api, el, toast, ws, $, guardClick…)
+    types.ts     # API payload interfaces
+    {index,participant,moderator,projector,quizzes}.ts  # per-page entries
+    app.css      # shared styles (imported by common.ts)
+  public/vendor/qrcode.js  # vendored QR generator (MIT, Kazuhiko Arase)
+  dist/          # build output (gitignored) — FastAPI serves this at /static
+vite.config.ts, tsconfig.json, package.json   # frontend build config
 docs/
   specs.md       # use cases + AT bullets — authoritative
   UX.md          # frontend design system — authoritative
@@ -70,9 +78,17 @@ prashna.db       # SQLite database (gitignored, created on first run)
 ## Run
 
 ```bash
-uv sync
-uv run uvicorn app.main:app --reload --port 8000
+uv sync                 # backend deps
+npm install             # frontend dev/build deps
+uv run uvicorn app.main:app --reload --port 8000   # backend (API + WS)
+npm run dev             # Vite dev server (HMR) — proxies /api,/ws,/uploads → :8000
 ```
+
+Open the Vite dev server URL for development (HMR). For a production-like
+run, `npm run build` then hit uvicorn directly (it serves `frontend/dist`
+at `/static`). The Docker image builds the frontend in a Node stage. The
+UI tests build the frontend automatically (see `tests/ui/conftest.py`).
+Frontend checks: `npm run typecheck`, `npm run lint`.
 
 Environment:
 
@@ -188,8 +204,14 @@ lines and needs splitting, split by resource (sessions, queries,
 quizzes, quiz_runs, uploads, admin) rather than by HTTP method.
 
 ### Frontend
-- No build step. Don't introduce React/Vite/TypeScript without
-  asking.
+- TypeScript + Vite (multi-page), no UI framework. Keep it that way —
+  don't introduce React/Vue/Svelte without asking. Authoring is in
+  `frontend/src/*.ts`; the browser loads the Vite build.
+- `strict` TypeScript. Type DOM lookups with the generic `$<T>` helper
+  (e.g. `$<HTMLInputElement>("#x").value`); add API shapes to
+  `frontend/src/types.ts`. `npm run typecheck` + `npm run lint` must pass
+  (also enforced by pre-commit + CI).
+- Mutating buttons go through `guardClick` (see UX.md §10).
 - Selectors should be stable IDs (`#new-session-title`, `#sd-base-url`)
   or documented classes (`.badge-live`, `.option`, `.question`).
 - Toast for transient errors, banner for sticky ones, redirect for
@@ -234,8 +256,8 @@ disagree, decide which to change consciously.
 
 - Prefer editing existing files. Don't add new modules unless the
   change clearly doesn't fit.
-- Don't introduce a frontend build pipeline or ORM migrations
-  without explicit ask.
+- The frontend build is Vite + TypeScript (already in place). Don't add
+  ORM migrations, a UI framework, or CSS preprocessors without explicit ask.
 - The codebase is used live in sessions with real audiences.
   Sweeping refactors mid-event are a problem; prefer additive,
   reversible changes.
