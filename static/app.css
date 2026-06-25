@@ -80,12 +80,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: 30px; line-height: 1; color: var(--muted); }
 /* .filled is driven in JS so hovering the Nth star lights stars 1..N. */
 .star.filled { color: #f5b301; }
-/* Collapsible "Rate this session" card (participant). */
+/* Collapsible "Rate this session" card (participant) — visually distinct
+   from the Q&A / quiz cards, with breathing room below it. */
+details#feedback-card { background: var(--panel-2); border-left: 3px solid var(--accent); margin-bottom: 24px; }
 details#feedback-card > summary { cursor: pointer; list-style: none; }
 details#feedback-card > summary::-webkit-details-marker { display: none; }
 .fb-chevron { margin-left: auto; color: var(--muted); }
 .fb-chevron::before { content: "▾"; }
 details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
+.fb-rate-row { display: flex; align-items: center; gap: 12px; }
+.fb-rate-row #fb-clear { margin-left: auto; }
 .fb-avg { font-size: 16px; font-weight: 600; color: #f5b301; }
 .fb-stars-static { color: #f5b301; letter-spacing: 1px; }
 .fb-item { padding: 8px 0; border-top: 1px solid var(--border); }
