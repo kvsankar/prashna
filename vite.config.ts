@@ -43,6 +43,7 @@ export default defineConfig({
       input: {
         index: resolve(ROOT, "index.html"),
         participant: resolve(ROOT, "participant.html"),
+        moderator: resolve(ROOT, "moderator.html"),
         projector: resolve(ROOT, "projector.html"),
         quizzes: resolve(ROOT, "quizzes.html"),
       },
