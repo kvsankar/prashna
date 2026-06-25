@@ -3,11 +3,14 @@ __pycache__/
 .venv/
 .DS_Store
 
-# SQLite DB and journals — contains user accounts, session data
+# SQLite DB and journals — contains user accounts, session data.
+# (-wal / -shm are the WAL-mode sidecar files created at runtime.)
 prashna.db
 prashna.db-journal
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # User-uploaded files
 uploads/*
