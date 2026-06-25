@@ -85,3 +85,70 @@ export interface SessionRow extends Session {
   quiz_run_count: number;
   created_at: string;
 }
+
+// --- quiz authoring (/quizzes) ---
+export interface QuizSummary {
+  id: number;
+  title: string;
+  status: string; // draft | ready
+  question_count: number;
+}
+
+export interface EditorAnswer {
+  id: number;
+  text: string;
+  is_correct: boolean;
+  image_url: string | null;
+}
+
+export interface EditorQuestion {
+  id: number;
+  text: string;
+  qtype: string;
+  graded: boolean;
+  order_index: number;
+  image_url: string | null;
+  answers: EditorAnswer[];
+}
+
+export interface QuizEditor {
+  id: number;
+  title: string;
+  status: string;
+  questions: EditorQuestion[];
+}
+
+export interface QuizRunRow {
+  id: number;
+  quiz_title: string;
+  version_no: number;
+  session_title: string;
+  session_code: string;
+  status: string;
+  current_question_idx: number;
+  question_count: number;
+  respondent_count: number;
+  created_at: string;
+}
+
+export interface ResultOption {
+  text: string;
+  count: number;
+  is_correct: boolean;
+  image_url?: string | null;
+}
+
+export interface ResultQuestion {
+  text: string;
+  image_url: string | null;
+  respondents: number;
+  answers: ResultOption[];
+}
+
+export interface QuizRunResults {
+  quiz_title: string;
+  session_code: string;
+  session_title: string;
+  status: string;
+  questions: ResultQuestion[];
+}
