@@ -1,29 +1,24 @@
-// Flat ESLint config for the vanilla-JS frontend. Lints both static/*.js and
-// the inline <script type="module"> blocks inside the HTML (via
-// eslint-plugin-html). No build step — this only runs on demand / in CI.
+// Flat ESLint config for the TypeScript frontend (frontend/src/*.ts).
+// Type-checking is done separately by `tsc --noEmit`; this is lint only.
 import js from "@eslint/js";
 import globals from "globals";
-import html from "eslint-plugin-html";
+import tseslint from "typescript-eslint";
 
-export default [
-  { ignores: ["static/vendor/**", "node_modules/**"] },
+export default tseslint.config(
+  { ignores: ["frontend/dist/**", "node_modules/**", "static/**"] },
   js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    files: ["static/**/*.js", "static/**/*.html"],
-    plugins: { html },
+    files: ["frontend/src/**/*.ts"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
       globals: { ...globals.browser },
     },
     rules: {
-      // Unused vars are a warning (some are intentional placeholders); the
-      // high-value checks (no-undef, no-unsafe-negation, etc.) stay errors
-      // from js.configs.recommended.
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", caughtErrors: "none" }],
-      // Empty catch blocks are an intentional best-effort pattern here
-      // (clipboard, QR render, optional fetches) — allow them.
+      // Empty catch blocks are an intentional best-effort pattern here.
       "no-empty": ["error", { allowEmptyCatch: true }],
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", caughtErrors: "none" }],
     },
   },
-];
+);

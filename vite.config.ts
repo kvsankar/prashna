@@ -30,20 +30,18 @@ function cleanUrls(): Plugin {
 
 export default defineConfig({
   root: "frontend",
-  // Built assets and the dev server live under /static/ to match the path
-  // FastAPI serves them from (app.mount("/static", dist)).
-  base: "/static/",
+  // During the JS→TS migration the built pages are served under /build/
+  // (FastAPI mounts dist there) while un-migrated pages still come from the
+  // old /static/. `input` lists only the pages migrated so far; add each as
+  // it's converted. (At the end this collapses back to /static/.)
+  base: "/build/",
   plugins: [cleanUrls()],
   build: {
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        index: resolve(ROOT, "index.html"),
-        participant: resolve(ROOT, "participant.html"),
-        moderator: resolve(ROOT, "moderator.html"),
         projector: resolve(ROOT, "projector.html"),
-        quizzes: resolve(ROOT, "quizzes.html"),
       },
     },
   },

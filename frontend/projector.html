@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prashna — projector</title>
+  <style>
+    body { background: var(--proj-bg); }
+    main.proj { max-width: none; }
+    .qa-list { max-height: 75vh; overflow: auto; }
+  </style>
+</head>
+<body>
+  <main class="proj">
+    <h1 id="title">Loading…</h1>
+    <div class="row gap" style="align-items: flex-start; margin-bottom: 24px;">
+      <div style="flex:1;">
+        <div class="code-display">Join: <strong id="code"></strong> at <span id="origin"></span></div>
+      </div>
+      <div id="join-qr" style="width: 220px; min-width: 220px;"></div>
+    </div>
+
+    <section id="quiz-section" class="card" style="display:none;">
+      <div id="quiz-body"></div>
+    </section>
+
+    <section class="card">
+      <h2>Top questions</h2>
+      <div id="queries" class="qa-list"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/src/projector.ts"></script>
+</body>
+</html>

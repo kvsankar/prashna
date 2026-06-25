@@ -34,3 +34,6 @@ node_modules/
 .coverage
 coverage.xml
 htmlcov/
+
+# Vite build output (produced by `npm run build`)
+frontend/dist/

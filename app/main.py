@@ -42,6 +42,10 @@ from .ws import hub
 
 BASE = Path(__file__).resolve().parent.parent
 STATIC = BASE / "static"
+# Vite build output (TypeScript frontend). During the JS→TS migration only
+# the converted pages live here; the rest are still served from STATIC.
+DIST = BASE / "frontend" / "dist"
+MIGRATED_PAGES = {"projector"}
 UPLOADS = Path(os.environ.get("PRASHNA_UPLOADS_DIR") or (BASE / "uploads"))
 UPLOADS.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -134,6 +138,11 @@ app.add_middleware(SecurityHeaders)
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+# Built (Vite) assets for migrated pages, referenced as /build/assets/… by
+# the built HTML. Mounted only when a build exists (so dev without a build,
+# and the API tests, don't fail at import).
+if (DIST / "assets").is_dir():
+    app.mount("/build", StaticFiles(directory=DIST), name="build")
 
 
 # ---------- helpers ----------
@@ -495,9 +504,18 @@ async def broadcast_session(session: m.Session, kind: str = "update") -> None:
 
 # ---------- routes: pages ----------
 
+def _page(name: str) -> FileResponse:
+    """Serve a page from the Vite build if it's been migrated (and built),
+    else from the legacy static/ dir."""
+    built = DIST / f"{name}.html"
+    if name in MIGRATED_PAGES and built.exists():
+        return FileResponse(built)
+    return FileResponse(STATIC / f"{name}.html")
+
+
 @app.get("/")
 def root():
-    return FileResponse(STATIC / "index.html")
+    return _page("index")
 
 
 def _session_exists(code: str, db: DbSession) -> bool:
@@ -512,26 +530,26 @@ def _bad_code_redirect(code: str) -> RedirectResponse:
 def participant_page(code: str, db: DbSession = Depends(get_db)):
     if not _session_exists(code, db):
         return _bad_code_redirect(code)
-    return FileResponse(STATIC / "participant.html")
+    return _page("participant")
 
 
 @app.get("/m/{code}")
 def moderator_page(code: str, db: DbSession = Depends(get_db)):
     if not _session_exists(code, db):
         return _bad_code_redirect(code)
-    return FileResponse(STATIC / "moderator.html")
+    return _page("moderator")
 
 
 @app.get("/p/{code}")
 def projector_page(code: str, db: DbSession = Depends(get_db)):
     if not _session_exists(code, db):
         return _bad_code_redirect(code)
-    return FileResponse(STATIC / "projector.html")
+    return _page("projector")
 
 
 @app.get("/quizzes")
 def quizzes_page():
-    return FileResponse(STATIC / "quizzes.html")
+    return _page("quizzes")
 
 
 # ---------- routes: admin auth ----------
