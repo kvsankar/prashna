@@ -82,7 +82,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .star.filled { color: #f5b301; }
 /* Collapsible "Rate this session" card (participant) — visually distinct
    from the Q&A / quiz cards, with breathing room below it. */
-details#feedback-card { background: var(--panel-2); border-left: 3px solid var(--accent); margin-bottom: 24px; }
+/* Same box model as section.card (1px border + 16px padding) so the header
+   aligns with the other cards; the accent stripe is an inset shadow (no
+   layout impact) instead of a border that would shift the content. */
+details#feedback-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 24px; box-shadow: inset 3px 0 0 var(--accent); }
 details#feedback-card > summary { cursor: pointer; list-style: none; }
 details#feedback-card > summary::-webkit-details-marker { display: none; }
 .fb-chevron { margin-left: auto; color: var(--muted); }
