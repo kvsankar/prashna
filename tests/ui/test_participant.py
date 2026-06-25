@@ -59,6 +59,33 @@ def test_uc_p_13_star_autosaves_and_comment_persists(base_url, admin_setup, page
         c.close()
 
 
+def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
+    """UC-P-13: 'Clear rating' is a two-step undo — first tap arms it, the
+    second clears the rating and hides the comment fields."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P13c {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#feedback-card")
+        with page.expect_response(
+            lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
+        ):
+            page.locator("#fb-stars button.star").nth(4).click()  # 5 stars
+        expect(page.locator("#fb-stars button.star.filled")).to_have_count(5)
+        # First tap arms.
+        page.click("#fb-clear")
+        expect(page.locator("#fb-clear")).to_have_text("Tap again to clear")
+        # Second tap clears (DELETE).
+        with page.expect_response(
+            lambda r: r.url.endswith("/feedback") and r.request.method == "DELETE"
+        ):
+            page.click("#fb-clear")
+        expect(page.locator("#fb-stars button.star.filled")).to_have_count(0)
+        expect(page.locator("#fb-expand")).to_be_hidden()
+    finally:
+        c.close()
+
+
 # ---------- UC-P-02 ----------
 
 

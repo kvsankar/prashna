@@ -1312,7 +1312,15 @@ fill up to that star (hovering the 5th lights all five).
   app's persist-on-blur convention) — and the expanded section
   (`#fb-expand`) appears with the two optional comment fields; the status
   line confirms "Saved"
-- **And** editing a comment auto-saves it **on blur**
+- **And** editing a comment auto-saves it **on blur** (a helper line says
+  so, and a "Saved ✓" status sits on the star row — not below the
+  comments); the rating card is visually distinct from the Q&A/quiz cards
+- **And** the participant can retract their feedback via a subtle
+  **two-step** "Clear rating" control (`#fb-clear`): the first tap arms it
+  ("Tap again to clear"), a second tap within ~3 s issues
+  `DELETE /api/sessions/{code}/feedback` (history in
+  `SessionFeedbackVersion` is retained); afterward `mine` returns null and
+  the summary count drops
 - **And** participants may **change their feedback any number of times**:
   each save is appended to an immutable history (`SessionFeedbackVersion`)
   and the **latest** version is mirrored into the current view
@@ -1332,11 +1340,13 @@ fill up to that star (hovering the 5th lights all five).
 - Resubmitting is allowed any number of times: each call appends a `SessionFeedbackVersion` (history retained), while the current view stays one row per participant — `summary.count` stays 1 and the latest values win.
 - `rating` of `0`, `6`, missing, a string, a float, or a bool → `400 "rating must be an integer from 1 to 5"`.
 - `GET .../feedback/mine` → `null` before submitting, then the row.
+- `DELETE /api/sessions/{code}/feedback` after a submit → `200 {ok: true}`; `mine` then returns null and `summary.count` drops by one. The `SessionFeedbackVersion` history is retained.
 
 **Tests (UI)**
 - `#feedback-card` is the first card on `/s/<CODE>` and is a collapsible `<details>` that is open by default.
 - There is no `#fb-submit` button. `#fb-expand` is hidden until a star in `#fb-stars` is clicked; clicking a star fires a `POST .../feedback` and reveals `#fb-expand` with a "Saved" status. Editing `#fb-went-well` and blurring fires another `POST .../feedback`.
 - After reload, the prior rating (filled stars count) and comment values are prefilled.
+- Clicking `#fb-clear` once arms it ("Tap again to clear"); a second click clears the stars (filled count 0) and hides `#fb-expand`.
 
 ---
 

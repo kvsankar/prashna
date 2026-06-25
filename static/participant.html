@@ -24,13 +24,17 @@
         <h2>Rate this session</h2>
         <span class="fb-chevron" aria-hidden="true"></span>
       </summary>
-      <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
+      <div class="fb-rate-row">
+        <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
+        <span id="fb-status" class="muted small"></span>
+        <button id="fb-clear" type="button" class="ghost xsmall" style="display:none;">Clear rating</button>
+      </div>
       <div id="fb-expand" style="display:none; margin-top: 12px;">
         <label for="fb-went-well" class="small muted">What went well?</label>
         <textarea id="fb-went-well" maxlength="2000" placeholder="What worked for you…"></textarea>
         <label for="fb-to-improve" class="small muted" style="display:block; margin-top: 8px;">What could be better?</label>
         <textarea id="fb-to-improve" maxlength="2000" placeholder="What you'd change…"></textarea>
-        <div id="fb-status" class="muted small" style="margin-top: 8px;"></div>
+        <div class="muted small" style="margin-top: 6px;">Comments save automatically when you click away.</div>
       </div>
     </details>
 
@@ -296,7 +300,7 @@
           role: "radio",
           "aria-checked": String(i === myRating),
           "aria-label": `${i} star${i > 1 ? "s" : ""}`,
-          onclick: () => { myRating = i; $("#fb-expand").style.display = ""; renderStars(); saveFeedback({ toast: true }); },
+          onclick: () => { resetClearBtn(); myRating = i; $("#fb-expand").style.display = ""; renderStars(); saveFeedback("Thanks for your feedback"); },
         }, "★");
         b.addEventListener("mouseenter", () => paint(i));
         btns.push(b);
@@ -304,8 +308,9 @@
       }
       root.onmouseleave = () => paint(myRating);
       paint(myRating);
+      $("#fb-clear").style.display = myRating > 0 ? "" : "none";
     }
-    async function saveFeedback({ toast: notify } = {}) {
+    async function saveFeedback(toastMsg) {
       if (!myRating) return;
       const cur = currentFeedback();
       if (lastSaved
@@ -315,10 +320,42 @@
       try {
         await api(`/api/sessions/${CODE}/feedback`, { method: "POST", body: cur });
         lastSaved = cur;
-        $("#fb-status").textContent = "Saved — thanks for your feedback.";
-        if (notify) toast("Thanks for your feedback");
+        $("#fb-status").textContent = "Saved ✓";
+        if (toastMsg) toast(toastMsg);
       } catch (e) { errorToast(e.message); }
     }
+    // Subtle two-step undo: the first tap arms the button; a second tap
+    // within 3s clears the rating + comments (DELETE).
+    let clearArmed = false, clearTimer = null;
+    function resetClearBtn() {
+      clearArmed = false;
+      if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
+      $("#fb-clear").textContent = "Clear rating";
+      $("#fb-clear").classList.remove("danger");
+    }
+    async function clearFeedback() {
+      try { await api(`/api/sessions/${CODE}/feedback`, { method: "DELETE" }); }
+      catch (e) { errorToast(e.message); return; }
+      myRating = 0;
+      lastSaved = null;
+      $("#fb-went-well").value = "";
+      $("#fb-to-improve").value = "";
+      $("#fb-expand").style.display = "none";
+      $("#fb-status").textContent = "";
+      renderStars();
+      toast("Rating cleared");
+    }
+    $("#fb-clear").addEventListener("click", () => {
+      if (!clearArmed) {
+        clearArmed = true;
+        $("#fb-clear").textContent = "Tap again to clear";
+        $("#fb-clear").classList.add("danger");
+        clearTimer = setTimeout(resetClearBtn, 3000);
+        return;
+      }
+      resetClearBtn();
+      clearFeedback();
+    });
     async function loadFeedback() {
       // Loaded once at startup — not on every WS refresh, so it never
       // clobbers what the participant is typing.
@@ -330,14 +367,14 @@
           $("#fb-to-improve").value = f.to_improve || "";
           $("#fb-expand").style.display = "";
           lastSaved = currentFeedback();
-          $("#fb-status").textContent = "Saved — thanks for your feedback.";
+          $("#fb-status").textContent = "Saved ✓";
         }
       } catch {}
       renderStars();
     }
     // Comments persist on blur (the `change` event fires on blur after an edit).
-    $("#fb-went-well").addEventListener("change", () => saveFeedback());
-    $("#fb-to-improve").addEventListener("change", () => saveFeedback());
+    $("#fb-went-well").addEventListener("change", () => saveFeedback("Comment saved"));
+    $("#fb-to-improve").addEventListener("change", () => saveFeedback("Comment saved"));
 
     function refreshAll() { loadSession(); loadQueries(); loadQuiz(); }
 

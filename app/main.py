@@ -980,6 +980,29 @@ async def submit_feedback(
     return serialize_feedback(f)
 
 
+@app.delete("/api/sessions/{code}/feedback")
+async def delete_my_feedback(
+    code: str,
+    request: Request,
+    response: Response,
+    voter_token: Annotated[str | None, Cookie()] = None,
+    db: DbSession = Depends(get_db),
+):
+    """Retract the caller's current feedback (the 'undo' on the participant
+    page). Version history in SessionFeedbackVersion is left intact."""
+    s = get_session_by_code(db, code)
+    p = current_participant(s, request, response, voter_token, db)
+    f = db.scalar(select(m.SessionFeedback).where(
+        m.SessionFeedback.session_id == s.id,
+        m.SessionFeedback.participant_id == p.id,
+    ))
+    if f:
+        db.delete(f)
+        db.commit()
+        await broadcast_session(s, "feedback")
+    return {"ok": True}
+
+
 @app.get("/api/sessions/{code}/feedback/summary")
 def feedback_summary(
     code: str,

@@ -99,6 +99,29 @@ def test_uc_p_13_rating_missing_or_non_int_400(client, admin_client, make_sessio
         assert r.status_code == 400, bad
 
 
+def test_uc_p_13_delete_retracts_feedback(client, admin_client, make_session, mod_headers):
+    """DELETE retracts the caller's current feedback; mine→null, summary
+    count drops, but version history is retained."""
+    from sqlalchemy import func, select as _select
+
+    from app import db as _db
+    from app import models as _m
+
+    s = make_session()
+    admin_client.cookies.clear()
+    client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4, "went_well": "x"})
+    assert client.get(f"/api/sessions/{s['code']}/feedback/mine").json()["rating"] == 4
+    r = client.delete(f"/api/sessions/{s['code']}/feedback")
+    assert r.status_code == 200
+    assert client.get(f"/api/sessions/{s['code']}/feedback/mine").json() is None
+    summary = client.get(f"/api/sessions/{s['code']}/feedback/summary",
+                         headers=mod_headers(s["mod_key"])).json()
+    assert summary["count"] == 0
+    with _db.SessionLocal() as dbs:
+        versions = dbs.scalar(_select(func.count()).select_from(_m.SessionFeedbackVersion))
+    assert versions == 1  # history kept
+
+
 def test_uc_p_13_mine_null_then_value(client, admin_client, make_session):
     """GET .../feedback/mine is null before submitting, then echoes the row."""
     s = make_session()
