@@ -1316,11 +1316,11 @@ fill up to that star (hovering the 5th lights all five).
   so, and a "Saved ✓" status sits on the star row — not below the
   comments); the rating card is visually distinct from the Q&A/quiz cards
 - **And** the participant can retract their feedback via a subtle
-  **two-step** "Clear rating" control (`#fb-clear`): the first tap arms it
-  ("Tap again to clear"), a second tap within ~3 s issues
-  `DELETE /api/sessions/{code}/feedback` (history in
-  `SessionFeedbackVersion` is retained); afterward `mine` returns null and
-  the summary count drops
+  **two-step inline confirm** (`#fb-clear` → "Clear feedback? Yes / No"):
+  "Yes" (`#fb-clear-yes`) issues `DELETE /api/sessions/{code}/feedback`,
+  "No" (`#fb-clear-no`) cancels. (Deterministic — no auto-revert timer.)
+  History in `SessionFeedbackVersion` is retained; afterward `mine`
+  returns null and the summary count drops
 - **And** participants may **change their feedback any number of times**:
   each save is appended to an immutable history (`SessionFeedbackVersion`)
   and the **latest** version is mirrored into the current view
@@ -1346,7 +1346,7 @@ fill up to that star (hovering the 5th lights all five).
 - `#feedback-card` is the first card on `/s/<CODE>` and is a collapsible `<details>` that is open by default.
 - There is no `#fb-submit` button. `#fb-expand` is hidden until a star in `#fb-stars` is clicked; clicking a star fires a `POST .../feedback` and reveals `#fb-expand` with a "Saved" status. Editing `#fb-went-well` and blurring fires another `POST .../feedback`.
 - After reload, the prior rating (filled stars count) and comment values are prefilled.
-- Clicking `#fb-clear` once arms it ("Tap again to clear"); a second click clears the stars (filled count 0) and hides `#fb-expand`.
+- Clicking `#fb-clear` reveals an inline confirm (`#fb-clear-confirm`); `#fb-clear-no` cancels (rating unchanged), `#fb-clear-yes` clears the stars (filled count 0) and hides `#fb-expand`.
 
 ---
 

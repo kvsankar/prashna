@@ -89,7 +89,8 @@ details#feedback-card > summary::-webkit-details-marker { display: none; }
 .fb-chevron::before { content: "▾"; }
 details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 .fb-rate-row { display: flex; align-items: center; gap: 12px; }
-.fb-rate-row #fb-clear { margin-left: auto; }
+.fb-rate-row #fb-clear, .fb-rate-row #fb-clear-confirm { margin-left: auto; }
+#fb-clear-confirm button { margin-left: 4px; }
 .fb-avg { font-size: 16px; font-weight: 600; color: #f5b301; }
 .fb-stars-static { color: #f5b301; letter-spacing: 1px; }
 .fb-item { padding: 8px 0; border-top: 1px solid var(--border); }

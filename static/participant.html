@@ -28,6 +28,10 @@
         <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
         <span id="fb-status" class="muted small"></span>
         <button id="fb-clear" type="button" class="ghost xsmall" style="display:none;">Clear rating</button>
+        <span id="fb-clear-confirm" class="small muted" style="display:none;">Clear feedback?
+          <button id="fb-clear-yes" type="button" class="danger ghost xsmall">Yes</button>
+          <button id="fb-clear-no" type="button" class="ghost xsmall">No</button>
+        </span>
       </div>
       <div id="fb-expand" style="display:none; margin-top: 12px;">
         <label for="fb-went-well" class="small muted">What went well?</label>
@@ -300,7 +304,7 @@
           role: "radio",
           "aria-checked": String(i === myRating),
           "aria-label": `${i} star${i > 1 ? "s" : ""}`,
-          onclick: () => { resetClearBtn(); myRating = i; $("#fb-expand").style.display = ""; renderStars(); saveFeedback("Thanks for your feedback"); },
+          onclick: () => { myRating = i; $("#fb-expand").style.display = ""; renderStars(); saveFeedback("Thanks for your feedback"); },
         }, "★");
         b.addEventListener("mouseenter", () => paint(i));
         btns.push(b);
@@ -308,7 +312,9 @@
       }
       root.onmouseleave = () => paint(myRating);
       paint(myRating);
+      // Reset the undo control to its collapsed state on any star change.
       $("#fb-clear").style.display = myRating > 0 ? "" : "none";
+      $("#fb-clear-confirm").style.display = "none";
     }
     async function saveFeedback(toastMsg) {
       if (!myRating) return;
@@ -324,15 +330,9 @@
         if (toastMsg) toast(toastMsg);
       } catch (e) { errorToast(e.message); }
     }
-    // Subtle two-step undo: the first tap arms the button; a second tap
-    // within 3s clears the rating + comments (DELETE).
-    let clearArmed = false, clearTimer = null;
-    function resetClearBtn() {
-      clearArmed = false;
-      if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
-      $("#fb-clear").textContent = "Clear rating";
-      $("#fb-clear").classList.remove("danger");
-    }
+    // Subtle two-step undo via an inline confirm (deterministic — no timer,
+    // so no race between an auto-revert and the user's second tap):
+    // "Clear rating" reveals "Clear feedback? Yes / No".
     async function clearFeedback() {
       try { await api(`/api/sessions/${CODE}/feedback`, { method: "DELETE" }); }
       catch (e) { errorToast(e.message); return; }
@@ -346,14 +346,15 @@
       toast("Rating cleared");
     }
     $("#fb-clear").addEventListener("click", () => {
-      if (!clearArmed) {
-        clearArmed = true;
-        $("#fb-clear").textContent = "Tap again to clear";
-        $("#fb-clear").classList.add("danger");
-        clearTimer = setTimeout(resetClearBtn, 3000);
-        return;
-      }
-      resetClearBtn();
+      $("#fb-clear").style.display = "none";
+      $("#fb-clear-confirm").style.display = "";
+    });
+    $("#fb-clear-no").addEventListener("click", () => {
+      $("#fb-clear-confirm").style.display = "none";
+      $("#fb-clear").style.display = "";
+    });
+    $("#fb-clear-yes").addEventListener("click", () => {
+      $("#fb-clear-confirm").style.display = "none";
       clearFeedback();
     });
     async function loadFeedback() {
