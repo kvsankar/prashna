@@ -1,0 +1,57 @@
+import { resolve } from "node:path";
+import { defineConfig, type Plugin } from "vite";
+
+const ROOT = resolve(import.meta.dirname, "frontend");
+
+// In production FastAPI maps clean URLs (/m/<code> → moderator.html). The
+// Vite dev server needs the same mapping so HMR works at the real URLs, and
+// so pathCode() (which reads location.pathname) still sees the code.
+function cleanUrls(): Plugin {
+  const routes: [RegExp, string][] = [
+    [/^\/$/, "/index.html"],
+    [/^\/s\/[^/]+\/?$/, "/participant.html"],
+    [/^\/m\/[^/]+\/?$/, "/moderator.html"],
+    [/^\/p\/[^/]+\/?$/, "/projector.html"],
+    [/^\/quizzes\/?$/, "/quizzes.html"],
+  ];
+  return {
+    name: "prashna-clean-urls",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        const path = (req.url ?? "/").split("?")[0];
+        for (const [re, html] of routes) {
+          if (re.test(path)) { req.url = html; break; }
+        }
+        next();
+      });
+    },
+  };
+}
+
+export default defineConfig({
+  root: "frontend",
+  // Built assets and the dev server live under /static/ to match the path
+  // FastAPI serves them from (app.mount("/static", dist)).
+  base: "/static/",
+  plugins: [cleanUrls()],
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        index: resolve(ROOT, "index.html"),
+        participant: resolve(ROOT, "participant.html"),
+        moderator: resolve(ROOT, "moderator.html"),
+        projector: resolve(ROOT, "projector.html"),
+        quizzes: resolve(ROOT, "quizzes.html"),
+      },
+    },
+  },
+  server: {
+    proxy: {
+      "/api": "http://127.0.0.1:8000",
+      "/uploads": "http://127.0.0.1:8000",
+      "/ws": { target: "ws://127.0.0.1:8000", ws: true },
+    },
+  },
+});
