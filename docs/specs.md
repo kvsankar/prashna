@@ -820,6 +820,11 @@ recognizes which phase the current question is in.
 - **Prev** moves `current_question_idx` backwards (mod can revisit a
   question). Any advance call (next / prev / to) resets
   `reveal_current = False` server-side.
+- **Reveal closes voting.** Clicking **Reveal results →** sets
+  `reveal_current=true`, which **locks participant submissions** (their
+  Submit is replaced by "Voting closed — the answer has been revealed").
+  The moderator row shows a **"voting closed"** marker, and the ⋯ menu
+  offers **Reopen voting** (`reveal:false`) to reopen the current question.
 - **Row controls.** Only the primary drive controls stay on the row: the
   morphing primary (Reveal results → / Next question → / Finish quiz →)
   and **← Prev**. The rare run-management actions live in a **⋯ overflow
@@ -1219,7 +1224,7 @@ by default while the session is `planning`.
 - Broadcasts `{type: "quiz_submission"}` on success.
 
 **Tests (UI)**
-- On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive and the **Submit answer** button becomes enabled; clicking it POSTs and toasts. (The button reads "Submit answer", then "Update answer" after a prior submission; tests locate it via `#quiz-body button.primary`, not its text.)
+- On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive; clicking **Submit answer** POSTs and toasts. The Submit button is **always enabled** (a disabled button reads as broken) — submitting with no selection shows a "Pick an answer first" toast instead of a no-op; a "Pick an answer, then Submit." hint shows until one is chosen. (The button reads "Submit answer", then "Update answer" after a prior submission; tests locate it via `#quiz-body button.primary`, not its text.)
 - With multi-choice, clicking answers toggles each independently.
 - After moderator reveals, the answer inputs become disabled.
 

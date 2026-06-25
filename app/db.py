@@ -15,14 +15,22 @@ engine = create_engine(
 )
 
 
-# SQLite ignores ON DELETE CASCADE / FK constraints unless this PRAGMA is set
-# per connection. Without it, partial DB-level integrity is lost and orphaned
-# rows are possible on direct/bulk operations.
+# Per-connection SQLite pragmas:
+# - foreign_keys=ON: SQLite ignores ON DELETE CASCADE / FK constraints unless
+#   set per connection; without it orphaned rows are possible.
+# - journal_mode=WAL: readers don't block the single writer (and vice versa),
+#   which matters under a live quiz where many participants submit at once.
+# - busy_timeout=5000: a writer waits up to 5s for the lock instead of
+#   erroring immediately with "database is locked".
+# - synchronous=NORMAL: safe with WAL, much less fsync stalling under load.
 @event.listens_for(Engine, "connect")
-def _enable_sqlite_foreign_keys(dbapi_conn, _conn_record):
+def _set_sqlite_pragmas(dbapi_conn, _conn_record):
     try:
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
         cursor.close()
     except Exception:
         # Other dialects (Postgres etc.) don't need this; ignore quietly.

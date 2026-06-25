@@ -60,18 +60,15 @@ export function openLiveSocket(code, onMessage) {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = `${proto}//${location.host}/ws/sessions/${code}`;
   let ws, retry = 0, alive = true;
-  let everConnected = false;
   function connect() {
     ws = new WebSocket(url);
     ws.onopen = () => {
       retry = 0;
-      // After a reconnect, force a refetch so the page recovers any state
-      // changes that broadcasted while the socket was down. The initial
-      // connect doesn't need this — the page just loaded its own data.
-      if (everConnected) {
-        try { onMessage({ type: "reconnect" }); } catch {}
-      }
-      everConnected = true;
+      // Refetch on EVERY (re)connect, including the first. The page loads its
+      // own data before the socket is ready, so any broadcast that fires in
+      // that gap (e.g. the moderator starting/ending right as a participant
+      // joins) would otherwise be missed and leave the page stale.
+      try { onMessage({ type: "reconnect" }); } catch {}
     };
     ws.onmessage = ev => {
       try { onMessage(JSON.parse(ev.data)); } catch {}
@@ -79,7 +76,11 @@ export function openLiveSocket(code, onMessage) {
     ws.onclose = () => {
       if (!alive) return;
       retry = Math.min(retry + 1, 6);
-      setTimeout(connect, 500 * 2 ** retry);
+      // Exponential backoff with ±50% jitter so a mass disconnect (e.g. a
+      // server blip dropping every socket) doesn't reconnect in lockstep
+      // and create a synchronized refetch herd.
+      const base = 500 * 2 ** retry;
+      setTimeout(connect, base * (0.5 + Math.random()));
     };
     ws.onerror = () => ws.close();
   }
