@@ -30,11 +30,8 @@ function cleanUrls(): Plugin {
 
 export default defineConfig({
   root: "frontend",
-  // During the JS→TS migration the built pages are served under /build/
-  // (FastAPI mounts dist there) while un-migrated pages still come from the
-  // old /static/. `input` lists only the pages migrated so far; add each as
-  // it's converted. (At the end this collapses back to /static/.)
-  base: "/build/",
+  // Built assets are served by FastAPI under /static/ (app.mount → dist).
+  base: "/static/",
   plugins: [cleanUrls()],
   build: {
     outDir: "dist",

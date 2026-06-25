@@ -20,3 +20,5 @@ Dockerfile
 .dockerignore
 README.md
 CLAUDE.md
+node_modules
+frontend/dist

@@ -1,5 +1,14 @@
 # syntax=docker/dockerfile:1.7
 
+# ----- frontend: compile the TypeScript/Vite frontend to static assets -----
+FROM node:22-slim AS frontend
+WORKDIR /fe
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY vite.config.ts tsconfig.json ./
+COPY frontend ./frontend
+RUN npm run build          # → /fe/frontend/dist
+
 # ----- builder: resolve deps with uv into a venv -----
 FROM python:3.12-slim AS builder
 
@@ -18,7 +27,6 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Now bring in the app code.
 COPY app ./app
-COPY static ./static
 
 # ----- runtime: slim image with just python + the venv -----
 FROM python:3.12-slim AS runtime
@@ -33,6 +41,8 @@ RUN groupadd --system --gid 1001 prashna \
 
 WORKDIR /app
 COPY --from=builder --chown=prashna:prashna /app /app
+# The built frontend (served by FastAPI from frontend/dist at /static).
+COPY --from=frontend --chown=prashna:prashna /fe/frontend/dist /app/frontend/dist
 
 # SQLite DB lives on a volume; uploads on another.
 ENV PRASHNA_DB_PATH=/data/prashna.db \

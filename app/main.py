@@ -41,11 +41,10 @@ from .ratelimit import TokenBucketLimiter, enabled_from_env
 from .ws import hub
 
 BASE = Path(__file__).resolve().parent.parent
-STATIC = BASE / "static"
-# Vite build output (TypeScript frontend). During the JS→TS migration only
-# the converted pages live here; the rest are still served from STATIC.
-DIST = BASE / "frontend" / "dist"
-MIGRATED_PAGES = {"projector", "index", "participant", "quizzes", "moderator"}
+# Vite build output (the TypeScript frontend). Produced by `npm run build`
+# (and by the Docker build stage in prod). Pages 404 until it exists — in
+# dev use the Vite dev server (`npm run dev`) which proxies the API here.
+STATIC = BASE / "frontend" / "dist"
 UPLOADS = Path(os.environ.get("PRASHNA_UPLOADS_DIR") or (BASE / "uploads"))
 UPLOADS.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -137,12 +136,10 @@ class SecurityHeaders(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeaders)
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
-# Built (Vite) assets for migrated pages, referenced as /build/assets/… by
-# the built HTML. Mounted only when a build exists (so dev without a build,
-# and the API tests, don't fail at import).
-if (DIST / "assets").is_dir():
-    app.mount("/build", StaticFiles(directory=DIST), name="build")
+# Mounted only when a build exists, so importing the app (e.g. the API tests,
+# which don't build the frontend) never fails on a missing dist dir.
+if STATIC.is_dir():
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 # ---------- helpers ----------
@@ -505,11 +502,7 @@ async def broadcast_session(session: m.Session, kind: str = "update") -> None:
 # ---------- routes: pages ----------
 
 def _page(name: str) -> FileResponse:
-    """Serve a page from the Vite build if it's been migrated (and built),
-    else from the legacy static/ dir."""
-    built = DIST / f"{name}.html"
-    if name in MIGRATED_PAGES and built.exists():
-        return FileResponse(built)
+    """Serve a page from the Vite build output."""
     return FileResponse(STATIC / f"{name}.html")
 
 
