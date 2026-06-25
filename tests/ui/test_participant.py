@@ -24,22 +24,32 @@ from ._helpers import (
 # ---------- UC-P-13: session feedback ----------
 
 
-def test_uc_p_13_star_expands_and_submits(base_url, admin_setup, page):
-    """UC-P-13: picking a star reveals the comment fields; submit persists,
-    and a reload prefills the prior rating + comments."""
+def test_uc_p_13_star_autosaves_and_comment_persists(base_url, admin_setup, page):
+    """UC-P-13: tapping a star auto-saves the rating (no Submit button) and
+    reveals the comment fields; a comment persists on blur; a reload prefills
+    the prior rating + comments."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P13 {secrets.token_hex(3)}")
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#feedback-card")
+        # No explicit Submit button — saving is automatic.
+        expect(page.locator("#fb-submit")).to_have_count(0)
         # The expanded course-feedback section is hidden until a star is picked.
         expect(page.locator("#fb-expand")).to_be_hidden()
-        page.locator("#fb-stars button.star").nth(3).click()  # 4th star
+        # Tapping the 4th star saves the rating immediately.
+        with page.expect_response(
+            lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
+        ):
+            page.locator("#fb-stars button.star").nth(3).click()
         expect(page.locator("#fb-expand")).to_be_visible()
-        page.fill("#fb-went-well", "Loved the demos")
-        page.click("#fb-submit")
         expect(page.locator("#fb-status")).to_contain_text("Saved")
-        expect(page.locator("#fb-submit")).to_have_text("Update feedback")
+        # Comment persists on blur.
+        with page.expect_response(
+            lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
+        ):
+            page.fill("#fb-went-well", "Loved the demos")
+            page.locator("#fb-went-well").blur()
         # Reload → prior feedback prefilled.
         page.reload()
         page.wait_for_selector("#fb-expand:visible")
