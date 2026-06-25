@@ -1,0 +1,19 @@
+{
+  "name": "prashna-frontend-lint",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only lint tooling for the vanilla-JS / CSS frontend. NOT a build step — nothing is bundled or transpiled; the browser still loads static/ as-is.",
+  "scripts": {
+    "lint:js": "eslint static",
+    "lint:css": "stylelint \"static/**/*.css\"",
+    "lint": "npm run lint:js && npm run lint:css"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "eslint-plugin-html": "^8.1.2",
+    "globals": "^15.11.0",
+    "stylelint": "^16.10.0",
+    "stylelint-config-recommended": "^14.0.1"
+  }
+}

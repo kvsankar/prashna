@@ -19,6 +19,9 @@ dev = [
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
     "playwright>=1.45",
+    "ruff>=0.6",
+    "pytest-cov>=5.0",
+    "pre-commit>=3.7",
 ]
 
 [tool.uv]
@@ -29,3 +32,27 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra -q"
 asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Minimal, high-signal set: pyflakes (real bugs), pycodestyle errors/warnings,
+# import sorting. E501 (line length) is left off to avoid churning existing
+# long lines; turn it on later if desired.
+select = ["E", "F", "W", "I"]
+# E501 (line length): don't churn existing long lines.
+# E701/E702/E731: the codebase deliberately uses compact one-liners
+# (colon/semicolon statements, lambda assignments) — keep that style.
+ignore = ["E501", "E701", "E702", "E731"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+# No fail_under gate yet — UI tests run against a separate uvicorn process so
+# their exercise of app/ isn't captured in-process; the number reflects mainly
+# the API (TestClient) tests. Tighten once that's accounted for.

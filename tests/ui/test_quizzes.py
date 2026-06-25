@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import secrets
 
-import pytest
 from playwright.sync_api import expect
 
 from ._helpers import (
@@ -66,7 +65,7 @@ def test_uc_a_10_library_lists_quizzes(base_url, admin_setup, page):
 def test_uc_a_10_library_most_recent_at_top(base_url, admin_setup, page):
     """UC-A-10: most recently created quiz appears first."""
     c = api_login(base_url)
-    q1 = api_make_quiz(c, f"UI-Q10a {secrets.token_hex(3)}")
+    api_make_quiz(c, f"UI-Q10a {secrets.token_hex(3)}")  # older quiz
     q2 = api_make_quiz(c, f"UI-Q10b {secrets.token_hex(3)}")
     try:
         _goto_quizzes(page, base_url)

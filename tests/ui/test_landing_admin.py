@@ -8,18 +8,15 @@ from __future__ import annotations
 import secrets
 
 import httpx
-import pytest
 from playwright.sync_api import expect
 
 from ._helpers import (
-    ADMIN,
     admin_login_via_ui,
     api_login,
     api_make_session,
     api_start_session,
     ask_query_api,
 )
-
 
 # ---------- UC-A-03 ----------
 

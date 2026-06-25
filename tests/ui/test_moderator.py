@@ -7,7 +7,6 @@ from __future__ import annotations
 import secrets
 
 import httpx
-import pytest
 from playwright.sync_api import expect
 
 from ._helpers import (
@@ -19,7 +18,6 @@ from ._helpers import (
     api_start_session,
     ask_query_api,
 )
-
 
 # ---------- UC-M-01 ----------
 
@@ -180,7 +178,7 @@ def test_uc_m_04_second_live_run_toasts_409(base_url, admin_setup, page):
     quiz = api_make_quiz(c, f"UI-M04m {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-M04ms {secrets.token_hex(3)}")
     run1 = api_queue_quiz_run(c, s["code"], quiz["id"])
-    run2 = api_queue_quiz_run(c, s["code"], quiz["id"])
+    api_queue_quiz_run(c, s["code"], quiz["id"])  # second queued run (for the 409)
     # Start run1 via API so we're cleanly in the "one live" state.
     c.post(f"/api/sessions/{s['code']}/quiz_runs/{run1['id']}/start").raise_for_status()
     try:

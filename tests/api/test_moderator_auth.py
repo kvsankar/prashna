@@ -5,7 +5,6 @@ import json
 
 from fastapi.testclient import TestClient
 
-
 # ---------- UC-M-01: Auth gates on mod-or-owner routes ----------
 
 def test_uc_m_01_mod_key_header_ok(client, admin_client, make_session, mod_headers):

@@ -84,6 +84,7 @@ def test_uc_a_26_callback_allowed_logs_in(client, monkeypatch, app_module):
     assert st["authenticated"] is True
     assert st["username"] == "kvsankar"
     from sqlalchemy import select
+
     from app import models as m
     from app.db import SessionLocal
     with SessionLocal() as db:

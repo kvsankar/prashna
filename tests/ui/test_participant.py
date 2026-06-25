@@ -7,7 +7,6 @@ from __future__ import annotations
 import secrets
 
 import httpx
-import pytest
 from playwright.sync_api import expect
 
 from ._helpers import (
@@ -16,10 +15,8 @@ from ._helpers import (
     api_make_quiz,
     api_make_session,
     api_queue_quiz_run,
-    api_start_session,
     ask_query_api,
 )
-
 
 # ---------- UC-P-13: session feedback ----------
 
@@ -248,7 +245,7 @@ def test_uc_p_06_queries_sorted_unresponded_first_then_votes(base_url, admin_set
     # q1 will be marked responded, q2 high votes, q3 low.
     q1 = ask_query_api(base_url, s["code"], "to-respond-q1")
     q2 = ask_query_api(base_url, s["code"], "high-votes-q2")
-    q3 = ask_query_api(base_url, s["code"], "low-votes-q3")
+    ask_query_api(base_url, s["code"], "low-votes-q3")  # third query, left unvoted
     # Mark q1 responded.
     c.post(f"/api/sessions/{s['code']}/queries/{q1['id']}/respond", json={"response_text": "done"}).raise_for_status()
     # Give q2 an upvote (different voter cookie).

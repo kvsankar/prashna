@@ -1,10 +1,7 @@
 """UC-P-01, UC-P-02, UC-P-03, UC-P-11, UC-M-10: session lookup, participants, presence."""
 from __future__ import annotations
 
-import time
-
 from fastapi.testclient import TestClient
-
 
 # ---------- UC-P-01: Join by code ----------
 
@@ -108,8 +105,8 @@ def test_uc_p_02_concurrent_first_touch_single_row(make_session, app_module):
         t.join()
 
     assert sorted(results) == [200, 200], results
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         rows = db.query(m.Participant).filter_by(
@@ -122,8 +119,8 @@ def test_uc_p_02_last_seen_throttle(client, admin_client, make_session):
     s = make_session()
     admin_client.cookies.clear()
     client.get(f"/api/sessions/{s['code']}/me")  # creates row
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         p = db.query(m.Participant).filter_by(session_id=db.query(m.Session)
                                               .filter_by(code=s["code"]).one().id).one()
@@ -141,9 +138,10 @@ def test_uc_p_02_last_seen_advances_after_window(client, admin_client, make_sess
     s = make_session()
     admin_client.cookies.clear()
     client.get(f"/api/sessions/{s['code']}/me")
-    from app.db import SessionLocal
-    from app import models as m
     from datetime import datetime, timedelta
+
+    from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         p = db.query(m.Participant).filter_by(session_id=sess.id).one()
@@ -288,8 +286,8 @@ def test_uc_m_10_presence_expires_after_30s(client, admin_client, make_session, 
     with TestClient(app_module.app) as c:
         c.get(f"/api/sessions/{s['code']}/me")
     # backdate last_seen for that participant
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         for p in db.query(m.Participant).filter_by(session_id=sess.id).all():

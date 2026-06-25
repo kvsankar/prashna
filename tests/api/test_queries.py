@@ -1,7 +1,6 @@
 """UC-P-04, UC-P-05, UC-P-06, UC-M-08, UC-M-09: queries (Q&A board)."""
 from __future__ import annotations
 
-
 # ---------- UC-P-04: Ask ----------
 
 def test_uc_p_04_ask_planning(client, admin_client, make_session):

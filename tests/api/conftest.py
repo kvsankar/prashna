@@ -9,12 +9,9 @@ from __future__ import annotations
 
 import os
 import secrets
-import tempfile
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
 
 # ---------- session-scoped: spin up the app once ----------
 
@@ -49,7 +46,6 @@ def _live_client(app_module):
 def client(_live_client, app_module) -> TestClient:
     """Per-test client: same underlying app, but all tables truncated before each test."""
     from app import db as _db
-    from app import models as _m
     # Truncate every ORM table. Order: children before parents matters under FKs;
     # SQLAlchemy's `metadata.sorted_tables` returns them in dependency order, so
     # iterating in reverse deletes children first.

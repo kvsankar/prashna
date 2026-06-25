@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from app.ratelimit import TokenBucketLimiter, enabled_from_env
 
-
 # ---------- unit: token bucket ----------
 
 def test_bucket_allows_burst_then_denies():

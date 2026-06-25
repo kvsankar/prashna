@@ -1,9 +1,7 @@
 """UC-A-09 through UC-A-22: quiz CRUD, items, answers, publish, uploads."""
 from __future__ import annotations
 
-import io
 import re
-
 
 # ---------- UC-A-09: Create quiz template ----------
 
@@ -48,8 +46,9 @@ def test_uc_a_10_list_quizzes(admin_client, make_quiz):
 def test_uc_a_10_other_admins_quiz_excluded(admin_client, make_quiz):
     """UC-A-10: another admin's quiz not in response."""
     make_quiz("mine")
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="other_q", password_hash=auth.hash_password("longenough"))
         db.add(other)
@@ -108,8 +107,9 @@ def test_uc_a_11_get_quiz_default_omits_correct(admin_client, make_quiz):
 def test_uc_a_11_non_owner_404(admin_client, make_quiz):
     """UC-A-11: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="other_open", password_hash=auth.hash_password("longenough"))
         db.add(other)
@@ -177,8 +177,9 @@ def test_uc_a_12_ready_stays_ready(admin_client, make_quiz):
 def test_uc_a_12_non_owner_404(admin_client, make_quiz):
     """UC-A-12: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="other_ren", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -211,8 +212,9 @@ def test_uc_a_13_delete_used_400(admin_client, make_quiz, make_session):
 def test_uc_a_13_non_owner_404(admin_client, make_quiz):
     """UC-A-13: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="other_del", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -272,8 +274,9 @@ def test_uc_a_14_bad_qtype_400(admin_client):
 def test_uc_a_14_non_owner_404(admin_client):
     """UC-A-14: non-owner → 404."""
     qz = admin_client.post("/api/quizzes", json={"title": "Q"}).json()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth14", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -336,8 +339,9 @@ def test_uc_a_15_image_url_set_clear(admin_client, make_quiz):
 def test_uc_a_15_non_owner_404(admin_client, make_quiz):
     """UC-A-15: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth15", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -360,8 +364,9 @@ def test_uc_a_16_delete_question(admin_client, make_quiz):
 def test_uc_a_16_non_owner_404(admin_client, make_quiz):
     """UC-A-16: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth16", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -384,8 +389,9 @@ def test_uc_a_17_add_answer(admin_client, make_quiz):
 def test_uc_a_17_non_owner_404(admin_client, make_quiz):
     """UC-A-17: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth17", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -440,8 +446,9 @@ def test_uc_a_18_non_owner_404(admin_client, make_quiz):
     """UC-A-18: non-owner → 404."""
     q = make_quiz()
     aid = _first_answer_id(admin_client, q["id"])
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth18", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -466,8 +473,9 @@ def test_uc_a_19_non_owner_404(admin_client, make_quiz):
     """UC-A-19: non-owner → 404."""
     q = make_quiz()
     aid = _first_answer_id(admin_client, q["id"])
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth19", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -661,8 +669,9 @@ def test_uc_a_21_empty_answer_400(admin_client):
 def test_uc_a_21_publish_non_owner_404(admin_client, make_quiz):
     """UC-A-21: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth21", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -687,8 +696,8 @@ def test_uc_a_22_versions_unchanged(admin_client, make_quiz, make_session):
     q = make_quiz()
     s = make_session()
     admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]})
-    from app.db import SessionLocal
     from app import models as m
+    from app.db import SessionLocal
     with SessionLocal() as db:
         before = db.query(m.QuizVersion).filter_by(quiz_id=q["id"]).count()
     admin_client.post(f"/api/quizzes/{q['id']}/unpublish")
@@ -700,8 +709,9 @@ def test_uc_a_22_versions_unchanged(admin_client, make_quiz, make_session):
 def test_uc_a_22_non_owner_404(admin_client, make_quiz):
     """UC-A-22: non-owner → 404."""
     q = make_quiz()
+    from app import auth
+    from app import models as m
     from app.db import SessionLocal
-    from app import models as m, auth
     with SessionLocal() as db:
         other = m.User(username="oth22", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
