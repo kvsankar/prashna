@@ -113,7 +113,9 @@ that map 1:1 to a pytest function.
 
 ```
 app/                FastAPI app — routes, models, auth, db, websocket hub
-static/             Vanilla JS / HTML / CSS, one page per role; vendored QR lib
+frontend/          Vite + TypeScript frontend, one page per role
+  src/              shared TS helpers, page entries, and app.css tokens
+  public/vendor/    vendored QR lib
 docs/
   specs.md          Use-case spec + acceptance tests — authoritative
   UX.md             Frontend design system — authoritative
@@ -134,10 +136,12 @@ workflow on each push to `main` and version tags. See
 
 ## Status
 
-Pre-launch. The schema rebuilds on every change (no migrations
-yet — delete `prashna.db` if a model changes incompatibly). Heading
-to open-source release plus a hosted SaaS variant. See the
+Pre-launch. `init_db()` creates fresh schemas and runs a lightweight
+additive SQLite migration bridge for known post-deploy columns/indexes.
+Breaking schema changes still require an explicit release note or a real
+migration before user data matters. Heading to open-source release plus a
+hosted SaaS variant. See the
 **Deferred (decision needed)** appendix at the bottom of
 `docs/specs.md` for items that need product calls before they ship:
-SSO, multi-admin, reopen lifecycles, per-question timer, rate
-limiting, content-sniffing on uploads, etc.
+SSO, multi-admin, reopen lifecycles, per-question timer,
+content-sniffing on uploads, etc.

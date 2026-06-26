@@ -49,13 +49,13 @@ these.
 | Participant (cookie-issued)    | Never errors on auth — a fresh `voter_token` is created on first interaction   |
 
 Selectors cited in `**Tests (UI)**` blocks are real IDs / classes in
-`static/*.html`. Some elements are JS-rendered (badges, quiz-run rows,
+`frontend/*.html` and `frontend/src/*.ts`. Some elements are JS-rendered (badges, quiz-run rows,
 query rows); test authors should rely on the documented class names
 (`.badge-live`, `.question`, etc.) and text content rather than DOM
 positions. **Status badges** (Session + QuizRun lifecycle) keep the raw
 status in their CSS class (`badge-planning`, `badge-queued`, …) but
 *display* a friendly label ("Not started", "Queued", "Live", "Closed",
-"Ended" — see `statusLabel` in `common.js`). Assert lifecycle on the
+"Ended" — see `statusLabel` in `frontend/src/common.ts`). Assert lifecycle on the
 class, never the badge text.
 
 **UI copy vs. entity names.** The `Query` entity is internal vocabulary.

@@ -7,10 +7,15 @@ let activeQuiz: QuizRun | null = null;
 let pendingSelection = new Set<number>();
 let lastQuestionId: number | null = null;
 let me: { id: number | null; name: string | null } = { id: null, name: null };
+let latestSessionSeq = 0;
+let latestQueriesSeq = 0;
+let latestQuizSeq = 0;
 
 let sessionEnded = false;
 async function loadSession(): Promise<void> {
+  const seq = ++latestSessionSeq;
   const s = await api<Session>(`/api/sessions/${CODE}`);
+  if (seq !== latestSessionSeq) return;
   document.title = `Prashna — ${s.title}`;
   $("#title").textContent = s.title;
   $("#code").textContent = "Code " + CODE;
@@ -35,7 +40,10 @@ $("#my-name").addEventListener("change", async () => {
 });
 
 async function loadQueries(): Promise<void> {
-  queries = await api<Query[]>(`/api/sessions/${CODE}/queries`);
+  const seq = ++latestQueriesSeq;
+  const rows = await api<Query[]>(`/api/sessions/${CODE}/queries`);
+  if (seq !== latestQueriesSeq) return;
+  queries = rows;
   renderQueries();
 }
 
@@ -99,7 +107,9 @@ $("#query-text").addEventListener("keydown", (e) => {
 });
 
 async function loadQuiz(): Promise<void> {
+  const seq = ++latestQuizSeq;
   const rows = await api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs`);
+  if (seq !== latestQuizSeq) return;
   activeQuiz = rows.find((r) => r.status === "live") ?? null;
   if (activeQuiz && activeQuiz.current_question && activeQuiz.current_question.id !== lastQuestionId) {
     pendingSelection = new Set(activeQuiz.my_selections ?? []);

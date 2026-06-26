@@ -19,6 +19,12 @@ let sessionState: Session | null = null;
 let presenceTimer: ReturnType<typeof setInterval> | null = null;
 let isOwner = false;
 const pendingResponseText = new Map<number, string>();
+let latestSessionSeq = 0;
+let latestQueriesSeq = 0;
+let latestQuizzesSeq = 0;
+let latestQuizRunsSeq = 0;
+let latestPresenceSeq = 0;
+let latestFeedbackSeq = 0;
 
 function showWorkSurfaces(visible: boolean): void {
   for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "feedback-card"]) {
@@ -53,14 +59,17 @@ document.addEventListener("keydown", (e) => {
 });
 
 async function loadSession(): Promise<void> {
-  sessionState = await api<Session>(`/api/sessions/${CODE}`);
+  const seq = ++latestSessionSeq;
+  const loaded = await api<Session>(`/api/sessions/${CODE}`);
+  if (seq !== latestSessionSeq) return;
+  sessionState = loaded;
   document.title = `Mod — ${sessionState.title}`;
   $("#title").textContent = sessionState.title;
   $("#code").textContent = "Code " + CODE;
   $<HTMLAnchorElement>("#participant-link").href = `/s/${CODE}`;
   $<HTMLAnchorElement>("#projector-link").href = `/p/${CODE}`;
   renderLifecycle();
-  void renderInvite();
+  void renderInvite(seq);
 }
 
 function participantUrlFor(s: Session): string {
@@ -68,7 +77,8 @@ function participantUrlFor(s: Session): string {
   return `${base}/s/${s.code}`;
 }
 
-async function renderInvite(): Promise<void> {
+async function renderInvite(seq = latestSessionSeq): Promise<void> {
+  if (seq !== latestSessionSeq) return;
   if (!sessionState) return;
   const url = participantUrlFor(sessionState);
   $<HTMLInputElement>("#base-url").value = sessionState.participant_base_url || "";
@@ -128,14 +138,19 @@ async function transition(action: string): Promise<void> {
 }
 
 async function loadPresence(): Promise<void> {
+  const seq = ++latestPresenceSeq;
   try {
     const r = await api<{ online: number }>(`/api/sessions/${CODE}/presence`);
+    if (seq !== latestPresenceSeq) return;
     $("#live-count").textContent = `${r.online} online`;
   } catch { /* presence is best-effort */ }
 }
 
 async function loadQueries(): Promise<void> {
-  queries = await api<Query[]>(`/api/sessions/${CODE}/queries`, { headers: modHeaders() });
+  const seq = ++latestQueriesSeq;
+  const rows = await api<Query[]>(`/api/sessions/${CODE}/queries`, { headers: modHeaders() });
+  if (seq !== latestQueriesSeq) return;
+  queries = rows;
   renderQueries();
 }
 
@@ -203,7 +218,10 @@ function renderQuery(q: Query): HTMLElement {
 }
 
 async function loadQuizzes(): Promise<void> {
-  quizzes = await api<QuizSummary[]>(`/api/sessions/${CODE}/available_quizzes`, { headers: modHeaders() });
+  const seq = ++latestQuizzesSeq;
+  const rows = await api<QuizSummary[]>(`/api/sessions/${CODE}/available_quizzes`, { headers: modHeaders() });
+  if (seq !== latestQuizzesSeq) return;
+  quizzes = rows;
   const sel = $<HTMLSelectElement>("#quiz-select");
   sel.innerHTML = "";
   if (!quizzes.length) {
@@ -214,7 +232,10 @@ async function loadQuizzes(): Promise<void> {
 }
 
 async function loadQuizRuns(): Promise<void> {
-  quizRuns = await api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs`, { headers: modHeaders() });
+  const seq = ++latestQuizRunsSeq;
+  const rows = await api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs`, { headers: modHeaders() });
+  if (seq !== latestQuizRunsSeq) return;
+  quizRuns = rows;
   renderQuizRuns();
 }
 
@@ -356,8 +377,10 @@ guardClick($<HTMLButtonElement>("#add-quiz-btn"), async () => {
 });
 
 async function loadFeedback(): Promise<void> {
+  const seq = ++latestFeedbackSeq;
   try {
     const sum = await api<FeedbackSummary>(`/api/sessions/${CODE}/feedback/summary`, { headers: modHeaders() });
+    if (seq !== latestFeedbackSeq) return;
     renderFeedback(sum);
   } catch { /* non-fatal */ }
 }

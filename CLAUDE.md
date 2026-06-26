@@ -193,10 +193,13 @@ when `quiz.last_edited_at > latest_version.created_at`. Status
 stays `ready` across edits (does not auto-revert).
 
 ### Database migrations
-None. `init_db()` calls `create_all` at startup (via the FastAPI
-lifespan context manager). If a model changes in a breaking way,
-delete `prashna.db` and recreate. Pre-launch — no data to preserve
-yet.
+`init_db()` calls `create_all` at startup (via the FastAPI lifespan
+context manager), then runs the additive SQLite migration bridge in
+`app/db.py` for known post-deploy columns and indexes. When adding a
+column or storage invariant to an existing table, update that bridge and
+add an old-shape SQLite regression test. Truly breaking schema changes
+still need an explicit release/reset plan or Alembic before real user
+data matters.
 
 ### Routes file
 `app/main.py` is intentionally one file. If it grows past ~1500
