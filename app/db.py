@@ -59,36 +59,61 @@ def init_db():
     _apply_additive_migrations()
 
 
-def _apply_additive_migrations():
+def _apply_additive_migrations(*, bind: Engine | None = None):
     """Bridge gap between `create_all()` and additive column changes.
 
     Prashna intentionally has no Alembic. `create_all` only creates
-    missing tables, not missing columns. For each additive column we
-    introduce post-launch, add an `ALTER TABLE … ADD COLUMN` here so
-    operators don't have to delete `prashna.db` on every model change.
+    missing tables, not missing columns or indexes on existing tables. For
+    each supported additive change we introduce post-launch, add it here so
+    operators don't have to delete `prashna.db` on every model addition.
     """
+    target = bind or engine
     additive = [
         # (table, column, ddl-snippet)
         ("users", "session_version", "INTEGER NOT NULL DEFAULT 1"),
         ("users", "github_id", "INTEGER"),
+        ("sessions", "participant_base_url", "VARCHAR(500)"),
         ("quiz_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),
         ("quiz_version_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),
+        ("quiz_runs", "show_live_counts", "BOOLEAN NOT NULL DEFAULT 0"),
     ]
-    # Unique indexes to (re)create on existing DBs — `ALTER TABLE ADD COLUMN`
-    # can't carry a UNIQUE constraint, so back it with an index. SQLite treats
-    # NULLs as distinct, so existing password-only admins (github_id NULL) are
-    # unaffected. Matches the name `create_all` uses for the mapped column.
+    # Indexes to (re)create on existing DBs. `ALTER TABLE ADD COLUMN` can't
+    # carry UNIQUE/partial-index constraints; create those separately.
     indexes = [
-        ("ix_users_github_id", "users", "github_id", True),
+        ("ix_users_github_id", "users", ["github_id"], True, None),
+        (
+            "uq_session_live_run",
+            "quiz_runs",
+            ["session_id"],
+            True,
+            "status = 'live'",
+        ),
+        ("ix_qsub_run_question", "quiz_submissions", ["quiz_run_id", "question_id"], False, None),
     ]
-    with engine.begin() as conn:
+    with target.begin() as conn:
+        tables = {
+            row[0]
+            for row in conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
         for table, column, ddl in additive:
+            if table not in tables:
+                continue
             cols = {row[1] for row in conn.exec_driver_sql(
                 f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
                 conn.exec_driver_sql(
                     f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
-        for name, table, column, unique in indexes:
+        for name, table, columns, unique, where in indexes:
+            if table not in tables:
+                continue
+            existing_cols = {
+                row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")
+            }
+            if not set(columns).issubset(existing_cols):
+                continue
             uniq = "UNIQUE " if unique else ""
+            where_sql = f" WHERE {where}" if where else ""
             conn.exec_driver_sql(
-                f"CREATE {uniq}INDEX IF NOT EXISTS {name} ON {table} ({column})")
+                f"CREATE {uniq}INDEX IF NOT EXISTS {name} ON {table} ({', '.join(columns)}){where_sql}")

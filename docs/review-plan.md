@@ -4,7 +4,7 @@ Date: 2026-05-12
 
 ## Project Read
 
-Prashna is a compact FastAPI and vanilla-JS application for live audience sessions. It supports anonymous Q&A, delegated moderation through a per-session moderator key, projector display, and moderator-run quizzes. The backend is mostly concentrated in `app/main.py`, with SQLAlchemy models in `app/models.py`, cookie auth in `app/auth.py`, SQLite setup in `app/db.py`, and an in-memory WebSocket hub in `app/ws.py`. The frontend is organized as one static HTML/JS page per role under `static/`. The authoritative product behavior is captured in `docs/specs.md`; frontend conventions are captured in `docs/UX.md`.
+Prashna is a compact FastAPI and Vite/TypeScript application for live audience sessions. It supports anonymous Q&A, delegated moderation through a per-session moderator key, projector display, and moderator-run quizzes. The backend is mostly concentrated in `app/main.py`, with SQLAlchemy models in `app/models.py`, cookie auth in `app/auth.py`, SQLite setup in `app/db.py`, and an in-memory WebSocket hub in `app/ws.py`. The frontend is organized as one Vite HTML entrypoint per role under `frontend/`, with page logic in `frontend/src/*.ts`. The authoritative product behavior is captured in `docs/specs.md`; frontend conventions are captured in `docs/UX.md`.
 
 ## Review Scheme
 
@@ -24,7 +24,7 @@ The review was split into four roles:
    - Focus: auth, authorization, data integrity, race conditions, upload handling, lifecycle bugs, WebSocket behavior, and SQLite edge cases.
 
 4. Frontend/live-client reviewer
-   - Scope: `static/common.js`, `static/index.html`, `static/quizzes.html`, `static/moderator.html`, `static/participant.html`, `static/projector.html`, `static/app.css`, and `tests/ui`.
+   - Scope: `frontend/*.html`, `frontend/src/common.ts`, `frontend/src/{index,quizzes,moderator,participant,projector}.ts`, `frontend/src/app.css`, and `tests/ui`.
    - Focus: browser-side correctness, live refresh behavior, stale state, unsafe DOM/URL handling, moderator key handling, accessibility gaps, and UI test coverage.
 
 ## Round 2 Re-Review Scheme

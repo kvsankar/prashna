@@ -11,8 +11,8 @@ here *before* shipping a one-off.
 
 ## 1. Visual tokens
 
-Defined as CSS variables in `static/app.css`. Don't hardcode hex outside
-the token list.
+Defined as CSS variables in `frontend/src/app.css`. Don't hardcode hex
+outside the token list.
 
 | Token         | Use                                                  |
 | ------------- | ---------------------------------------------------- |

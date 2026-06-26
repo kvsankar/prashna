@@ -834,7 +834,7 @@ async def end_session(
 
 
 @app.delete("/api/sessions/{code}")
-def delete_session(
+async def delete_session(
     code: str,
     payload: dict | None = None,
     db: DbSession = Depends(get_db),
@@ -849,8 +849,10 @@ def delete_session(
         confirm_title = (payload or {}).get("confirm_title", "")
         if confirm_title != s.title:
             raise HTTPException(400, "Type the session title exactly to confirm deletion")
+    session_code = s.code
     db.delete(s)
     db.commit()
+    await hub.broadcast(f"session:{session_code}", {"type": "session_deleted"})
     return {"ok": True}
 
 

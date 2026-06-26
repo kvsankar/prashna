@@ -9,17 +9,6 @@ is deferred.
 
 ## Open — needs a product decision
 
-### Existing DB rollout for `users.session_version` — OPEN
-*Source:* critical-code-review-report Round 2 schema finding · design-review-report Round 2 schema finding.
-The password-cookie invalidation fix added `users.session_version`, but
-`Base.metadata.create_all()` does not add columns to existing SQLite
-tables. Pick one before redeploying over an existing `prashna.db`:
-
-- Treat this commit as a breaking local-data reset and delete/recreate
-  `prashna.db`.
-- Add a small startup backfill for the missing column.
-- Adopt migrations now rather than waiting for SaaS data.
-
 ### Admin setup singleton invariant — OPEN
 *Source:* critical-code-review-report Round 2 setup-race finding.
 Same-username setup conflicts are now handled, but two concurrent setup
@@ -27,19 +16,6 @@ requests with different usernames can still race because there is no
 database-level singleton. Decide whether to add a fixed bootstrap row,
 transactional lock, or other invariant before any public/shared
 deployment.
-
-### Moderator Base URL role model — OPEN
-*Source:* design-review-report Round 2 role-boundary finding · frontend-live-review-report Round 2 Base URL finding.
-Backend is now owner-only, but UC-M-11/spec text and the moderator UI
-still expose the Base URL edit flow to delegated moderators. Decide
-whether Base URL editing is owner-only or mod-capable, then update the
-spec and UI together.
-
-### Closed-run live-counts control — OPEN
-*Source:* frontend-live-review-report Round 2 closed-run finding.
-Backend rejects `live_counts` changes on closed quiz runs, but the
-moderator UI still renders the checkbox. Hide it or make it read-only
-for closed history.
 
 ## Workflow / deferred decisions
 
@@ -73,9 +49,10 @@ from less-trusted operators.
 
 ### Alembic migrations — DEFERRED
 *Source:* design-review-report D3.
-Pre-launch policy is "delete `prashna.db` on breaking changes" (per
-CLAUDE.md). Adopt Alembic before real user data exists in the SaaS
-instance.
+The app now has a lightweight additive SQLite migration bridge for known
+post-deploy columns and indexes, but not a general migration system.
+Adopt Alembic before real user data exists in the SaaS instance or
+before non-additive schema changes ship.
 
 ### Multi-worker WebSocket hub — DEFERRED
 *Source:* design-review-report D4 (second half).
@@ -90,14 +67,6 @@ Per-route source-state guards landed (advance/reveal/close require
 shared state-machine service for `Session` and `QuizRun` is
 deferred — single-file `app/main.py` is a project value; split when
 the file forces it.
-
-### Frontend refresh race / stale paint — DEFERRED
-*Source:* frontend-live-review-report F4.
-WebSocket refresh handlers don't guard against out-of-order
-responses. Real but low blast radius — broadcasts here are
-user-event-driven, not a stream. Fix (AbortController or monotonic
-refresh token threaded through every reload) is invasive. Revisit
-if a real ordering bug surfaces.
 
 ## Operational
 
@@ -115,10 +84,10 @@ first-visitor-claims-admin window stays workflow-mitigated.
 *Source:* this branch.
 `auth._parse_cookie` still accepts legacy uid-only cookies (no
 `session_version`) so existing admin sessions survive the next deploy.
-Round 2 found this only works after the database has the
-`users.session_version` column. Safe to remove after the first redeploy
-and schema update invalidates all existing sessions naturally — they'll
-have to log in once. Drop the shim in a follow-up commit.
+The additive SQLite migration bridge now backfills `users.session_version`.
+Safe to remove after the first redeploy and schema update invalidates all
+existing sessions naturally — they'll have to log in once. Drop the shim
+in a follow-up commit.
 
 ### Push & redeploy — GATED ON USER
 *Source:* feedback_no_auto_docker memory.
@@ -134,3 +103,16 @@ admin-setup race as partial and found new schema/UI/spec follow-ups. See
 `docs/design-review-report.md`, and
 `docs/frontend-live-review-report.md` for per-finding Done/Deferred
 annotations with rationale.
+
+Additional items closed by the 2026-06-25 TDD pass:
+
+- Existing SQLite rollout for `users.session_version` and other known
+  additive schema changes: `app/db.py` now backfills supported columns and
+  indexes, with an old-shape DB regression test.
+- Moderator Base URL role model: backend, spec, and moderator UI now treat
+  Base URL editing as owner-only while delegates see read-only invite
+  controls.
+- Closed-run live-counts control: closed runs no longer render the live
+  counts menu item.
+- Frontend refresh race / stale paint: live clients now use monotonic
+  refresh sequence guards.

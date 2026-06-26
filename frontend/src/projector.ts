@@ -4,20 +4,23 @@ import type { Query, QuizRun, Session } from "./types";
 const CODE = pathCode();
 $("#code").textContent = CODE;
 
-let lastBase: string | null = null;
+let lastQrUrl: string | null = null;
+let latestLoadSeq = 0;
 
 async function loadAll(): Promise<void> {
+  const seq = ++latestLoadSeq;
   const [s, qs, runs] = await Promise.all([
     api<Session>(`/api/sessions/${CODE}`),
     api<Query[]>(`/api/sessions/${CODE}/queries`),
     api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs`),
   ]);
+  if (seq !== latestLoadSeq) return;
   $("#title").textContent = s.title;
   const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
   const url = `${base}/s/${s.code}`;
   $("#origin").textContent = base.replace(/^https?:\/\//, "");
-  if (base !== lastBase) {
-    lastBase = base;
+  if (url !== lastQrUrl) {
+    lastQrUrl = url;
     try { await renderQR($("#join-qr"), url, { cellSize: 5, margin: 2 }); }
     catch { /* QR is best-effort */ }
   }

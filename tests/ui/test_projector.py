@@ -101,6 +101,45 @@ def test_uc_d_02_click_inside_lightbox_closes(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_d_02_qr_rerenders_when_join_url_changes_with_same_base(base_url, admin_setup, page):
+    """UC-D-02: projector QR cache is keyed by the full participant URL, not only origin."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-D02url {secrets.token_hex(3)}")
+    try:
+        calls = {"session": 0}
+
+        def route_session(route):
+            calls["session"] += 1
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=(
+                    '{"code":"%s","title":"%s","status":"planning",'
+                    '"created_at":"2026-06-25T00:00:00","participant_base_url":"%s"}'
+                ) % (
+                    s["code"] if calls["session"] == 1 else "NEWS01",
+                    s["title"] if calls["session"] == 1 else "Changed title",
+                    base_url,
+                ),
+            )
+
+        page.route(f"**/api/sessions/{s['code']}", route_session)
+        page.goto(f"{base_url}/p/{s['code']}")
+        page.wait_for_selector("#join-qr svg")
+        first_qr = page.locator("#join-qr").inner_html()
+
+        ask_query_api(base_url, s["code"], "trigger qr reload")
+
+        expect(page.locator("#title")).to_have_text("Changed title", timeout=5000)
+        page.wait_for_function(
+            "initial => document.querySelector('#join-qr').innerHTML !== initial",
+            arg=first_qr,
+            timeout=5000,
+        )
+    finally:
+        c.close()
+
+
 # ---------- UC-D-03 ----------
 
 
