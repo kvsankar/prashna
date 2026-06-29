@@ -80,6 +80,26 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: 30px; line-height: 1; color: var(--muted); }
 /* .filled is driven in JS so hovering the Nth star lights stars 1..N. */
 .star.filled { color: #f5b301; }
+/* Collapsed attendee profile CTA (participant). */
+details#profile-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+details#profile-card > summary { cursor: pointer; list-style: none; margin-bottom: 0; }
+details#profile-card > summary::-webkit-details-marker { display: none; }
+details#profile-card > summary:hover .profile-cta { border-color: var(--accent-2); background: var(--accent-2); }
+details#profile-card[open] > summary { margin-bottom: 8px; }
+.profile-title { color: var(--text); font-size: 16px; font-weight: 700; }
+.profile-title-open { display: none; }
+details#profile-card[open] .profile-title-closed { display: none; }
+details#profile-card[open] .profile-title-open { display: inline; }
+.profile-cta {
+  margin-left: auto; padding: 6px 12px; border: 1px solid var(--accent);
+  border-radius: 8px; background: var(--accent); color: white;
+  font-size: 13px; font-weight: 600;
+}
+details#profile-card[open] .profile-cta { background: transparent; color: var(--muted); border-color: var(--border); }
+.profile-cta-open { display: none; }
+details#profile-card[open] .profile-cta-closed { display: none; }
+details#profile-card[open] .profile-cta-open { display: inline; }
+details#profile-card .fb-chevron { margin-left: 0; }
 /* Collapsible "Rate this session" card (participant) — visually distinct
    from the Q&A / quiz cards, with breathing room below it. */
 /* Same box model as section.card (1px border + 16px padding) so the header
