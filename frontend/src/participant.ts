@@ -1,15 +1,16 @@
 import { $, api, el, errorToast, guardClick, type LiveMessage, openLiveSocket, pathCode, renderQR, toast } from "./common";
-import type { Feedback, Query, QuizRun, Session } from "./types";
+import type { Feedback, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
 let queries: Query[] = [];
 let activeQuiz: QuizRun | null = null;
 let pendingSelection = new Set<number>();
 let lastQuestionId: number | null = null;
-let me: { id: number | null; name: string | null } = { id: null, name: null };
+let me: ParticipantProfile | null = null;
 let latestSessionSeq = 0;
 let latestQueriesSeq = 0;
 let latestQuizSeq = 0;
+let profileToastTimer: ReturnType<typeof setTimeout> | null = null;
 
 let sessionEnded = false;
 async function loadSession(): Promise<void> {
@@ -28,16 +29,54 @@ async function loadSession(): Promise<void> {
 }
 
 async function loadMe(): Promise<void> {
-  me = await api(`/api/sessions/${CODE}/me`);
+  me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me`);
   $<HTMLInputElement>("#my-name").value = me.name || "";
+  $<HTMLInputElement>("#my-email").value = me.email || "";
+  $<HTMLInputElement>("#my-contact-number").value = me.contact_number || "";
+  $<HTMLInputElement>("#my-organization").value = me.organization || "";
+  $<HTMLInputElement>("#my-role").value = me.role || "";
+  $<HTMLInputElement>("#my-linkedin-url").value = me.linkedin_url || "";
+  $<HTMLTextAreaElement>("#my-current-work").value = me.current_work || "";
+  $<HTMLTextAreaElement>("#my-learning-goal").value = me.learning_goal || "";
 }
 
-$("#my-name").addEventListener("change", async () => {
+function currentProfile(): Omit<ParticipantProfile, "id"> {
+  return {
+    name: $<HTMLInputElement>("#my-name").value,
+    email: $<HTMLInputElement>("#my-email").value,
+    contact_number: $<HTMLInputElement>("#my-contact-number").value,
+    organization: $<HTMLInputElement>("#my-organization").value,
+    role: $<HTMLInputElement>("#my-role").value,
+    linkedin_url: $<HTMLInputElement>("#my-linkedin-url").value,
+    current_work: $<HTMLTextAreaElement>("#my-current-work").value,
+    learning_goal: $<HTMLTextAreaElement>("#my-learning-goal").value,
+  };
+}
+
+async function saveProfile(): Promise<void> {
   try {
-    me = await api(`/api/sessions/${CODE}/me`, { method: "PATCH", body: { name: $<HTMLInputElement>("#my-name").value } });
-    if (me.name) toast(`Name set to "${me.name}"`);
+    me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me`, { method: "PATCH", body: currentProfile() });
+    $("#profile-status").textContent = "Saved";
+    if (profileToastTimer) clearTimeout(profileToastTimer);
+    profileToastTimer = setTimeout(() => {
+      profileToastTimer = null;
+      toast(me?.name ? `Profile saved for "${me.name}"` : "Profile saved");
+    }, 250);
   } catch (e) { errorToast((e as Error).message); }
-});
+}
+
+for (const id of [
+  "#my-name",
+  "#my-email",
+  "#my-contact-number",
+  "#my-organization",
+  "#my-role",
+  "#my-linkedin-url",
+  "#my-current-work",
+  "#my-learning-goal",
+]) {
+  $(id).addEventListener("change", () => void saveProfile());
+}
 
 async function loadQueries(): Promise<void> {
   const seq = ++latestQueriesSeq;

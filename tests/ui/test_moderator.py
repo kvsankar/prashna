@@ -441,6 +441,41 @@ def test_uc_m_12_feedback_panel_shows_summary(base_url, admin_setup, page):
         c.close()
 
 
+# ---------- UC-M-13: attendee profiles ----------
+
+
+def test_uc_m_13_profiles_panel_shows_attendee_details(base_url, admin_setup, page):
+    """UC-M-13: moderator Attendee profiles panel shows submitted profile details."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M13 {secrets.token_hex(3)}")
+    with httpx.Client(base_url=base_url) as pc:
+        pc.patch(f"/api/sessions/{s['code']}/me", json={
+            "name": "Dana",
+            "email": "dana@example.com",
+            "contact_number": "+1 415 555 0101",
+            "organization": "ExampleCo",
+            "role": "Engineering Manager",
+            "linkedin_url": "https://www.linkedin.com/in/dana-example",
+            "current_work": "Building a training platform",
+            "learning_goal": "Practice live facilitation",
+        }).raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#profiles-card:visible")
+        expect(page.locator("#profiles-summary")).to_contain_text("1 profile", timeout=5000)
+        expect(page.locator("#profiles-list")).to_contain_text("Dana")
+        expect(page.locator("#profiles-list")).to_contain_text("dana@example.com")
+        expect(page.locator("#profiles-list")).to_contain_text("+1 415 555 0101")
+        expect(page.locator("#profiles-list")).to_contain_text("ExampleCo")
+        expect(page.locator("#profiles-list")).to_contain_text("Engineering Manager")
+        expect(page.locator("#profiles-list")).to_contain_text("linkedin.com/in/dana-example")
+        expect(page.locator("#profiles-list")).to_contain_text("Building a training platform")
+        expect(page.locator("#profiles-list")).to_contain_text("Practice live facilitation")
+    finally:
+        c.close()
+
+
 # ---------- UC-M-10 ----------
 
 

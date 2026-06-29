@@ -71,6 +71,23 @@ export interface FeedbackSummary {
   items: Feedback[];
 }
 
+export interface ParticipantProfile {
+  id: number;
+  name: string | null;
+  email: string | null;
+  contact_number: string | null;
+  organization: string | null;
+  role: string | null;
+  linkedin_url: string | null;
+  current_work: string | null;
+  learning_goal: string | null;
+}
+
+export interface ParticipantProfileSummary {
+  count: number;
+  items: ParticipantProfile[];
+}
+
 export interface AdminStatus {
   initialized: boolean;
   authenticated: boolean;

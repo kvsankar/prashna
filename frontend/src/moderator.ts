@@ -2,7 +2,16 @@ import {
   $, api, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
   openLiveSocket, pathCode, renderQR, setModKey, statusLabel, toast,
 } from "./common";
-import type { AdminStatus, FeedbackSummary, Query, QuizRun, QuizSummary, Session } from "./types";
+import type {
+  AdminStatus,
+  FeedbackSummary,
+  ParticipantProfile,
+  ParticipantProfileSummary,
+  Query,
+  QuizRun,
+  QuizSummary,
+  Session,
+} from "./types";
 
 const CODE = pathCode();
 
@@ -25,9 +34,10 @@ let latestQuizzesSeq = 0;
 let latestQuizRunsSeq = 0;
 let latestPresenceSeq = 0;
 let latestFeedbackSeq = 0;
+let latestProfilesSeq = 0;
 
 function showWorkSurfaces(visible: boolean): void {
-  for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "feedback-card"]) {
+  for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "profiles-card", "feedback-card"]) {
     $("#" + id).style.display = visible ? "" : "none";
   }
 }
@@ -405,7 +415,56 @@ function renderFeedback(sum: FeedbackSummary): void {
   }
 }
 
-function refresh(): void { void loadSession(); void loadQueries(); void loadQuizRuns(); void loadPresence(); void loadFeedback(); }
+async function loadProfiles(): Promise<void> {
+  const seq = ++latestProfilesSeq;
+  try {
+    const sum = await api<ParticipantProfileSummary>(`/api/sessions/${CODE}/participants`, { headers: modHeaders() });
+    if (seq !== latestProfilesSeq) return;
+    renderProfiles(sum);
+  } catch { /* non-fatal */ }
+}
+
+function profileLine(label: string, value: string | null): HTMLElement | null {
+  if (!value) return null;
+  return el("div", { class: "small" }, el("strong", {}, label + ": "), value);
+}
+
+function renderProfile(item: ParticipantProfile): HTMLElement {
+  const name = item.name || "Anonymous attendee";
+  const linkedin = item.linkedin_url
+    ? el("div", { class: "small" }, el("strong", {}, "LinkedIn: "), el("a", { href: item.linkedin_url, target: "_blank", rel: "noopener noreferrer" }, item.linkedin_url))
+    : null;
+  return el("div", { class: "fb-item" },
+    el("div", {}, el("strong", {}, name)),
+    profileLine("Email", item.email),
+    profileLine("Contact", item.contact_number),
+    profileLine("Organization", item.organization),
+    profileLine("Role", item.role),
+    linkedin,
+    profileLine("Working on", item.current_work),
+    profileLine("Goal", item.learning_goal),
+  );
+}
+
+function renderProfiles(sum: ParticipantProfileSummary): void {
+  const head = $("#profiles-summary"); head.innerHTML = "";
+  const root = $("#profiles-list"); root.innerHTML = "";
+  if (!sum || !sum.count) {
+    root.appendChild(el("div", { class: "muted small" }, "No attendee profiles yet."));
+    return;
+  }
+  head.appendChild(el("span", { class: "small muted" }, `${sum.count} profile${sum.count === 1 ? "" : "s"}`));
+  for (const item of sum.items) root.appendChild(renderProfile(item));
+}
+
+function refresh(): void {
+  void loadSession();
+  void loadQueries();
+  void loadQuizRuns();
+  void loadPresence();
+  void loadProfiles();
+  void loadFeedback();
+}
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 function refreshSoon(_msg: LiveMessage): void {
   if (refreshTimer) return;

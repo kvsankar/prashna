@@ -274,6 +274,41 @@ def participant_count_online(db: DbSession, session: m.Session) -> int:
 
 # ---------- serialization ----------
 
+PROFILE_FIELDS = {
+    "name": 80,
+    "email": 254,
+    "contact_number": 40,
+    "organization": 120,
+    "role": 120,
+    "linkedin_url": 500,
+    "current_work": 500,
+    "learning_goal": 500,
+}
+
+
+def normalize_optional_text(value, max_len: int) -> str | None:
+    text = (value or "").strip()
+    return text[:max_len] or None
+
+
+def serialize_participant_profile(p: m.Participant) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "email": p.email,
+        "contact_number": p.contact_number,
+        "organization": p.organization,
+        "role": p.role,
+        "linkedin_url": p.linkedin_url,
+        "current_work": p.current_work,
+        "learning_goal": p.learning_goal,
+    }
+
+
+def participant_has_profile(p: m.Participant) -> bool:
+    return any(getattr(p, field) for field in PROFILE_FIELDS)
+
+
 def serialize_query(q: m.Query, viewer_participant_id: int | None, is_mod: bool) -> dict:
     return {
         "id": q.id,
@@ -881,7 +916,7 @@ def my_participant(
 ):
     s = get_session_by_code(db, code)
     p = current_participant(s, request, response, voter_token, db)
-    return {"id": p.id, "name": p.name}
+    return serialize_participant_profile(p)
 
 
 @app.patch("/api/sessions/{code}/me")
@@ -895,13 +930,31 @@ async def update_my_participant(
 ):
     s = get_session_by_code(db, code)
     p = current_participant(s, request, response, voter_token, db)
-    if "name" in payload:
-        new_name = (payload.get("name") or "").strip()[:80] or None
-        p.name = new_name
+    for field, max_len in PROFILE_FIELDS.items():
+        if field in payload:
+            setattr(p, field, normalize_optional_text(payload.get(field), max_len))
     db.commit()
     db.refresh(p)
     await broadcast_session(s, "participant")
-    return {"id": p.id, "name": p.name}
+    return serialize_participant_profile(p)
+
+
+@app.get("/api/sessions/{code}/participants")
+def list_participant_profiles(
+    code: str,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    s = get_session_by_code(db, code)
+    require_mod_or_owner(s, x_mod_key, me)
+    rows = db.scalars(
+        select(m.Participant)
+        .where(m.Participant.session_id == s.id)
+        .order_by(m.Participant.last_seen_at.desc())
+    ).all()
+    items = [serialize_participant_profile(p) for p in rows if participant_has_profile(p)]
+    return {"count": len(items), "items": items}
 
 
 # ---------- routes: session feedback (participant rating + comments) ----------
