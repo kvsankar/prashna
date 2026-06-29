@@ -150,7 +150,8 @@ def test_uc_p_03_set_display_name_persists(base_url, admin_setup, page):
     s = api_make_session(c, f"UI-P03 {secrets.token_hex(3)}")
     try:
         page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#my-name")
+        page.wait_for_selector("#profile-card:visible")
+        page.locator("#profile-card > summary").click()
         page.fill("#my-name", "Alice")
         page.locator("#my-name").blur()
         # Toast confirms.
@@ -170,6 +171,8 @@ def test_uc_p_03_attendee_profile_persists(base_url, admin_setup, page):
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#profile-card:visible")
+        expect(page.locator("#profile-card")).not_to_have_attribute("open", "")
+        page.locator("#profile-card > summary").click()
         page.fill("#my-name", "Dana")
         page.fill("#my-email", "dana@example.com")
         page.fill("#my-contact-number", "+1 415 555 0101")
@@ -183,6 +186,8 @@ def test_uc_p_03_attendee_profile_persists(base_url, admin_setup, page):
 
         page.reload()
         page.wait_for_selector("#profile-card:visible")
+        expect(page.locator("#profile-card")).not_to_have_attribute("open", "")
+        page.locator("#profile-card > summary").click()
         expect(page.locator("#my-name")).to_have_value("Dana")
         expect(page.locator("#my-email")).to_have_value("dana@example.com")
         expect(page.locator("#my-contact-number")).to_have_value("+1 415 555 0101")
