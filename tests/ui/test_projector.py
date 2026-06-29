@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import secrets
 
+import httpx
 import pytest
 from playwright.sync_api import expect
 
@@ -308,6 +309,68 @@ def test_uc_d_08_live_counts_on_shows_bars(base_url, admin_setup, page):
         expect(page.locator("#quiz-body .opt-pct").first).to_be_visible(timeout=5000)
         # No correctness yet.
         expect(page.locator("#quiz-body .option.correct")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def test_uc_d_08_live_counts_hide_and_shuffle_answers_until_reveal(base_url, admin_setup, page):
+    """UC-D-08: live counts hide answer labels/order until results are revealed."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(
+        c,
+        f"UI-D08mask {secrets.token_hex(3)}",
+        publish=True,
+        questions=[
+            {
+                "text": "Pick the deployment marker",
+                "qtype": "single",
+                "answers": [
+                    {"text": "Alpha", "is_correct": False},
+                    {"text": "Bravo", "is_correct": True},
+                    {"text": "Charlie", "is_correct": False},
+                ],
+            }
+        ],
+    )
+    s = api_make_session(c, f"UI-D08masks {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    state = c.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    question = state["current_question"]
+    answers = question["answers"]
+    for token, answer in (
+        ("mask-a", answers[0]),
+        ("mask-b", answers[1]),
+        ("mask-c", answers[1]),
+        ("mask-d", answers[2]),
+        ("mask-e", answers[2]),
+        ("mask-f", answers[2]),
+    ):
+        httpx.post(
+            f"{base_url}/api/sessions/{s['code']}/quiz_runs/{run['id']}/submit",
+            cookies={"voter_token": f"{token}-{secrets.token_hex(3)}"},
+            json={"question_id": question["id"], "answer_ids": [answer["id"]]},
+            timeout=10.0,
+        ).raise_for_status()
+    c.post(
+        f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts",
+        json={"show": True},
+    ).raise_for_status()
+    try:
+        page.goto(f"{base_url}/p/{s['code']}")
+        expect(page.locator("#quiz-body .opt-pct")).to_have_count(3, timeout=5000)
+        for label in ("Alpha", "Bravo", "Charlie"):
+            expect(page.locator("#quiz-body")).not_to_contain_text(label)
+        expect(page.locator("#quiz-body .opt-text")).to_have_text(["Option A", "Option B", "Option C"])
+        live_counts = page.locator("#quiz-body .opt-pct").all_inner_texts()
+        assert live_counts != ["1 (17%)", "2 (33%)", "3 (50%)"]
+
+        c.post(
+            f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/reveal",
+            json={"reveal": True},
+        ).raise_for_status()
+        expect(page.locator("#quiz-body .opt-text")).to_have_text(["Alpha", "Bravo", "Charlie"])
+        expect(page.locator("#quiz-body .option.correct")).to_be_visible()
     finally:
         c.close()
 

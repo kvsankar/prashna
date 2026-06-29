@@ -65,6 +65,33 @@ function renderQueries(qs: Query[]): void {
   }
 }
 
+function hashString(input: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function sameAnswerOrder(a: { id: number }[], b: { id: number }[]): boolean {
+  return a.length === b.length && a.every((answer, idx) => answer.id === b[idx]?.id);
+}
+
+function jumbledAnswers<T extends { id: number }>(answers: T[], seed: string): T[] {
+  const ordered = [...answers].sort((a, b) => {
+    const byHash = hashString(`${seed}:${a.id}`) - hashString(`${seed}:${b.id}`);
+    return byHash || a.id - b.id;
+  });
+  if (ordered.length > 1 && sameAnswerOrder(answers, ordered)) ordered.reverse();
+  return ordered;
+}
+
+function placeholderOptionLabel(idx: number): string {
+  if (idx < 26) return `Option ${String.fromCharCode(65 + idx)}`;
+  return `Option ${idx + 1}`;
+}
+
 function renderQuiz(run: QuizRun): void {
   const section = $("#quiz-section");
   const body = $("#quiz-body");
@@ -79,15 +106,17 @@ function renderQuiz(run: QuizRun): void {
   const respondents = run.results?.respondents ?? 0;
   const showCounts = !!run.results;
   const showCorrect = run.reveal_current || run.status === "closed";
-  for (const a of q.answers) {
+  const hideAnswerDetails = showCounts && !showCorrect && run.status === "live";
+  const answers = hideAnswerDetails ? jumbledAnswers(q.answers, `${run.id}:${q.id}`) : q.answers;
+  for (const [idx, a] of answers.entries()) {
     const aDiv = el("div", { class: "option disabled" + (showCorrect && a.is_correct ? " correct" : "") });
     if (showCounts) {
       const bar = el("div", { class: "bar" });
       bar.style.transform = `scaleX(${respondents ? (totals[a.id] || 0) / respondents : 0})`;
       aDiv.appendChild(bar);
     }
-    if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
-    aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
+    if (!hideAnswerDetails && a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
+    aDiv.appendChild(el("div", { class: "opt-text" }, hideAnswerDetails ? placeholderOptionLabel(idx) : a.text));
     if (showCounts) {
       const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
       aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
