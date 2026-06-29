@@ -10,14 +10,51 @@
     <h1 id="title">Loading…</h1>
     <div class="meta">
       <span id="code"></span>
-      &nbsp;·&nbsp;
-      <span class="small muted">You: </span>
-      <label for="my-name" class="small muted">Your name</label>
-      <input id="my-name" class="inline" aria-label="Your display name (optional)" placeholder="(anonymous)" maxlength="80">
     </div>
   </header>
 
   <main>
+    <details class="card" id="profile-card" open>
+      <summary class="card-head">
+        <h2>Your profile</h2>
+        <span id="profile-status" class="muted small"></span>
+        <span class="fb-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="field">
+        <label for="my-name" class="small muted">Display name</label>
+        <input id="my-name" aria-label="Your display name (optional)" placeholder="(anonymous)" maxlength="80">
+      </div>
+      <div class="field">
+        <label for="my-email" class="small muted">Email</label>
+        <input id="my-email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label for="my-contact-number" class="small muted">Contact number</label>
+        <input id="my-contact-number" type="tel" autocomplete="tel" maxlength="40" placeholder="+1 415 555 0101">
+      </div>
+      <div class="field">
+        <label for="my-organization" class="small muted">Organization</label>
+        <input id="my-organization" autocomplete="organization" maxlength="120" placeholder="Company, school, or group">
+      </div>
+      <div class="field">
+        <label for="my-role" class="small muted">Role/title</label>
+        <input id="my-role" autocomplete="organization-title" maxlength="120" placeholder="What do you do?">
+      </div>
+      <div class="field">
+        <label for="my-linkedin-url" class="small muted">LinkedIn profile</label>
+        <input id="my-linkedin-url" type="url" maxlength="500" placeholder="https://www.linkedin.com/in/...">
+      </div>
+      <div class="field">
+        <label for="my-current-work" class="small muted">What are you working on now?</label>
+        <textarea id="my-current-work" maxlength="500" placeholder="Current project, role focus, or problem you're solving"></textarea>
+      </div>
+      <div class="field">
+        <label for="my-learning-goal" class="small muted">Learning goal</label>
+        <textarea id="my-learning-goal" maxlength="500" placeholder="What do you want to get from this session?"></textarea>
+      </div>
+      <div class="muted small">Optional. Visible to the host and moderators for this session.</div>
+    </details>
+
     <details class="card" id="feedback-card" open>
       <summary class="card-head">
         <h2>Rate this session</h2>

@@ -72,6 +72,13 @@ class Participant(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
     voter_token: Mapped[str] = mapped_column(String(64), index=True)
     name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    contact_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    organization: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    current_work: Mapped[str | None] = mapped_column(Text, nullable=True)
+    learning_goal: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 

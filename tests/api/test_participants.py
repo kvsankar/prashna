@@ -197,6 +197,112 @@ def test_uc_p_03_broadcasts(client, admin_client, make_session):
         assert msg == {"type": "participant"}
 
 
+def test_uc_p_03_profile_fields_round_trip(client, admin_client, make_session):
+    """UC-P-03: PATCH /me stores optional attendee profile fields."""
+    s = make_session()
+    admin_client.cookies.clear()
+    r = client.patch(f"/api/sessions/{s['code']}/me", json={
+        "name": "  Dana  ",
+        "email": "  dana@example.com  ",
+        "contact_number": "  +1 415 555 0101  ",
+        "organization": "  ExampleCo  ",
+        "role": "  Engineering Manager  ",
+        "linkedin_url": "  https://www.linkedin.com/in/dana-example  ",
+        "current_work": "  Building a training platform  ",
+        "learning_goal": "  Learn facilitation patterns  ",
+    })
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "id": r.json()["id"],
+        "name": "Dana",
+        "email": "dana@example.com",
+        "contact_number": "+1 415 555 0101",
+        "organization": "ExampleCo",
+        "role": "Engineering Manager",
+        "linkedin_url": "https://www.linkedin.com/in/dana-example",
+        "current_work": "Building a training platform",
+        "learning_goal": "Learn facilitation patterns",
+    }
+    g = client.get(f"/api/sessions/{s['code']}/me").json()
+    assert g["email"] == "dana@example.com"
+    assert g["contact_number"] == "+1 415 555 0101"
+    assert g["organization"] == "ExampleCo"
+    assert g["role"] == "Engineering Manager"
+    assert g["linkedin_url"] == "https://www.linkedin.com/in/dana-example"
+    assert g["current_work"] == "Building a training platform"
+    assert g["learning_goal"] == "Learn facilitation patterns"
+
+
+def test_uc_p_03_profile_blank_fields_become_null(client, admin_client, make_session):
+    """UC-P-03: blank optional profile fields are stored as null."""
+    s = make_session()
+    admin_client.cookies.clear()
+    r = client.patch(f"/api/sessions/{s['code']}/me", json={
+        "name": "Dana",
+        "email": "dana@example.com",
+        "contact_number": "+1 415 555 0101",
+        "organization": "ExampleCo",
+        "role": "Manager",
+        "linkedin_url": "https://www.linkedin.com/in/dana-example",
+        "current_work": "Building a training platform",
+        "learning_goal": "Learn",
+    })
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/sessions/{s['code']}/me", json={
+        "name": "",
+        "email": " ",
+        "contact_number": "",
+        "organization": "",
+        "role": " ",
+        "linkedin_url": "",
+        "current_work": " ",
+        "learning_goal": "",
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    for key in ("name", "email", "contact_number", "organization", "role", "linkedin_url", "current_work", "learning_goal"):
+        assert body[key] is None
+
+
+def test_uc_m_13_participant_profiles_summary(client, admin_client, make_session, mod_headers):
+    """UC-M-13: moderators can list only attendees with provided profile data."""
+    s = make_session()
+    admin_client.cookies.clear()
+    client.patch(f"/api/sessions/{s['code']}/me", json={
+        "name": "Dana",
+        "email": "dana@example.com",
+        "contact_number": "+1 415 555 0101",
+        "organization": "ExampleCo",
+        "role": "Manager",
+        "linkedin_url": "https://www.linkedin.com/in/dana-example",
+        "current_work": "Building a training platform",
+        "learning_goal": "Practice live facilitation",
+    })
+    client.cookies.clear()
+    client.get(f"/api/sessions/{s['code']}/me")
+
+    r = client.get(f"/api/sessions/{s['code']}/participants", headers=mod_headers(s["mod_key"]))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["count"] == 1
+    assert body["items"][0]["name"] == "Dana"
+    assert body["items"][0]["email"] == "dana@example.com"
+    assert body["items"][0]["contact_number"] == "+1 415 555 0101"
+    assert body["items"][0]["organization"] == "ExampleCo"
+    assert body["items"][0]["role"] == "Manager"
+    assert body["items"][0]["linkedin_url"] == "https://www.linkedin.com/in/dana-example"
+    assert body["items"][0]["current_work"] == "Building a training platform"
+    assert body["items"][0]["learning_goal"] == "Practice live facilitation"
+
+
+def test_uc_m_13_participant_profiles_requires_moderator(client, admin_client, make_session):
+    """UC-M-13: anonymous callers cannot list attendee profiles."""
+    s = make_session()
+    admin_client.cookies.clear()
+    r = client.get(f"/api/sessions/{s['code']}/participants")
+    assert r.status_code == 403
+
+
 # ---------- UC-P-11: Ended session is read-only ----------
 
 def test_uc_p_11_ask_after_end_400(client, admin_client, make_session):
