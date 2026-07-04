@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prashna Software Design Document</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18202a;
+      --muted: #5b6675;
+      --line: #d8dde6;
+      --soft: #f5f7fa;
+      --accent: #174ea6;
+      --code: #eef2f7;
+    }
+    body {
+      margin: 0;
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      color: var(--ink);
+      background: white;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 1.6em 0 0.55em;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 2.1rem;
+    }
+    h2 {
+      border-top: 1px solid var(--line);
+      padding-top: 1.1em;
+    }
+    p, li {
+      max-width: 82ch;
+    }
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 0.08rem 0.28rem;
+      font-size: 0.92em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.94rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 0.45rem 0.55rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--soft);
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+      margin: 1rem 0 1.5rem;
+    }
+    .meta div {
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.65rem 0.8rem;
+    }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--soft);
+      padding: 0.8rem 1rem;
+      margin: 1rem 0;
+    }
+    .mermaid {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Prashna Software Design Document</h1>
+
+  <section>
+    <h2>Overview</h2>
+    <p>
+      Prashna is a single-process live Q&amp;A and quiz application for training
+      sessions, lectures, and workshops. One FastAPI application serves role
+      pages, JSON APIs, WebSocket update hints, uploaded media, and the built
+      Vite frontend. One SQLite database stores durable state, and one uploads
+      directory stores quiz images.
+    </p>
+    <div class="meta">
+      <div><strong>Work Scope</strong><br>product/system</div>
+      <div><strong>Design Depth</strong><br>HLD</div>
+      <div><strong>Implementation Readiness</strong><br>Decomposable</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tech Stack</h2>
+    <ul>
+      <li>Backend: Python, FastAPI, SQLAlchemy sync ORM, SQLite, uvicorn.</li>
+      <li>Frontend: Vite, TypeScript ES modules, plain HTML, shared CSS.</li>
+      <li>Auth: bcrypt, signed admin cookies, GitHub OAuth, moderator keys,
+        participant voter-token cookies, and in-process throttling.</li>
+      <li>Deployment: GHCR image, docker compose, nginx TLS reverse proxy, and
+        persistent database/uploads volumes.</li>
+      <li>Verification: pytest/httpx, Playwright, Ruff, ESLint, Stylelint,
+        TypeScript checking, and GitHub Actions.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Drivers &amp; Constraints</h2>
+    <ul>
+      <li>Support the current admin, moderator, participant, projector, quiz
+        authoring, reporting, and operator workflows.</li>
+      <li>Commit state before live update hints; recover clients through HTTP
+        refetch.</li>
+      <li>Preserve quiz history through immutable quiz-version snapshots.</li>
+      <li>Keep the baseline to one FastAPI process, one SQLite database, one
+        uploads directory, and one in-memory live-update hub.</li>
+      <li>Keep auth, upload, security header, OAuth, and rate-limit boundaries
+        explicit.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Layers</h2>
+    <p>
+      Browser Role Surfaces, FastAPI Application Boundary, Live-Room Rules,
+      Durable State, and Build, Release, and Operations form the top-level
+      architecture.
+    </p>
+    <details>
+      <summary>Trace ID registry</summary>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Display Name</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>LAYER-CLIENT</code></td><td>Browser Role Surfaces</td><td>Presentation shell.</td></tr>
+        <tr><td><code>LAYER-API</code></td><td>FastAPI Application Boundary</td><td>HTTP, sockets, uploads, validation, and serialization.</td></tr>
+        <tr><td><code>LAYER-DOMAIN</code></td><td>Live-Room Rules</td><td>Session, Q&amp;A, quiz, feedback, and display policy.</td></tr>
+        <tr><td><code>LAYER-DATA</code></td><td>Durable State</td><td>SQLite, model relationships, migrations, and upload references.</td></tr>
+        <tr><td><code>LAYER-OPS</code></td><td>Build, Release, and Operations</td><td>Local checks, CI, Docker, deploy files, and docs.</td></tr>
+      </tbody>
+    </table>
+    </details>
+  </section>
+
+  <section>
+    <h2>Components</h2>
+    <p>
+      Diagrams use readable labels. Stable trace IDs remain in the glossary and
+      in the Markdown source for checker and downstream planning use.
+    </p>
+    <pre class="mermaid">
+flowchart TB
+  subgraph Browser["Browser Role Surfaces"]
+    Admin["Admin Console"]
+    Moderator["Moderator Cockpit"]
+    Participant["Participant Room"]
+    Projector["Projector Display"]
+    QuizLib["Quiz Library"]
+  end
+
+  subgraph Server["FastAPI Application"]
+    API["Application API"]
+    Auth["Authentication Boundary"]
+    Live["Live Update Hub"]
+    Uploads["Upload Store"]
+  end
+
+  subgraph Data["Durable State"]
+    Store["SQLite Data Store"]
+  end
+
+  subgraph Ops["Build and Operations"]
+    OpsComp["Operations Kit"]
+  end
+
+  Admin --> API
+  Moderator --> API
+  Participant --> API
+  Projector --> API
+  QuizLib --> API
+  API --> Auth
+  API --> Live
+  API --> Store
+  API --> Uploads
+  Live -. update hints .-> Browser
+  OpsComp --> API
+  OpsComp --> Store
+    </pre>
+    <details>
+      <summary>Trace ID registry</summary>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Display Name</th><th>Responsibility</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>COMP-ADMIN</code></td><td>Admin Console</td><td>Setup, auth, sessions, and owner actions.</td></tr>
+        <tr><td><code>COMP-MODERATOR</code></td><td>Moderator Cockpit</td><td>Delegated live-room control and summaries.</td></tr>
+        <tr><td><code>COMP-PARTICIPANT</code></td><td>Participant Room</td><td>Anonymous Q&amp;A, quiz answers, profile, and feedback.</td></tr>
+        <tr><td><code>COMP-PROJECTOR</code></td><td>Projector Display</td><td>Public join and live-room display state.</td></tr>
+        <tr><td><code>COMP-QUIZLIB</code></td><td>Quiz Library</td><td>Quiz templates, images, and version capture.</td></tr>
+        <tr><td><code>COMP-API</code></td><td>Application API</td><td>Routes, serializers, validation, commits, and broadcasts.</td></tr>
+        <tr><td><code>COMP-AUTH</code></td><td>Authentication Boundary</td><td>Admin, moderator, participant, OAuth, and throttling checks.</td></tr>
+        <tr><td><code>COMP-LIVE</code></td><td>Live Update Hub</td><td>WebSocket rooms, checks, and refetch hints.</td></tr>
+        <tr><td><code>COMP-DATA</code></td><td>SQLite Data Store</td><td>Models, relationships, pragmas, and migrations.</td></tr>
+        <tr><td><code>COMP-UPLOADS</code></td><td>Upload Store</td><td>Authenticated image upload and serving path.</td></tr>
+        <tr><td><code>COMP-OPS</code></td><td>Operations Kit</td><td>Commands, CI, image build, compose, nginx, and health checks.</td></tr>
+      </tbody>
+    </table>
+    </details>
+  </section>
+
+  <section>
+    <h2>Interfaces</h2>
+    <p>
+      The main runtime interfaces are same-origin HTTP, the session update
+      socket, SQLite persistence, image uploads, optional GitHub OAuth, and
+      static assets/media serving.
+    </p>
+    <details>
+      <summary>Trace ID registry</summary>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Display Name</th><th>Owner</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>IFACE-HTTP</code></td><td>Same-Origin HTTP API</td><td><code>COMP-API</code></td></tr>
+        <tr><td><code>IFACE-WEBSOCKET</code></td><td>Session Update Socket</td><td><code>COMP-LIVE</code></td></tr>
+        <tr><td><code>IFACE-SQLITE</code></td><td>SQLite Persistence</td><td><code>COMP-DATA</code></td></tr>
+        <tr><td><code>IFACE-UPLOADS</code></td><td>Image Upload Boundary</td><td><code>COMP-UPLOADS</code></td></tr>
+        <tr><td><code>IFACE-GITHUB</code></td><td>GitHub Admin OAuth</td><td><code>COMP-AUTH</code></td></tr>
+        <tr><td><code>IFACE-STATIC</code></td><td>Static Assets and Media</td><td><code>COMP-OPS</code></td></tr>
+      </tbody>
+    </table>
+    </details>
+  </section>
+
+  <section>
+    <h2>Core vs. Shell / Equivalent Separation</h2>
+    <p>
+      Core rules include authorization predicates, participant resolution,
+      serializers, quiz validation, quiz-version capture, quiz-run transition
+      checks, Q&amp;A visibility rules, feedback aggregation, result tallying, and
+      migration bridge rules. Shell adapters include FastAPI routes, cookies,
+      SQLAlchemy sessions, WebSocket sends, upload IO, static serving, GitHub
+      redirects, Docker compose, and GitHub Actions.
+    </p>
+  </section>
+
+  <section>
+    <h2>Key Flows</h2>
+    <h3>Admin bootstrap and session start</h3>
+    <pre class="mermaid">
+sequenceDiagram
+  actor Operator
+  participant Admin as Admin Console
+  participant API as Application API
+  participant Auth as Authentication Boundary
+  participant Data as SQLite Data Store
+  participant Live as Live Update Hub
+  Operator->>Admin: Open landing page
+  Admin->>API: Check admin status
+  API->>Data: Read user count
+  Data-->>API: No admin exists
+  Admin->>API: Submit setup credentials
+  API->>Auth: Validate and hash password
+  Auth->>Data: Create admin user
+  API-->>Admin: Set signed admin cookie
+  Operator->>Admin: Create and start session
+  Admin->>API: Create session, then start it
+  API->>Data: Commit session state
+  API->>Live: Broadcast update hint
+    </pre>
+    <h3>Live Q&amp;A and refetch recovery</h3>
+    <pre class="mermaid">
+sequenceDiagram
+  actor Participant
+  actor Moderator
+  participant Room as Participant Room
+  participant Cockpit as Moderator Cockpit
+  participant API as Application API
+  participant Data as SQLite Data Store
+  participant Live as Live Update Hub
+  Participant->>Room: Submit question
+  Room->>API: Create question
+  API->>Data: Persist query
+  API->>Live: Broadcast Q&amp;A hint
+  Live-->>Cockpit: Update hint
+  Cockpit->>API: Refetch questions
+  Moderator->>Cockpit: Mark responded
+  Cockpit->>API: Respond to question
+  API->>Data: Commit response
+  API->>Live: Broadcast Q&amp;A hint
+  Live-->>Room: Update hint
+  Room->>API: Refetch questions
+    </pre>
+  </section>
+
+  <section>
+    <h2>Data Model</h2>
+    <pre class="mermaid">
+erDiagram
+  USER ||--o{ SESSION : owns
+  USER ||--o{ QUIZ : owns
+  SESSION ||--o{ PARTICIPANT : has
+  SESSION ||--o{ QUERY : receives
+  SESSION ||--o{ QUIZ_RUN : contains
+  PARTICIPANT ||--o{ QUERY : asks
+  PARTICIPANT ||--o{ QUERY_VOTE : casts
+  QUERY ||--o{ QUERY_VOTE : has
+  QUIZ ||--o{ QUESTION : contains
+  QUESTION ||--o{ ANSWER : contains
+  QUIZ ||--o{ QUIZ_VERSION : snapshots
+  QUIZ_VERSION ||--o{ QUIZ_RUN : launched_as
+  QUIZ_RUN ||--o{ QUIZ_SUBMISSION : receives
+  PARTICIPANT ||--o{ QUIZ_SUBMISSION : submits
+    </pre>
+  </section>
+
+  <section>
+    <h2>Design Decisions</h2>
+    <ul>
+      <li><code>DEC-SINGLEPROCESS</code>: Single-Process Runtime.</li>
+      <li><code>DEC-HINTREFETCH</code>: Hint Then Refetch.</li>
+      <li><code>DEC-SQLITE</code>: SQLite with Additive Startup Bridges.</li>
+      <li><code>DEC-MULTIPAGE</code>: Vite Multi-Page Frontend.</li>
+      <li><code>DEC-OWNERDELEGATE</code>: Owner and Delegate Authority.</li>
+      <li><code>DEC-VERSIONEDQUIZ</code>: Immutable Quiz Versions.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Test Strategy</h2>
+    <p>
+      The Markdown source is the traceability source of truth for full
+      TEST-to-requirement coverage. The required obligations are:
+      <code>TEST-AUTH-BOUNDARY</code>, <code>TEST-SESSION-LIFECYCLE</code>,
+      <code>TEST-QA-FLOW</code>, <code>TEST-QUIZ-HISTORY</code>,
+      <code>TEST-LIVE-REFRESH</code>, <code>TEST-PROJECTOR-STATE</code>,
+      <code>TEST-UPLOAD-SECURITY</code>, <code>TEST-SQLITE-MIGRATION</code>,
+      <code>TEST-DEPLOY-SMOKE</code>, and <code>TEST-DOCS-CONTRACT</code>.
+    </p>
+  </section>
+
+  <section>
+    <h2>Risks &amp; Trade-offs</h2>
+    <ul>
+      <li><code>RISK-BOOTSTRAP</code>: First-Run Bootstrap Exposure.</li>
+      <li><code>RISK-UPLOADS</code>: Limited Upload Validation.</li>
+      <li><code>RISK-MIGRATION</code>: Narrow Migration Bridge.</li>
+      <li><code>RISK-WEBSOCKET</code>: Single-Process Live Hub.</li>
+      <li><code>RISK-OBSERVABILITY</code>: Operator-Oriented Diagnostics.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Traceability Matrix</h2>
+    <p>
+      Exact ID-level traceability remains in <code>design.md</code>. This HTML
+      companion presents readable labels for review while preserving stable IDs
+      in glossary, decision, risk, interface, and test tables.
+    </p>
+  </section>
+</main>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, securityLevel: "strict" });
+</script>
+</body>
+</html>

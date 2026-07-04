@@ -5,6 +5,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+from .diagnostics import log_diagnostic as _log_diagnostic
+
 # Allow the DB location to be overridden via env (Docker volume in prod).
 DB_PATH = Path(os.environ.get("PRASHNA_DB_PATH") or
                Path(__file__).resolve().parent.parent / "prashna.db")
@@ -14,7 +16,6 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
     future=True,
 )
-
 
 # Per-connection SQLite pragmas:
 # - foreign_keys=ON: SQLite ignores ON DELETE CASCADE / FK constraints unless
@@ -112,6 +113,13 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
             if column not in cols:
                 conn.exec_driver_sql(
                     f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                _log_diagnostic(
+                    "db.migration",
+                    action="add_column",
+                    outcome="success",
+                    table=table,
+                    column=column,
+                )
         for name, table, columns, unique, where in indexes:
             if table not in tables:
                 continue
@@ -124,3 +132,10 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
             where_sql = f" WHERE {where}" if where else ""
             conn.exec_driver_sql(
                 f"CREATE {uniq}INDEX IF NOT EXISTS {name} ON {table} ({', '.join(columns)}){where_sql}")
+            _log_diagnostic(
+                "db.migration",
+                action="create_index",
+                outcome="success",
+                table=table,
+                index=name,
+            )

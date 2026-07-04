@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 # ---------- UC-A-23: Global quiz runs report ----------
 
 def test_uc_a_23_list_runs(admin_client, make_quiz, make_session):
@@ -454,6 +452,32 @@ def test_uc_x_06_edit_creates_v2(admin_client, make_quiz, make_session):
     assert r2["version_no"] == 2
 
 
-@pytest.mark.skip(reason="UC-X-06: concurrent thread race not feasible in single-threaded TestClient; integrity-error catch path covered indirectly by _ensure_current_version logic.")
-def test_uc_x_06_concurrent_race():
-    pass
+def test_uc_x_06_integrity_race_returns_winning_version(
+    app_module,
+    make_quiz,
+    monkeypatch,
+):
+    """UC-X-06: duplicate-version integrity race returns the winning version."""
+    q = make_quiz()
+    with app_module.SessionLocal() as db:
+        quiz = db.get(app_module.m.Quiz, q["id"])
+        assert quiz is not None
+        winner = app_module.m.QuizVersion(
+            quiz_id=quiz.id,
+            version_no=1,
+            quiz_title=quiz.title,
+        )
+        calls = {"latest": 0}
+
+        def fake_latest(_db, _quiz):
+            calls["latest"] += 1
+            return None if calls["latest"] == 1 else winner
+
+        def fake_flush():
+            raise app_module.IntegrityError("insert quiz version", {}, Exception())
+
+        monkeypatch.setattr(app_module, "_latest_version", fake_latest)
+        monkeypatch.setattr(db, "flush", fake_flush)
+
+        assert app_module._ensure_current_version(db, quiz) is winner
+        assert calls["latest"] == 2

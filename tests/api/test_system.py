@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -12,6 +13,22 @@ PNG_BYTES = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
     "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
 )
+BASELINE_SECURITY_HEADERS = {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "content-security-policy": "frame-ancestors 'none'",
+    "referrer-policy": "no-referrer",
+}
+UPLOAD_SECURITY_HEADERS = {
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; sandbox",
+    "cross-origin-resource-policy": "same-origin",
+}
+
+
+def assert_security_headers(response, expected, label):
+    for name, value in expected.items():
+        assert response.headers.get(name) == value, label
 
 
 def _ws_recv_types(ws, n=1):
@@ -182,11 +199,6 @@ def test_uc_x_02_no_session_4404(admin_client):
     assert ei.value.code == 4404
 
 
-@pytest.mark.skip(reason="UC-X-02: TestClient's websocket_connect always injects a matching Origin; the no-Origin path can't be exercised in-process.")
-def test_uc_x_02_no_origin_ok():
-    pass
-
-
 # ---------- UC-X-03: Static asset security headers ----------
 
 def test_uc_x_03_uploads_have_security_headers(admin_client):
@@ -195,9 +207,7 @@ def test_uc_x_03_uploads_have_security_headers(admin_client):
     url = admin_client.post("/api/uploads", files=files).json()["url"]
     r = admin_client.get(url)
     assert r.status_code == 200
-    assert r.headers.get("x-content-type-options") == "nosniff"
-    assert r.headers.get("content-security-policy") == "default-src 'none'; sandbox"
-    assert r.headers.get("cross-origin-resource-policy") == "same-origin"
+    assert_security_headers(r, UPLOAD_SECURITY_HEADERS, url)
 
 
 def test_uc_x_03_static_no_extra_headers(admin_client):
@@ -211,10 +221,47 @@ def test_uc_x_03_baseline_headers_on_pages(client):
     """UC-X-03: non-uploads responses carry the clickjacking/sniffing baseline."""
     for path in ("/", "/static/app.css"):
         r = client.get(path)
-        assert r.headers.get("x-content-type-options") == "nosniff", path
-        assert r.headers.get("x-frame-options") == "DENY", path
-        assert r.headers.get("content-security-policy") == "frame-ancestors 'none'", path
-        assert r.headers.get("referrer-policy") == "no-referrer", path
+        assert_security_headers(r, BASELINE_SECURITY_HEADERS, path)
+
+
+def test_uc_x_03_baseline_headers_on_page_and_static_samples(
+    admin_client,
+    make_session,
+):
+    """UC-X-03: page/static samples carry baseline security headers."""
+    s = make_session()
+    paths = (
+        "/",
+        "/quizzes",
+        f"/s/{s['code']}",
+        f"/p/{s['code']}",
+        "/static/vendor/qrcode.js",
+    )
+    for path in paths:
+        r = admin_client.get(path)
+        assert r.status_code in (200, 404), path
+        assert_security_headers(r, BASELINE_SECURITY_HEADERS, path)
+
+
+def test_uc_x_03_baseline_headers_on_api_success_and_errors(
+    admin_client,
+):
+    """UC-X-03: API payload and error samples carry baseline headers."""
+    samples = [
+        admin_client.get("/api/admin/status"),
+        admin_client.get("/api/sessions"),
+        admin_client.get("/api/sessions/NOPE99"),
+        admin_client.post(
+            "/api/uploads",
+            files={"file": ("bad.svg", b"<svg/>", "image/svg+xml")},
+        ),
+    ]
+    for response in samples:
+        assert_security_headers(
+            response,
+            BASELINE_SECURITY_HEADERS,
+            str(response.request.url),
+        )
 
 
 # ---------- UC-X-04: Image upload constraints ----------
@@ -440,9 +487,11 @@ def test_uc_x_05_two_participants_same_token(admin_client, make_session):
 
 # ---------- UC-X-07: SECRET_KEY ----------
 
-@pytest.mark.skip(reason="UC-X-07: requires app restart with different env vars; not feasible in shared TestClient session.")
-def test_uc_x_07_secret_key_lifecycle():
-    pass
+def test_uc_x_07_secret_key_lifecycle_subprocess_contract_present():
+    """UC-X-07: restart coverage lives in a subprocess integration file."""
+    text = (Path(__file__).with_name("test_secret_lifecycle.py")).read_text()
+    assert "test_fixed_secret_survives_restart" in text
+    assert "test_unset_secret_warns" in text
 
 
 def test_uc_x_07_resolve_secret_pure():

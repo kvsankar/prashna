@@ -17,3 +17,15 @@ def test_live_clients_drop_stale_refresh_responses():
         assert "latest" in src.lower(), rel
         assert "seq" in src.lower(), rel
         assert "!== " in src or "!== latest" in src, rel
+
+
+def test_live_socket_reconnect_test_hook_is_gated():
+    """Reconnect UI tests need a gated hook to close the active socket."""
+    src = (ROOT / "frontend/src/common.ts").read_text()
+
+    assert 'import.meta.env.MODE === "test"' in src
+    assert "prashna:socket-close-hook" in src
+    assert "localStorage.getItem" in src
+    assert "__prashnaLiveSocketTest" in src
+    assert "closeActive" in src
+    assert "activeCount" in src

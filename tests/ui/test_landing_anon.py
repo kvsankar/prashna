@@ -11,7 +11,6 @@ from __future__ import annotations
 import secrets
 
 import httpx
-import pytest
 from playwright.sync_api import expect
 
 from ._helpers import ADMIN, api_login, api_make_session
@@ -35,16 +34,21 @@ def test_uc_a_01_setup_card_visibility(base_url, page):
     page.wait_for_selector("#login-card:visible, #sessions-card:visible")
 
 
-def test_uc_a_01_setup_password_mismatch_no_api_call(base_url, page):
+def test_uc_a_01_setup_password_mismatch_no_api_call(fresh_base_url, page):
     """UC-A-01: mismatched #su-pass/#su-pass2 toast without API call.
 
-    Because the admin is already initialized in this session, we can't
-    drive #setup-card here. Skip with a clear reason.
+    A fresh server keeps the first-run setup form visible for this client-side
+    validation path.
     """
-    pytest.skip(
-        "Cannot test setup-card client-side validation: admin is bootstrapped "
-        "session-wide by api_login/admin_setup; setup form is hidden."
-    )
+    page.goto(fresh_base_url + "/")
+    expect(page.locator("#setup-card")).to_be_visible(timeout=5000)
+    page.fill("#su-user", "admin")
+    page.fill("#su-pass", "testpass1")
+    page.fill("#su-pass2", "different1")
+    page.click("#su-btn")
+    expect(page.locator(".toast-error")).to_contain_text("Passwords don't match")
+    status = httpx.get(f"{fresh_base_url}/api/admin/status", timeout=5.0).json()
+    assert status["initialized"] is False
 
 
 # ---------- UC-A-02 ----------
@@ -78,7 +82,7 @@ def test_uc_a_02_login_invalid_toasts_and_stays(base_url, admin_setup, page):
     page.goto(base_url + "/")
     page.wait_for_selector("#login-card:visible")
     page.fill("#li-user", admin_setup["username"])
-    page.fill("#li-pass", "wrong-password-xxx")
+    page.fill("#li-pass", "wrong-password-bad")
     page.click("#li-btn")
     expect(page.locator(".toast-error")).to_be_visible()
     expect(page.locator(".toast-error")).to_contain_text("Invalid username or password")
@@ -137,7 +141,7 @@ def test_uc_p_01_join_enter_submits(base_url, admin_setup, page):
 
 
 def test_uc_p_01_bad_code_redirect_shows_banner(base_url, admin_setup, page):
-    """UC-P-01: unknown code → /?bad_code=XXX; #bad-code-msg shows error.
+    """UC-P-01: unknown code redirect shows #bad-code-msg error.
 
     Note: index.html does `history.replaceState` to strip `?bad_code=` from
     the address bar after reading it, so we check the banner content (not

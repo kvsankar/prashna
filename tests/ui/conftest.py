@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Iterator
 
 import httpx
 import pytest
@@ -25,12 +26,9 @@ def _find_free_port() -> int:
     return port
 
 
-@pytest.fixture(scope="session")
-def uvicorn_url(tmp_path_factory) -> str:
-    """Start uvicorn on a free port with an isolated DB. Tear down at end of session."""
+def _start_uvicorn(db_path: Path, upload_dir: Path) -> tuple[str, subprocess.Popen]:
+    """Start uvicorn on a free port with an isolated DB."""
     port = _find_free_port()
-    db_path = tmp_path_factory.mktemp("uidb") / "prashna-ui.db"
-    upload_dir = tmp_path_factory.mktemp("uiuploads")
     env = os.environ.copy()
     env["PRASHNA_DB_PATH"] = str(db_path)
     env["PRASHNA_UPLOADS_DIR"] = str(upload_dir)
@@ -59,12 +57,33 @@ def uvicorn_url(tmp_path_factory) -> str:
     else:
         proc.terminate()
         raise RuntimeError("uvicorn did not start in time")
-    yield base
+    return base, proc
+
+
+def _stop_uvicorn(proc: subprocess.Popen) -> None:
     proc.terminate()
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
+
+
+@pytest.fixture(scope="session")
+def uvicorn_url(tmp_path_factory) -> Iterator[str]:
+    """Start uvicorn on a free port with an isolated DB. Tear down at end of session."""
+    db_path = tmp_path_factory.mktemp("uidb") / "prashna-ui.db"
+    upload_dir = tmp_path_factory.mktemp("uiuploads")
+    base, proc = _start_uvicorn(db_path, upload_dir)
+    yield base
+    _stop_uvicorn(proc)
+
+
+@pytest.fixture
+def fresh_base_url(tmp_path) -> Iterator[str]:
+    """Start a one-test uvicorn process with no bootstrapped admin."""
+    base, proc = _start_uvicorn(tmp_path / "prashna-ui.db", tmp_path / "uploads")
+    yield base
+    _stop_uvicorn(proc)
 
 
 @pytest.fixture

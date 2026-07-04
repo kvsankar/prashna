@@ -1,6 +1,7 @@
 # Server-side compose file for Prashna.
 # Lives at /opt/prashna/docker-compose.yml on the Hetzner box.
-# Pull a new image and restart with:  cd /opt/prashna && docker compose pull && docker compose up -d
+# Pull a new image and restart with:
+# cd /opt/prashna && docker compose pull && docker compose up -d
 services:
   prashna:
     image: ghcr.io/kvsankar/prashna:latest
@@ -8,12 +9,33 @@ services:
     restart: unless-stopped
     # Bind to localhost only — nginx fronts everything with TLS.
     ports:
-      - "127.0.0.1:8765:8000"
-    env_file:
-      - /opt/prashna/.env
+      - "${PRASHNA_BIND_ADDR:-127.0.0.1}:${PRASHNA_PORT:-8765}:8000"
+    environment:
+      PRASHNA_SECRET_KEY: ${PRASHNA_SECRET_KEY:?Set PRASHNA_SECRET_KEY in .env}
+      PRASHNA_TRUSTED_PROXY_HOPS: ${PRASHNA_TRUSTED_PROXY_HOPS:-1}
+      PRASHNA_GITHUB_CLIENT_ID: ${PRASHNA_GITHUB_CLIENT_ID:-}
+      PRASHNA_GITHUB_CLIENT_SECRET: ${PRASHNA_GITHUB_CLIENT_SECRET:-}
+      PRASHNA_GITHUB_ADMINS: ${PRASHNA_GITHUB_ADMINS:-}
+      PRASHNA_DB_PATH: ${PRASHNA_DB_PATH:-/data/prashna.db}
+      PRASHNA_UPLOADS_DIR: ${PRASHNA_UPLOADS_DIR:-/app/uploads}
+      PRASHNA_RATELIMIT: ${PRASHNA_RATELIMIT:-}
     volumes:
-      - /opt/prashna/data:/data
-      - /opt/prashna/uploads:/app/uploads
+      - "${PRASHNA_DATA_DIR:-/opt/prashna/data}:/data"
+      - "${PRASHNA_UPLOADS_HOST_DIR:-/opt/prashna/uploads}:/app/uploads"
+    command:
+      - python
+      - -c
+      - |
+        import logging
+        import uvicorn
+        logging.basicConfig(level=logging.INFO)
+        uvicorn.run(
+            "app.main:app",
+            host="0.0.0.0",
+            port=8000,
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+        )
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/admin/status"]
       interval: 30s
