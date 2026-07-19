@@ -8,8 +8,16 @@ interface Qr {
   createSvgTag(opts: { cellSize: number; margin: number; scalable: boolean }): string;
 }
 type QrFactory = (typeNumber: number, errorCorrection: string) => Qr;
+interface LiveSocketTestHook {
+  closeActive(): void;
+  activeCount(): number;
+  readyState(): number;
+}
 declare global {
-  interface Window { qrcode?: QrFactory }
+  interface Window {
+    qrcode?: QrFactory;
+    __prashnaLiveSocketTest?: LiveSocketTestHook;
+  }
 }
 
 /** Query one element, typed. Asserts presence (callers rely on it). */
@@ -91,6 +99,26 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
   let ws: WebSocket;
   let retry = 0;
   let alive = true;
+  if (import.meta.env.MODE === "test") {
+    let exposeTestHook = false;
+    try {
+      const hookFlag = localStorage.getItem("prashna:socket-close-hook");
+      exposeTestHook = hookFlag === "1";
+    } catch {
+      exposeTestHook = false;
+    }
+    if (exposeTestHook) {
+      window.__prashnaLiveSocketTest = {
+        closeActive() { ws?.close(); },
+        activeCount() {
+          return ws && ws.readyState < WebSocket.CLOSING ? 1 : 0;
+        },
+        readyState() {
+          return ws?.readyState ?? -1;
+        },
+      };
+    }
+  }
   function connect(): void {
     ws = new WebSocket(url);
     ws.onopen = () => {

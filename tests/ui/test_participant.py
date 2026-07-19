@@ -4,6 +4,7 @@ Covers UC-P-02..12.
 """
 from __future__ import annotations
 
+import re
 import secrets
 
 import httpx
@@ -15,8 +16,19 @@ from ._helpers import (
     api_make_quiz,
     api_make_session,
     api_queue_quiz_run,
+    api_start_session,
     ask_query_api,
 )
+
+
+def assert_no_horizontal_overflow(page):
+    overflow = page.evaluate(
+        """() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        })"""
+    )
+    assert overflow["scrollWidth"] <= overflow["clientWidth"] + 1, overflow
 
 # ---------- UC-P-13: session feedback ----------
 
@@ -102,6 +114,114 @@ def test_uc_p_02_voter_token_cookie_set_on_load(base_url, admin_setup, page):
         cookies = page.context.cookies()
         names = {c["name"] for c in cookies}
         assert "voter_token" in names
+    finally:
+        c.close()
+
+
+def test_mobile_participants_can_complete_core_flow(
+    base_url, admin_setup, browser
+):
+    """Mobile participants can identify, ask, vote, answer, and rate."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-P-mobile-q {secrets.token_hex(3)}",
+                         publish=True)
+    s = api_make_session(c, f"UI-P-mobile {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(
+        f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start"
+    ).raise_for_status()
+
+    ctx1 = browser.new_context(viewport={"width": 360, "height": 820})
+    ctx2 = browser.new_context(viewport={"width": 360, "height": 820})
+    p1 = ctx1.new_page()
+    p2 = ctx2.new_page()
+    try:
+        p1.goto(f"{base_url}/s/{s['code']}")
+        p2.goto(f"{base_url}/s/{s['code']}")
+        p1.wait_for_selector("#ask-card:visible")
+        p2.wait_for_selector("#ask-card:visible")
+
+        p1.locator("#profile-card > summary").click()
+        p1.fill("#my-name", "Mobile Dana")
+        p1.locator("#my-name").blur()
+        expect(p1.locator(".toast")).to_contain_text("Mobile Dana")
+        assert_no_horizontal_overflow(p1)
+
+        p1.fill("#query-text", "mobile responsive question")
+        p1.click("#ask-btn")
+        expect(p2.locator("#queries")).to_contain_text(
+            "mobile responsive question",
+            timeout=5000,
+        )
+        row = p2.locator("#queries .question").filter(
+            has_text="mobile responsive question"
+        )
+        vote = row.locator("button.vote-btn")
+        expect(vote).to_have_attribute("aria-pressed", "false")
+        vote.click()
+        expect(vote).to_have_attribute("aria-pressed", "true")
+
+        expect(p2.locator("#quiz-card")).to_be_visible(timeout=5000)
+        option = p2.locator("#quiz-body button.option").first
+        option.click()
+        expect(option).to_have_attribute("aria-pressed", "true")
+        p2.locator("#quiz-body button.primary").click()
+        expect(p2.locator("#quiz-body")).to_contain_text(
+            "recorded",
+            timeout=5000,
+        )
+
+        p2.locator("#fb-stars button.star").nth(3).click()
+        expect(p2.locator("#fb-status")).to_contain_text("Saved")
+        assert_no_horizontal_overflow(p2)
+    finally:
+        p1.close()
+        p2.close()
+        ctx1.close()
+        ctx2.close()
+        c.close()
+
+
+def test_mobile_participant_controls_are_keyboard_accessible(
+    base_url,
+    admin_setup,
+    page,
+):
+    """Mobile controls expose keyboard paths and accessible state."""
+    page.set_viewport_size({"width": 360, "height": 820})
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P-mobile-k {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    ask_query_api(base_url, s["code"], "keyboard-votable")
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#ask-card:visible")
+        page.focus("#query-text")
+        page.fill("#query-text", "keyboard mobile question")
+        page.locator("#query-text").press("Control+Enter")
+        expect(page.locator("#queries")).to_contain_text(
+            "keyboard mobile question",
+            timeout=5000,
+        )
+
+        vote = page.locator("#queries .question").filter(
+            has_text="keyboard-votable"
+        ).locator("button.vote-btn")
+        expect(vote).to_have_attribute("aria-label", re.compile("Upvote"))
+        expect(vote).to_have_attribute("aria-pressed", "false")
+        vote.focus()
+        page.keyboard.press("Enter")
+        expect(vote).to_have_attribute("aria-pressed", "true")
+
+        expect(page.locator("#fb-stars")).to_have_attribute(
+            "role",
+            "radiogroup",
+        )
+        expect(page.locator("#fb-stars button.star").first).to_have_attribute(
+            "aria-label",
+            "1 star",
+        )
+        assert_no_horizontal_overflow(page)
     finally:
         c.close()
 

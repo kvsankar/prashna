@@ -37,6 +37,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from . import auth, oauth
 from . import models as m
 from .db import SessionLocal, get_db, init_db
+from .diagnostics import log_diagnostic
 from .ratelimit import TokenBucketLimiter, enabled_from_env
 from .ws import hub
 
@@ -665,8 +666,16 @@ _setup_lock = threading.Lock()
 def admin_setup(payload: dict, request: Request, response: Response, db: DbSession = Depends(get_db)):
     with _setup_lock:
         if auth.admin_exists(db):
+            log_diagnostic("auth.setup", outcome="already_initialized")
             raise HTTPException(409, "Admin already initialized")
-        username, password = _validate_credentials(payload.get("username", ""), payload.get("password", ""))
+        try:
+            username, password = _validate_credentials(
+                payload.get("username", ""),
+                payload.get("password", ""),
+            )
+        except HTTPException:
+            log_diagnostic("auth.setup", outcome="invalid")
+            raise
         user = m.User(username=username, password_hash=auth.hash_password(password))
         db.add(user)
         try:
@@ -675,9 +684,11 @@ def admin_setup(payload: dict, request: Request, response: Response, db: DbSessi
             # Defensive: a username UNIQUE collision against some
             # other admin row we didn't expect. Surface as 409.
             db.rollback()
+            log_diagnostic("auth.setup", outcome="conflict")
             raise HTTPException(409, "Admin already initialized")
         db.refresh(user)
         auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
+        log_diagnostic("auth.setup", outcome="success", actor_id=user.id)
         return {"username": user.username}
 
 
@@ -688,20 +699,24 @@ def admin_login(payload: dict, request: Request, response: Response, db: DbSessi
     # a fumbling-then-correct admin is never locked out (UC-X-08).
     ip_key = f"login:{_client_ip(request)}"
     if not limiter.allow(ip_key, *RL_LOGIN):
+        log_diagnostic("auth.login", outcome="rate_limited")
         raise HTTPException(429, "Too many login attempts — wait a moment and try again")
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
     user = db.scalar(select(m.User).where(m.User.username == username)) if username else None
     if not user or not auth.verify_password(password, user.password_hash):
+        log_diagnostic("auth.login", outcome="failure")
         raise HTTPException(401, "Invalid username or password")
     limiter.reset(ip_key)
     auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
+    log_diagnostic("auth.login", outcome="success", actor_id=user.id)
     return {"username": user.username}
 
 
 @app.post("/api/admin/logout")
 def admin_logout(response: Response):
     auth.clear_session(response)
+    log_diagnostic("auth.logout", outcome="success")
     return {"ok": True}
 
 
@@ -716,8 +731,18 @@ def admin_change_password(
     current = payload.get("current_password") or ""
     new = payload.get("new_password") or ""
     if not auth.verify_password(current, me.password_hash):
+        log_diagnostic(
+            "auth.password_change",
+            outcome="wrong_current",
+            actor_id=me.id,
+        )
         raise HTTPException(401, "Current password is incorrect")
     if len(new) < MIN_PASSWORD_LEN:
+        log_diagnostic(
+            "auth.password_change",
+            outcome="invalid_new",
+            actor_id=me.id,
+        )
         raise HTTPException(400, f"new password must be at least {MIN_PASSWORD_LEN} characters")
     me.password_hash = auth.hash_password(new)
     # Bumping session_version invalidates every cookie issued under the old
@@ -725,6 +750,7 @@ def admin_change_password(
     me.session_version = (me.session_version or 1) + 1
     db.commit()
     auth.issue_session(response, me.id, me.session_version, secure=request.url.scheme == "https")
+    log_diagnostic("auth.password_change", outcome="success", actor_id=me.id)
     return {"ok": True}
 
 
@@ -767,6 +793,14 @@ def create_session(payload: dict, db: DbSession = Depends(get_db), me: m.User = 
     db.add(s)
     db.commit()
     db.refresh(s)
+    log_diagnostic(
+        "session.lifecycle",
+        action="create",
+        outcome="success",
+        actor_id=me.id,
+        session_id=s.id,
+        session_code=s.code,
+    )
     return {"code": s.code, "title": s.title, "mod_key": s.mod_key, "status": s.status}
 
 
@@ -802,6 +836,14 @@ async def update_session(
         s.title = new_title
     db.commit()
     await broadcast_session(s, "session_state")
+    log_diagnostic(
+        "session.lifecycle",
+        action="update",
+        outcome="success",
+        actor_id=me.id,
+        session_id=s.id,
+        session_code=s.code,
+    )
     return {"code": s.code, "title": s.title, "status": s.status}
 
 
@@ -828,6 +870,14 @@ async def set_participant_base_url(
         s.participant_base_url = None
     db.commit()
     await broadcast_session(s, "session_state")
+    log_diagnostic(
+        "session.lifecycle",
+        action="participant_base_url",
+        outcome="success",
+        actor_id=me.id,
+        session_id=s.id,
+        session_code=s.code,
+    )
     return {"participant_base_url": s.participant_base_url}
 
 
@@ -841,12 +891,26 @@ async def start_session(
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
     if s.status == "ended":
+        log_diagnostic(
+            "session.lifecycle",
+            action="start",
+            outcome="ended",
+            session_id=s.id,
+            session_code=s.code,
+        )
         raise HTTPException(400, "Session has ended")
     if s.status == "planning":
         s.status = "live"
         s.started_at = datetime.utcnow()
         db.commit()
         await broadcast_session(s, "session_state")
+        log_diagnostic(
+            "session.lifecycle",
+            action="start",
+            outcome="success",
+            session_id=s.id,
+            session_code=s.code,
+        )
     return {"status": s.status}
 
 
@@ -865,6 +929,13 @@ async def end_session(
         s.ended_at = datetime.utcnow()
         db.commit()
         await broadcast_session(s, "session_state")
+        log_diagnostic(
+            "session.lifecycle",
+            action="end",
+            outcome="success",
+            session_id=s.id,
+            session_code=s.code,
+        )
     return {"status": s.status}
 
 
@@ -885,9 +956,18 @@ async def delete_session(
         if confirm_title != s.title:
             raise HTTPException(400, "Type the session title exactly to confirm deletion")
     session_code = s.code
+    session_id = s.id
     db.delete(s)
     db.commit()
     await hub.broadcast(f"session:{session_code}", {"type": "session_deleted"})
+    log_diagnostic(
+        "session.lifecycle",
+        action="delete",
+        outcome="success",
+        actor_id=me.id,
+        session_id=session_id,
+        session_code=session_code,
+    )
     return {"ok": True}
 
 
@@ -1085,6 +1165,13 @@ def feedback_summary(
         .options(selectinload(m.SessionFeedback.participant))
         .order_by(m.SessionFeedback.updated_at.desc())
     ).all()
+    log_diagnostic(
+        "feedback.summary",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        count=len(rows),
+    )
     count = len(rows)
     average = round(sum(r.rating for r in rows) / count, 2) if count else None
     distribution = {i: 0 for i in range(1, 6)}
@@ -1221,6 +1308,14 @@ async def respond_to_query(
     q.responded_at = datetime.utcnow() if payload.get("responded", True) else None
     db.commit()
     await broadcast_session(s, "query_responded")
+    log_diagnostic(
+        "query.moderation",
+        action="respond",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        query_id=q.id,
+    )
     return {"ok": True}
 
 
@@ -1245,6 +1340,14 @@ async def remove_query(
         q.removed_at = None
     db.commit()
     await broadcast_session(s, "query_removed")
+    log_diagnostic(
+        "query.moderation",
+        action="remove",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        query_id=q.id,
+    )
     return {"ok": True}
 
 
@@ -1263,9 +1366,18 @@ async def delete_query(
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
+    query_id = q.id
     db.delete(q)
     db.commit()
     await broadcast_session(s, "query_deleted")
+    log_diagnostic(
+        "query.moderation",
+        action="delete",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        query_id=query_id,
+    )
     return {"ok": True}
 
 
@@ -1547,8 +1659,10 @@ async def upload_image(
 ):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_IMAGE_EXTS:
+        log_diagnostic("upload.reject", reason="extension", extension=ext)
         raise HTTPException(400, "unsupported image type")
     if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        log_diagnostic("upload.reject", reason="size", size=file.size)
         raise HTTPException(400, "max 5MB")
     buf = bytearray()
     while True:
@@ -1557,9 +1671,16 @@ async def upload_image(
             break
         buf.extend(chunk)
         if len(buf) > MAX_UPLOAD_BYTES:
+            log_diagnostic("upload.reject", reason="size", size=len(buf))
             raise HTTPException(400, "max 5MB")
     name = f"{uuid.uuid4().hex}{ext}"
     (UPLOADS / name).write_bytes(bytes(buf))
+    log_diagnostic(
+        "upload.accept",
+        outcome="success",
+        extension=ext,
+        size=len(buf),
+    )
     return {"url": f"/uploads/{name}"}
 
 
@@ -1720,6 +1841,14 @@ async def create_quiz_run(
     db.commit()
     db.refresh(run)
     await broadcast_session(s, "quiz_run_new")
+    log_diagnostic(
+        "quiz_run.lifecycle",
+        action="create",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        run_id=run.id,
+    )
     return {"id": run.id, "version_no": version.version_no, "status": run.status}
 
 
@@ -1760,8 +1889,24 @@ async def start_quiz_run(
         db.commit()
     except IntegrityError:
         db.rollback()
+        log_diagnostic(
+            "quiz_run.lifecycle",
+            action="start",
+            outcome="conflict",
+            session_id=s.id,
+            session_code=s.code,
+            run_id=run.id,
+        )
         raise HTTPException(409, "Another quiz is already live — close it first.")
     await broadcast_session(s, "quiz_run_update")
+    log_diagnostic(
+        "quiz_run.lifecycle",
+        action="start",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        run_id=run.id,
+    )
     return {"ok": True}
 
 
@@ -1792,6 +1937,14 @@ async def advance_quiz_run(
     run.reveal_current = False
     db.commit()
     await broadcast_session(s, "quiz_run_update")
+    log_diagnostic(
+        "quiz_run.lifecycle",
+        action="advance",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        run_id=run.id,
+    )
     return {"ok": True}
 
 
@@ -1815,6 +1968,14 @@ async def set_live_counts(
     run.show_live_counts = bool(payload.get("show", True))
     db.commit()
     await broadcast_session(s, "quiz_run_update")
+    log_diagnostic(
+        "quiz_run.lifecycle",
+        action="live_counts",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        run_id=run.id,
+    )
     return {"show_live_counts": run.show_live_counts}
 
 
@@ -1833,6 +1994,14 @@ async def reveal_quiz_run(
     run.reveal_current = bool(payload.get("reveal", True))
     db.commit()
     await broadcast_session(s, "quiz_run_update")
+    log_diagnostic(
+        "quiz_run.lifecycle",
+        action="reveal",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        run_id=run.id,
+    )
     return {"ok": True}
 
 
@@ -1852,6 +2021,14 @@ async def close_quiz_run(
     run.closed_at = datetime.utcnow()
     db.commit()
     await broadcast_session(s, "quiz_run_update")
+    log_diagnostic(
+        "quiz_run.lifecycle",
+        action="close",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        run_id=run.id,
+    )
     return {"ok": True}
 
 
@@ -1866,9 +2043,18 @@ async def delete_quiz_run(
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     if run.status == "closed":
         raise HTTPException(400, "Closed quiz runs are historical and cannot be deleted")
+    deleted_run_id = run.id
     db.delete(run)
     db.commit()
     await broadcast_session(s, "quiz_run_deleted")
+    log_diagnostic(
+        "quiz_run.lifecycle",
+        action="delete",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        run_id=deleted_run_id,
+    )
     return {"ok": True}
 
 
@@ -1979,19 +2165,39 @@ async def ws_session(ws: WebSocket, code: str):
     if origin:
         host = ws.headers.get("host", "")
         if origin not in (f"http://{host}", f"https://{host}"):
+            log_diagnostic("ws.reject", outcome="failure", reason="origin")
             await ws.close(code=4403)
             return
     with SessionLocal() as db:
         s = db.scalar(select(m.Session).where(m.Session.code == code.upper()))
         if not s:
+            log_diagnostic("ws.reject", outcome="failure", reason="session")
             await ws.close(code=4404)
             return
     room = f"session:{code.upper()}"
     await hub.join(room, ws)
+    log_diagnostic(
+        "ws.join",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+    )
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
         hub.leave(room, ws)
+        log_diagnostic(
+            "ws.disconnect",
+            outcome="success",
+            session_id=s.id,
+            session_code=s.code,
+        )
     except Exception:
         hub.leave(room, ws)
+        log_diagnostic(
+            "ws.error",
+            outcome="failure",
+            session_id=s.id,
+            session_code=s.code,
+        )

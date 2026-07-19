@@ -1,0 +1,62 @@
+project_entry:
+  decided_at: "2026-07-03T10:53:20Z"
+  decided_by: "user"
+  mode: "brownfield_baseline"
+  scope: "product/system"
+  baseline_sources:
+    - "existing codebase"
+    - "README.md"
+    - "CLAUDE.md"
+    - "docs/specs.md"
+    - "docs/UX.md"
+    - "docs/UX-simplification.md"
+    - "docs/review-plan.md"
+    - "docs/critical-code-review-report.md"
+    - "docs/design-review-report.md"
+    - "docs/frontend-live-review-report.md"
+    - "docs/todo.md"
+    - "tests/api"
+    - "tests/ui"
+    - "deploy/README.md"
+  existing_artifact_policy:
+    specs: "adapt"
+    designs: "adapt"
+    plans: "background"
+    docs: "adopt current docs; background for unapproved proposals"
+    tests: "adopt"
+  stage_policy:
+    retrospective_plan_required: false
+    new_delta_plan_required: true
+    code_review_without_plan_allowed_for: "baseline_review_only"
+  assumptions:
+    - "The phrase retrospectively means reconstruct and review the existing Prashna product baseline."
+    - "The initial Sarathi scope is the whole Prashna product/system, not one feature or change slice."
+    - "Existing detailed use-case and UX documents remain governing baseline sources while Sarathi artifacts adapt them into SDLC format."
+    - "docs/todo.md is the current outstanding-decision ledger."
+    - "docs/UX-simplification.md is an unapproved proposal and not current baseline behavior."
+  risks:
+    - "Retrospective intent is reconstructed from docs, tests, and code, so undocumented legacy behavior may remain ambiguous until reviewed."
+    - "The baseline product spec is decomposable and requires downstream design and plan work before new production code changes."
+    - "Open items in docs/todo.md may require child specs before open-source, public, or hosted deployment."
+  next_recommended_stage: "/spec-create"
+review_level:
+  decided_at: "2026-07-19T18:52:21Z"
+  decided_by: "agent"
+  level: "Standard"
+  extra_checks:
+    - "Security"
+    - "Privacy and compliance"
+    - "Reliability and operations"
+    - "Build and release"
+    - "Documentation"
+    - "UI and accessibility"
+  reason: >
+    Brownfield baseline remediation touches authentication, operator secrets,
+    diagnostics, live reconnect behavior, browser workflows, CI, deployment
+    smoke checks, and user/operator documentation. Standard review keeps the
+    process proportionate while requiring explicit evidence for those risks.
+  stronger_review_if: >
+    Escalate before continuing if the work adds public bootstrap behavior,
+    destructive migrations, multi-worker deployment, external production
+    integrations, hosted telemetry, regulated data handling, or live production
+    deployment.

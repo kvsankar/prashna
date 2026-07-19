@@ -21,6 +21,8 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR=/opt/prashna
 DOMAIN=prashna.sankara.net
+APP_UID=1001
+APP_GID=1001
 
 log() { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 
@@ -31,19 +33,31 @@ if ! command -v docker >/dev/null; then
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
     | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   sudo chmod a+r /etc/apt/keyrings/docker.gpg
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  ARCH="$(dpkg --print-architecture)"
+  . /etc/os-release
+  echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \
     | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
   sudo apt-get update
-  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  sudo apt-get install -y \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin
   sudo usermod -aG docker "$USER"
-  echo "NOTE: log out and back in (or run 'newgrp docker') so docker group membership takes effect."
+  echo "NOTE: log out and back in, or run 'newgrp docker', so docker group"
+  echo "membership takes effect."
 else
   log "Docker already installed: $(docker --version)"
 fi
 
 # 2. App directory layout.
 log "Creating $APP_DIR"
-sudo install -d -o "$USER" -g "$USER" "$APP_DIR" "$APP_DIR/data" "$APP_DIR/uploads"
+sudo install -d -o "$USER" -g "$USER" "$APP_DIR"
+sudo install -d -o "$APP_UID" -g "$APP_GID" \
+  "$APP_DIR/data" "$APP_DIR/uploads"
+sudo chown -R "$APP_UID:$APP_GID" "$APP_DIR/data" "$APP_DIR/uploads"
 sudo cp "$REPO_DIR/deploy/docker-compose.yml" "$APP_DIR/docker-compose.yml"
 sudo chown "$USER:$USER" "$APP_DIR/docker-compose.yml"
 
@@ -75,14 +89,23 @@ log "Pulling image"
 
 # 4. nginx site + TLS.
 log "Installing nginx site for $DOMAIN"
-sudo cp "$REPO_DIR/deploy/nginx-prashna.conf" "/etc/nginx/sites-available/$DOMAIN"
-sudo ln -sf "/etc/nginx/sites-available/$DOMAIN" "/etc/nginx/sites-enabled/$DOMAIN"
+sudo cp \
+  "$REPO_DIR/deploy/nginx-prashna.conf" \
+  "/etc/nginx/sites-available/$DOMAIN"
+sudo ln -sf \
+  "/etc/nginx/sites-available/$DOMAIN" \
+  "/etc/nginx/sites-enabled/$DOMAIN"
 sudo nginx -t
 sudo systemctl reload nginx
 
 if [[ ! -d "/etc/letsencrypt/live/$DOMAIN" ]]; then
   log "Requesting TLS cert via certbot"
-  sudo certbot --nginx -d "$DOMAIN" --redirect --non-interactive --agree-tos -m "kvsankar@gmail.com"
+  sudo certbot --nginx \
+    -d "$DOMAIN" \
+    --redirect \
+    --non-interactive \
+    --agree-tos \
+    -m "kvsankar@gmail.com"
 else
   log "TLS cert already exists for $DOMAIN — skipping certbot"
 fi
