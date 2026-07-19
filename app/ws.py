@@ -3,6 +3,8 @@ from collections import defaultdict
 
 from fastapi import WebSocket
 
+from .diagnostics import log_diagnostic as _log_diagnostic
+
 # Per-send timeout — a stalled client cannot delay other clients' messages
 # nor block the API handler that called broadcast.
 SEND_TIMEOUT_SECS = 2.0
@@ -44,6 +46,7 @@ class Hub:
             await asyncio.wait_for(ws.send_json(message), timeout=SEND_TIMEOUT_SECS)
             return True
         except Exception:
+            _log_diagnostic("ws.broadcast_failure", outcome="failure")
             return False
 
 

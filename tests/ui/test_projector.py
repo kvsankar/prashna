@@ -1,14 +1,9 @@
-"""UI tests for the projector surface (/p/<code>).
-
-Covers UC-D-01..08. UC-D-05 (reconnect) is skipped — out of scope to simulate
-a WebSocket server restart from a unit test.
-"""
+"""UI tests for the projector surface (/p/<code>)."""
 from __future__ import annotations
 
 import secrets
 
 import httpx
-import pytest
 from playwright.sync_api import expect
 
 from ._helpers import (
@@ -19,6 +14,16 @@ from ._helpers import (
     api_start_session,
     ask_query_api,
 )
+
+
+def assert_no_horizontal_overflow(page):
+    overflow = page.evaluate(
+        """() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        })"""
+    )
+    assert overflow["scrollWidth"] <= overflow["clientWidth"] + 1, overflow
 
 # ---------- UC-D-01 ----------
 
@@ -50,6 +55,34 @@ def test_uc_d_01_bad_code_redirects(base_url, admin_setup, page):
     page.goto(f"{base_url}/p/{bogus}")
     expect(page.locator("#bad-code-msg")).to_be_visible()
     expect(page.locator("#bad-code-msg")).to_contain_text(bogus.upper())
+
+
+def test_mobile_projector_keeps_live_state_visible(base_url, admin_setup, page):
+    """Mobile-width projector keeps join, query, and quiz state usable."""
+    page.set_viewport_size({"width": 360, "height": 820})
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-D-mobile-q {secrets.token_hex(3)}",
+                         publish=True)
+    s = api_make_session(c, f"UI-D-mobile {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(
+        f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start"
+    ).raise_for_status()
+    try:
+        page.goto(f"{base_url}/p/{s['code']}")
+        expect(page.locator("#code")).to_have_text(s["code"])
+        expect(page.locator("#join-qr svg")).to_be_visible(timeout=10000)
+        expect(page.locator("#quiz-section")).to_be_visible(timeout=5000)
+        assert_no_horizontal_overflow(page)
+
+        ask_query_api(base_url, s["code"], "projector mobile question")
+        expect(page.locator("#queries")).to_contain_text(
+            "projector mobile question",
+            timeout=5000,
+        )
+        assert_no_horizontal_overflow(page)
+    finally:
+        c.close()
 
 
 # ---------- UC-D-02 ----------
@@ -194,13 +227,33 @@ def test_uc_d_04_live_with_quiz_run_shows_quiz_section(base_url, admin_setup, pa
 # ---------- UC-D-05 ----------
 
 
-def test_uc_d_05_reconnect_skipped():
-    """UC-D-05: simulating a WS server restart from a UI test is out of scope."""
-    pytest.skip(
-        "Cannot reliably simulate a WebSocket server restart from a Playwright "
-        "test without tearing down the shared uvicorn process; the reconnect "
-        "logic is also covered indirectly by UC-D-03 (any live update)."
-    )
+def test_uc_d_05_reconnect_refetches_after_close(base_url, admin_setup, page):
+    """UC-D-05: reconnect refetch catches a broadcast missed while closed."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-D05 {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    text = f"reconnect-catchup-{secrets.token_hex(3)}"
+    try:
+        page.add_init_script(
+            "localStorage.setItem('prashna:socket-close-hook', '1')"
+        )
+        page.goto(f"{base_url}/p/{s['code']}")
+        page.wait_for_selector("#queries")
+        page.wait_for_function(
+            "window.__prashnaLiveSocketTest?.activeCount() === 1",
+            timeout=5000,
+        )
+
+        page.evaluate("window.__prashnaLiveSocketTest.closeActive()")
+        page.wait_for_function(
+            "window.__prashnaLiveSocketTest.activeCount() === 0",
+            timeout=5000,
+        )
+        ask_query_api(base_url, s["code"], text)
+
+        expect(page.locator("#queries")).to_contain_text(text, timeout=5000)
+    finally:
+        c.close()
 
 
 # ---------- UC-D-06 ----------

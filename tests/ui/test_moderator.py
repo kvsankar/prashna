@@ -5,6 +5,7 @@ Covers UC-M-01..11.
 from __future__ import annotations
 
 import secrets
+import time
 
 import httpx
 from playwright.sync_api import expect
@@ -250,8 +251,14 @@ def test_uc_m_05_live_counts_toggle(base_url, admin_setup, page):
         row.locator("details.menu > summary").click()
         row.locator("button", has_text="Show vote counts to audience").click()
         # Verify via API.
-        runs = c.get(f"/api/sessions/{s['code']}/quiz_runs").json()
-        assert runs[0]["show_live_counts"] is True
+        deadline = time.monotonic() + 5
+        while True:
+            runs = c.get(f"/api/sessions/{s['code']}/quiz_runs").json()
+            if runs[0]["show_live_counts"] is True:
+                break
+            if time.monotonic() >= deadline:
+                assert runs[0]["show_live_counts"] is True
+            time.sleep(0.1)
     finally:
         c.close()
 

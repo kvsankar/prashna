@@ -1,0 +1,704 @@
+version: 1
+
+tests:
+  - name: test_spec_classifies_public_bootstrap_as_future_delta
+    path: tests/api/test_docs_contracts.py
+    level: documentation-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - FR-AUTH-BOOTSTRAP
+      - AT-AUTH-BOOTSTRAP
+      - AT-OPS-CONFIG
+      - JT-OPS-RELEASE
+      - COMP-OPS
+      - COMP-AUTH
+      - TEST-DOCS-CONTRACT
+      - TEST-AUTH-BOUNDARY
+    oracle: SRS classifies public bootstrap hardening as future scope.
+
+  - name: test_traceability_file_classifies_accepted_obligations
+    path: tests/api/test_docs_contracts.py
+    level: documentation-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - AT-DOCS-TRACE
+      - AT-BUILD-CHECKS
+      - JT-OPS-RELEASE
+      - COMP-OPS
+      - TEST-DOCS-CONTRACT
+    oracle: Every accepted AT, JT, and TEST ID is classified below.
+
+  - name: test_auth_session_upload_and_ws_diagnostics
+    path: tests/api/test_diagnostics.py
+    level: api-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-DIAG-SUPPORT
+      - AT-NFR-ERRORS
+      - TEST-AUTH-BOUNDARY
+      - TEST-SESSION-LIFECYCLE
+      - TEST-UPLOAD-SECURITY
+      - TEST-DEPLOY-SMOKE
+    oracle: Auth, session, upload, and WebSocket events log without secrets.
+
+  - name: test_qna_quiz_feedback_diagnostics
+    path: tests/api/test_diagnostics.py
+    level: api-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-DIAG-SUPPORT
+      - AT-NFR-ERRORS
+      - TEST-QA-FLOW
+      - TEST-QUIZ-HISTORY
+    oracle: Moderator, feedback, and quiz-run events are diagnosable.
+
+  - name: test_websocket_send_failure_logs_safely
+    path: tests/api/test_diagnostics.py
+    level: unit-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-DIAG-SUPPORT
+      - TEST-LIVE-REFRESH
+      - TEST-DEPLOY-SMOKE
+    oracle: WebSocket send failures log without payload or exception secrets.
+
+  - name: test_diagnostic_helpers_filter_unsafe_field_names
+    path: tests/api/test_diagnostics.py
+    level: unit-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-DIAG-SUPPORT
+      - AT-NFR-ERRORS
+      - TEST-DEPLOY-SMOKE
+    oracle: All diagnostic helper entry points drop unsafe field names.
+
+  - name: test_sqlite_additive_migration_logs_execution
+    path: tests/api/test_diagnostics.py
+    level: api-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-DIAG-SUPPORT
+      - TEST-SQLITE-MIGRATION
+      - TEST-DEPLOY-SMOKE
+    oracle: Additive SQLite migrations emit startup diagnostics.
+
+  - name: test_live_socket_reconnect_test_hook_is_gated
+    path: tests/api/test_frontend_contracts.py
+    level: frontend-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - FR-LIVE-RECONNECT
+      - AT-LIVE-RECONNECT
+      - TEST-LIVE-REFRESH
+    oracle: Reconnect tests use a test build and localStorage gated hook.
+
+  - name: test_uc_d_05_reconnect_refetches_after_close
+    path: tests/ui/test_projector.py
+    level: browser-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - COMP-LIVE
+      - COMP-PROJECTOR
+      - FR-LIVE-BROADCAST
+      - FR-LIVE-RECONNECT
+      - AT-LIVE-BROADCAST
+      - AT-LIVE-RECONNECT
+      - JT-ROOM-LIVE
+      - JT-OPS-RELEASE
+      - TEST-LIVE-REFRESH
+      - TEST-PROJECTOR-STATE
+    oracle: Projector refetches and catches up within 5 s after reconnect.
+
+  - name: test_uc_x_03_baseline_headers_on_page_and_static_samples
+    path: tests/api/test_system.py
+    level: api-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-SEC-HEADERS
+      - AT-NFR-ERRORS
+      - TEST-DOCS-CONTRACT
+      - TEST-UPLOAD-SECURITY
+    oracle: Page and static samples carry baseline security headers.
+
+  - name: test_uc_x_03_baseline_headers_on_api_success_and_errors
+    path: tests/api/test_system.py
+    level: api-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-SEC-HEADERS
+      - AT-NFR-ERRORS
+      - TEST-DOCS-CONTRACT
+      - TEST-UPLOAD-SECURITY
+    oracle: API success and error samples carry baseline security headers.
+
+  - name: test_mobile_participants_can_complete_core_flow
+    path: tests/ui/test_participant.py
+    level: browser-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-UX-RESPONSIVE
+      - AT-QA-IDENTITY
+      - AT-QA-ASK
+      - AT-QA-VOTE
+      - AT-RUN-SUBMIT
+      - AT-FEEDBACK-SUBMIT
+      - JT-ROOM-LIVE
+      - TEST-QA-FLOW
+      - TEST-QUIZ-HISTORY
+    oracle: Two 360 px participant contexts complete core live-session work.
+
+  - name: test_mobile_participant_controls_are_keyboard_accessible
+    path: tests/ui/test_participant.py
+    level: browser-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-ACCESS-KEYBOARD
+      - AT-NFR-ACCESS
+      - AT-QA-ASK
+      - AT-QA-VOTE
+      - TEST-QA-FLOW
+    oracle: Mobile controls expose keyboard paths and accessible state.
+
+  - name: test_mobile_projector_keeps_live_state_visible
+    path: tests/ui/test_projector.py
+    level: browser-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - NFR-UX-RESPONSIVE
+      - AT-DISPLAY-JOIN
+      - AT-DISPLAY-QUIZ
+      - TEST-PROJECTOR-STATE
+      - TEST-LIVE-REFRESH
+    oracle: Projector join, query, and quiz state avoid 360 px overflow.
+
+  - name: test_fixed_secret_survives_restart_and_rotated_secret_expires
+    path: tests/api/test_secret_lifecycle.py
+    level: subprocess-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - COMP-AUTH
+      - COMP-OPS
+      - FR-OPS-CONFIG
+      - FR-AUTH-LOGIN
+      - AT-OPS-CONFIG
+      - AT-AUTH-LOGIN
+      - TEST-AUTH-BOUNDARY
+      - TEST-DEPLOY-SMOKE
+      - JT-OPS-RELEASE
+    oracle: Fixed secret preserves cookies; changed secret expires them safely.
+
+  - name: test_unset_secret_warns_and_invalidates_cookie_on_restart
+    path: tests/api/test_secret_lifecycle.py
+    level: subprocess-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - COMP-AUTH
+      - COMP-OPS
+      - FR-OPS-CONFIG
+      - AT-OPS-CONFIG
+      - TEST-AUTH-BOUNDARY
+      - TEST-DEPLOY-SMOKE
+      - JT-OPS-RELEASE
+    oracle: Unset secret logs warning and invalidates cookies across restart.
+
+  - name: test_uc_x_07_secret_key_lifecycle_subprocess_contract_present
+    path: tests/api/test_system.py
+    level: documentation-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - AT-OPS-CONFIG
+      - TEST-AUTH-BOUNDARY
+    oracle: UC-X-07 points to subprocess restart coverage instead of a skip.
+
+  - name: test_compose_config_reports_missing_secret_actionably
+    path: tests/ops/test_compose_smoke.py
+    level: deployment-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - COMP-OPS
+      - FR-OPS-CONFIG
+      - AT-OPS-CONFIG
+      - TEST-DEPLOY-SMOKE
+    oracle: Compose config reports a missing production secret actionably.
+
+  - name: test_compose_config_declares_health_and_persistent_paths
+    path: tests/ops/test_compose_smoke.py
+    level: deployment-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - COMP-OPS
+      - COMP-DATA
+      - COMP-UPLOADS
+      - FR-OPS-DEPLOY
+      - NFR-DATA-PERSISTENCE
+      - AT-OPS-DEPLOY
+      - AT-BUILD-CHECKS
+      - TEST-DEPLOY-SMOKE
+      - TEST-DOCS-CONTRACT
+    oracle: Compose config includes health, DB, upload, and volume contracts.
+
+  - name: test_setup_script_provisions_container_writable_persistent_paths
+    path: tests/ops/test_compose_smoke.py
+    level: deployment-contract
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - COMP-OPS
+      - COMP-DATA
+      - COMP-UPLOADS
+      - FR-OPS-DEPLOY
+      - NFR-DATA-PERSISTENCE
+      - AT-OPS-DEPLOY
+      - TEST-DEPLOY-SMOKE
+      - TEST-DOCS-CONTRACT
+    oracle: Bootstrap provisions DB and upload paths for the container UID.
+
+  - name: test_compose_deploy_smoke_preserves_state_and_logs_safely
+    path: tests/ops/test_compose_smoke.py
+    level: deployment-smoke
+    covers:
+      - PR-BASELINE-REMEDIATION
+      - COMP-OPS
+      - COMP-API
+      - COMP-LIVE
+      - COMP-DATA
+      - COMP-UPLOADS
+      - FR-OPS-DEPLOY
+      - FR-OPS-CONFIG
+      - FR-OPS-MIGRATE
+      - NFR-BUILD-CHECKS
+      - NFR-DATA-PERSISTENCE
+      - NFR-DIAG-SUPPORT
+      - AT-OPS-DEPLOY
+      - AT-OPS-CONFIG
+      - AT-OPS-MIGRATE
+      - AT-BUILD-CHECKS
+      - JT-OPS-RELEASE
+      - TEST-DEPLOY-SMOKE
+      - TEST-SQLITE-MIGRATION
+    oracle: Compose build, health, restart, persistence, and logs pass.
+
+  - name: test_uc_a_26_callback_allowed_logs_in
+    path: tests/api/test_github_auth.py
+    level: api-contract
+    covers:
+      - COMP-ADMIN
+      - COMP-AUTH
+      - FR-AUTH-GITHUB
+      - AT-AUTH-GITHUB
+      - TEST-AUTH-BOUNDARY
+    oracle: Allowlisted GitHub callback creates admin identity and cookie.
+
+  - name: test_uc_a_25_change_password_valid
+    path: tests/api/test_admin_auth.py
+    level: api-contract
+    covers:
+      - COMP-ADMIN
+      - COMP-AUTH
+      - FR-AUTH-PASSWORD
+      - AT-AUTH-PASSWORD
+      - TEST-AUTH-BOUNDARY
+    oracle: Password change replaces the old credential with the new one.
+
+  - name: test_uc_m_01_mod_key_header_ok
+    path: tests/api/test_moderator_auth.py
+    level: api-contract
+    covers:
+      - COMP-MODERATOR
+      - COMP-AUTH
+      - FR-MOD-ACCESS
+      - AT-MOD-ACCESS
+      - TEST-AUTH-BOUNDARY
+    oracle: A valid moderator key authorizes a delegated session action.
+
+  - name: test_uc_x_08_login_throttled_then_clears_on_success
+    path: tests/api/test_ratelimit.py
+    level: api-contract
+    covers:
+      - COMP-AUTH
+      - AT-NFR-RATE
+      - TEST-AUTH-BOUNDARY
+    oracle: Login floods trip rate limiting and success resets the bucket.
+
+  - name: test_uc_a_03_create_session_ok
+    path: tests/api/test_sessions.py
+    level: api-contract
+    covers:
+      - COMP-ADMIN
+      - COMP-DATA
+      - FR-SESSION-CREATE
+      - AT-SESSION-CREATE
+      - TEST-SESSION-LIFECYCLE
+    oracle: Admin session creation returns persisted title, status, and keys.
+
+  - name: test_uc_a_06_set_base_url_strips_slash
+    path: tests/api/test_sessions.py
+    level: api-contract
+    covers:
+      - COMP-ADMIN
+      - COMP-DATA
+      - FR-SESSION-METADATA
+      - AT-SESSION-METADATA
+      - TEST-SESSION-LIFECYCLE
+    oracle: Session participant base URL metadata is persisted canonically.
+
+  - name: test_uc_m_02_start_planning
+    path: tests/api/test_moderator_auth.py
+    level: api-contract
+    covers:
+      - COMP-MODERATOR
+      - COMP-DATA
+      - FR-SESSION-LIFECYCLE
+      - AT-SESSION-LIFECYCLE
+      - TEST-SESSION-LIFECYCLE
+    oracle: Starting a planning session moves it live with a timestamp.
+
+  - name: test_uc_a_07_delete_correct_confirm_ok
+    path: tests/api/test_sessions.py
+    level: api-contract
+    covers:
+      - COMP-ADMIN
+      - COMP-DATA
+      - FR-SESSION-DELETE
+      - AT-SESSION-DELETE
+      - TEST-SESSION-LIFECYCLE
+    oracle: Confirmed deletion removes the owned session and cascades data.
+
+  - name: test_uc_p_03_profile_fields_round_trip
+    path: tests/api/test_participants.py
+    level: api-contract
+    covers:
+      - COMP-PARTICIPANT
+      - COMP-DATA
+      - FR-QA-IDENTITY
+      - AT-QA-IDENTITY
+      - TEST-QA-FLOW
+    oracle: Anonymous attendee identity and profile fields persist per token.
+
+  - name: test_uc_p_04_ask_planning
+    path: tests/api/test_queries.py
+    level: api-contract
+    covers:
+      - COMP-PARTICIPANT
+      - COMP-DATA
+      - FR-QA-ASK
+      - AT-QA-ASK
+      - TEST-QA-FLOW
+    oracle: A participant can ask a visible question in a planning session.
+
+  - name: test_uc_p_05_toggle_vote
+    path: tests/api/test_queries.py
+    level: api-contract
+    covers:
+      - COMP-PARTICIPANT
+      - COMP-DATA
+      - FR-QA-VOTE
+      - AT-QA-VOTE
+      - TEST-QA-FLOW
+    oracle: Voting toggles the participant vote flag and visible count.
+
+  - name: test_uc_p_06_queries_sorted_unresponded_first_then_votes
+    path: tests/ui/test_participant.py
+    level: browser-contract
+    covers:
+      - COMP-PARTICIPANT
+      - FR-QA-SORT
+      - AT-QA-SORT
+      - TEST-QA-FLOW
+    oracle: Participant Q&A orders unresponded questions before answered ones.
+
+  - name: test_uc_m_08_respond_with_text
+    path: tests/api/test_queries.py
+    level: api-contract
+    covers:
+      - COMP-MODERATOR
+      - COMP-DATA
+      - FR-QA-RESPOND
+      - AT-QA-RESPOND
+      - TEST-QA-FLOW
+    oracle: Moderator response marks a question answered with response text.
+
+  - name: test_uc_m_09_remove
+    path: tests/api/test_queries.py
+    level: api-contract
+    covers:
+      - COMP-MODERATOR
+      - COMP-DATA
+      - FR-QA-REMOVE
+      - AT-QA-REMOVE
+      - TEST-QA-FLOW
+    oracle: Moderator removal marks a question hidden from participants.
+
+  - name: test_uc_p_13_submit_feedback
+    path: tests/api/test_feedback.py
+    level: api-contract
+    covers:
+      - COMP-PARTICIPANT
+      - COMP-DATA
+      - FR-FEEDBACK-SUBMIT
+      - AT-FEEDBACK-SUBMIT
+      - TEST-QA-FLOW
+    oracle: A participant feedback submission stores rating and comments.
+
+  - name: test_uc_m_12_summary_aggregates
+    path: tests/api/test_feedback.py
+    level: api-contract
+    covers:
+      - COMP-MODERATOR
+      - COMP-DATA
+      - FR-FEEDBACK-SUMMARY
+      - AT-FEEDBACK-SUMMARY
+      - TEST-QA-FLOW
+    oracle: Moderator feedback summary aggregates counts, averages, and rows.
+
+  - name: test_uc_a_14_add_question_default
+    path: tests/api/test_quizzes.py
+    level: api-contract
+    covers:
+      - COMP-QUIZLIB
+      - COMP-DATA
+      - FR-QUIZ-TEMPLATE
+      - AT-QUIZ-TEMPLATE
+      - TEST-QUIZ-HISTORY
+    oracle: Quiz authoring creates a default editable question template.
+
+  - name: test_uc_a_21_publish_valid
+    path: tests/api/test_quizzes.py
+    level: api-contract
+    covers:
+      - COMP-QUIZLIB
+      - COMP-DATA
+      - FR-QUIZ-PUBLISH
+      - AT-QUIZ-PUBLISH
+      - TEST-QUIZ-HISTORY
+    oracle: A valid draft quiz publishes to ready status.
+
+  - name: test_uc_a_20_upload_png
+    path: tests/api/test_quizzes.py
+    level: api-contract
+    covers:
+      - COMP-QUIZLIB
+      - COMP-UPLOADS
+      - FR-QUIZ-UPLOAD
+      - AT-QUIZ-UPLOAD
+      - TEST-UPLOAD-SECURITY
+    oracle: Authenticated quiz image upload stores a generated PNG URL.
+
+  - name: test_uc_x_06_edit_creates_v2
+    path: tests/api/test_quiz_runs.py
+    level: api-contract
+    covers:
+      - COMP-QUIZLIB
+      - COMP-DATA
+      - FR-QUIZ-VERSION
+      - AT-QUIZ-VERSION
+      - JT-QUIZ-HISTORY
+      - TEST-QUIZ-HISTORY
+    oracle: Editing a queued quiz creates a new version for later runs.
+
+  - name: test_uc_m_03_queue_ready_quiz
+    path: tests/api/test_quiz_runs.py
+    level: api-contract
+    covers:
+      - COMP-MODERATOR
+      - COMP-QUIZLIB
+      - FR-RUN-QUEUE
+      - AT-RUN-QUEUE
+      - TEST-QUIZ-HISTORY
+    oracle: Moderator queues a ready quiz run with a captured version number.
+
+  - name: test_uc_m_05_advance_next_prev
+    path: tests/api/test_quiz_runs.py
+    level: api-contract
+    covers:
+      - COMP-MODERATOR
+      - COMP-QUIZLIB
+      - FR-RUN-PROGRESS
+      - AT-RUN-PROGRESS
+      - TEST-QUIZ-HISTORY
+    oracle: Moderator can advance quiz progress forward and backward.
+
+  - name: test_uc_p_08_submit_ok
+    path: tests/api/test_quiz_submissions.py
+    level: api-contract
+    covers:
+      - COMP-PARTICIPANT
+      - COMP-QUIZLIB
+      - FR-RUN-SUBMIT
+      - AT-RUN-SUBMIT
+      - TEST-QUIZ-HISTORY
+    oracle: Participant answer submission succeeds for the live question.
+
+  - name: test_uc_p_09_reveal_shows_correct_and_results
+    path: tests/api/test_quiz_submissions.py
+    level: api-contract
+    covers:
+      - COMP-PARTICIPANT
+      - COMP-QUIZLIB
+      - FR-RUN-RESULTS
+      - AT-RUN-RESULTS
+      - TEST-QUIZ-HISTORY
+    oracle: Revealed quiz state exposes correctness and aggregate results.
+
+  - name: test_uc_d_01_projector_renders_basic_elements
+    path: tests/ui/test_projector.py
+    level: browser-contract
+    covers:
+      - COMP-PROJECTOR
+      - FR-DISPLAY-JOIN
+      - AT-DISPLAY-JOIN
+      - TEST-PROJECTOR-STATE
+    oracle: Projector join display renders title, code, origin, and QR.
+
+  - name: test_uc_d_04_live_with_quiz_run_shows_quiz_section
+    path: tests/ui/test_projector.py
+    level: browser-contract
+    covers:
+      - COMP-PROJECTOR
+      - COMP-QUIZLIB
+      - FR-DISPLAY-QUIZ
+      - AT-DISPLAY-QUIZ
+      - TEST-PROJECTOR-STATE
+    oracle: Projector displays the quiz section when a quiz run is live.
+
+existing_evidence:
+  - area: auth_boundary
+    source: existing-test
+    tests:
+      - tests/api/test_admin_auth.py
+      - tests/api/test_github_auth.py
+      - tests/api/test_moderator_auth.py
+      - tests/api/test_ratelimit.py
+    ids:
+      - AT-AUTH-BOOTSTRAP
+      - AT-AUTH-LOGIN
+      - AT-AUTH-GITHUB
+      - AT-AUTH-PASSWORD
+      - AT-MOD-ACCESS
+      - AT-NFR-RATE
+      - TEST-AUTH-BOUNDARY
+    oracle: status codes, cookies, rows, throttles, and auth boundaries.
+
+  - area: session_lifecycle
+    source: existing-test
+    tests:
+      - tests/api/test_sessions.py
+      - tests/api/test_moderator_auth.py
+      - tests/ui/test_landing_admin.py
+    ids:
+      - AT-SESSION-CREATE
+      - AT-SESSION-METADATA
+      - AT-SESSION-LIFECYCLE
+      - AT-SESSION-DELETE
+      - TEST-SESSION-LIFECYCLE
+    oracle: persisted state, owner checks, broadcast hints, and UI state.
+
+  - area: qa_feedback
+    source: existing-test
+    tests:
+      - tests/api/test_participants.py
+      - tests/api/test_queries.py
+      - tests/api/test_feedback.py
+      - tests/ui/test_participant.py
+      - tests/ui/test_moderator.py
+    ids:
+      - AT-QA-IDENTITY
+      - AT-QA-ASK
+      - AT-QA-VOTE
+      - AT-QA-SORT
+      - AT-QA-RESPOND
+      - AT-QA-REMOVE
+      - AT-FEEDBACK-SUBMIT
+      - AT-FEEDBACK-SUMMARY
+      - JT-ROOM-LIVE
+      - TEST-QA-FLOW
+    oracle: participant rows, visible lists, vote counts, and summaries.
+
+  - area: quiz_history
+    source: existing-test
+    tests:
+      - tests/api/test_quizzes.py
+      - tests/api/test_quiz_runs.py
+      - tests/api/test_quiz_submissions.py
+      - tests/ui/test_quizzes.py
+      - tests/ui/test_moderator.py
+      - tests/ui/test_participant.py
+    ids:
+      - AT-QUIZ-TEMPLATE
+      - AT-QUIZ-PUBLISH
+      - AT-QUIZ-UPLOAD
+      - AT-QUIZ-VERSION
+      - AT-RUN-QUEUE
+      - AT-RUN-PROGRESS
+      - AT-RUN-SUBMIT
+      - AT-RUN-RESULTS
+      - JT-QUIZ-HISTORY
+      - TEST-QUIZ-HISTORY
+    oracle: validation, upload URLs, version rows, submissions, and reports.
+
+  - area: display_and_live_existing
+    source: existing-test
+    tests:
+      - tests/api/test_system.py
+      - tests/api/test_frontend_contracts.py
+      - tests/ui/test_projector.py
+      - tests/ui/test_participant.py
+    ids:
+      - AT-DISPLAY-JOIN
+      - AT-DISPLAY-QUIZ
+      - AT-LIVE-BROADCAST
+    oracle: projector DOM state, WebSocket hints, and stale refresh ordering.
+
+  - area: operations_existing
+    source: existing-test
+    tests:
+      - tests/api/test_system.py
+      - tests/api/test_docs_contracts.py
+      - tests/api/test_quizzes.py
+    ids:
+      - AT-OPS-MIGRATE
+      - AT-BUILD-CHECKS
+      - AT-DOCS-TRACE
+      - AT-NFR-ERRORS
+      - TEST-UPLOAD-SECURITY
+      - TEST-SQLITE-MIGRATION
+      - TEST-DOCS-CONTRACT
+    oracle: migration fixture, docs contracts, upload errors, and checks.
+
+planned_remediation:
+  - owner: PR-BASELINE-REMEDIATION
+    source: planned-remediation
+    ids:
+      - AT-LIVE-RECONNECT
+      - TEST-LIVE-REFRESH
+    oracle: direct reconnect refetch evidence within 5 s.
+
+  - owner: PR-BASELINE-REMEDIATION
+    source: planned-remediation
+    ids:
+      - TEST-UPLOAD-SECURITY
+    oracle: API, page, static, and upload security-header samples.
+
+  - owner: PR-BASELINE-REMEDIATION
+    source: planned-remediation
+    ids:
+      - AT-NFR-ACCESS
+      - TEST-PROJECTOR-STATE
+    oracle: 360 px participant flow and keyboard/display checks.
+
+  - owner: PR-BASELINE-REMEDIATION
+    source: planned-remediation
+    ids:
+      - AT-OPS-CONFIG
+    oracle: fixed, unset, and changed secret behavior across restart.
+
+  - owner: PR-BASELINE-REMEDIATION
+    source: planned-remediation
+    ids:
+      - NFR-BUILD-CHECKS
+      - NFR-DATA-PERSISTENCE
+      - AT-OPS-DEPLOY
+      - JT-OPS-RELEASE
+      - TEST-DEPLOY-SMOKE
+    oracle: compose health, restart, persistence, and startup diagnostics.
+
+residual_risks: []

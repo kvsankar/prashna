@@ -109,6 +109,18 @@ that map 1:1 to a pytest function.
   `<repo>/prashna.db`). Used by Docker and tests.
 - `PRASHNA_UPLOADS_DIR` — override uploads dir.
 
+## Diagnostics
+
+Prashna emits structured operator diagnostics through the Python `prashna`
+logger. Records use `diag_event` plus safe context such as outcome, route
+area, row ids, session code, and upload size or extension. They deliberately
+omit passwords, cookies, OAuth tokens, moderator keys, participant contact
+fields, uploaded bytes, filenames, and user-entered Q&A text.
+
+Production operators should retain application or container logs for at least
+7 days. Retention is owned by the host log driver, journald policy, or external
+log shipper; Prashna does not store diagnostic logs in the SQLite database.
+
 ## Project layout
 
 ```
