@@ -82,10 +82,18 @@
         <label for="my-learning-goal" class="small muted">Learning goal</label>
         <textarea id="my-learning-goal" maxlength="500" placeholder="What do you want to get from this session?"></textarea>
       </div>
-      <div class="muted small">Optional. Visible to the host and moderators for this session.</div>
+      <div class="row" style="margin-top: 10px;">
+        <span class="muted small">
+          Optional. Visible to the host and moderators for this session.
+        </span>
+        <div class="spacer"></div>
+        <button id="profile-submit" type="button" class="primary">
+          Submit profile
+        </button>
+      </div>
     </details>
 
-    <details class="card" id="feedback-card" open>
+    <details class="card" id="feedback-card" open style="display:none;">
       <summary class="card-head">
         <h2>Rate this session</h2>
         <span class="fb-chevron" aria-hidden="true"></span>

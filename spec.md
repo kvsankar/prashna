@@ -328,22 +328,23 @@ accepted behavior.
   -  Minimal guarantees: Invalid question or vote attempts do not create
     duplicate or corrupt rows.
   -  Success guarantees: Participant can identify themselves within the session,
-    add optional profile details including a photograph, ask bounded questions,
-    vote once per question, and see participant-visible questions sorted by
-    current rules.
+    submit and resubmit optional profile details including a photograph, ask
+    bounded questions, vote once per question, and see participant-visible
+    questions sorted by current rules.
   - Main success scenario:
     1. Participant opens a session URL.
     2. System creates or resolves a per-session participant identity.
-    3. Participant optionally sets display details and a photograph.
-    4. Participant writes a question.
-    5. System stores the question under the session.
-    6. System broadcasts a Q&A refresh hint.
-    7. Participant views visible questions.
-    8. Participant votes for another question.
-    9. System updates the visible vote count.
+    3. Participant optionally enters display details and a photograph.
+    4. Participant submits the profile.
+    5. Participant writes a question.
+    6. System stores the question under the session.
+    7. System broadcasts a Q&A refresh hint.
+    8. Participant views visible questions.
+    9. Participant votes for another question.
+    10. System updates the visible vote count.
   -  Alternate flows: Participant revisits with the same cookie. Participant
-    updates or clears display details or photograph. Participant removes a
-    prior vote. Moderator responses appear with the question.
+    resubmits, updates, or clears display details or photograph. Participant
+    removes a prior vote. Moderator responses appear with the question.
   -  Error/exception flows: Ended sessions are read-only. Empty or oversized
     question text is rejected. Removed questions disappear from participant
     lists. Duplicate vote conflicts resolve to a controlled state.
@@ -395,24 +396,27 @@ accepted behavior.
     summary view.
   - Goal: Give session feedback without an account.
   - Scope: Product/system baseline.
-  - Trigger: Participant reaches the feedback control during or after a session.
-  - Preconditions: Participant identity is resolved for the session.
+  - Trigger: Moderator opens the feedback/rating control for the session.
+  -  Preconditions: Participant identity is resolved for the session. Moderator
+    has enabled participant feedback.
   - Minimal guarantees: Failed feedback writes do not remove prior feedback.
   -  Success guarantees: Participant can submit, update, clear, and confirm
     their own feedback state.
   - Main success scenario:
-    1. Participant opens the feedback control.
-    2. Participant selects a rating.
-    3. Participant enters optional feedback text.
-    4. System stores the participant feedback for the session.
-    5. Participant sees the saved state.
-    6. Moderator opens the feedback summary.
-    7. System shows aggregate feedback.
+    1. Moderator enables rating for the session.
+    2. Participant page shows the feedback control.
+    3. Participant selects a rating.
+    4. Participant enters optional feedback text.
+    5. System stores the participant feedback for the session.
+    6. Participant sees the saved state.
+    7. Moderator opens the feedback summary.
+    8. System shows aggregate feedback.
   -  Alternate flows: Participant updates a prior rating. Participant clears
-    feedback through confirmation. Moderator views summary after participants
-    submit responses.
-  -  Error/exception flows: Invalid rating is rejected. Oversized text is
-    rejected. Participant can only mutate their own feedback.
+    feedback through confirmation. Moderator closes and reopens feedback.
+    Moderator views summary after participants submit responses.
+  -  Error/exception flows: Feedback submitted before moderator enablement is
+    rejected. Invalid rating is rejected. Oversized text is rejected.
+    Participant can only mutate their own feedback.
   -  Postconditions: Feedback summary reflects participant-submitted ratings and
     comments allowed by the current baseline.
   - Frequency/importance: Common after training sessions.
@@ -559,7 +563,7 @@ accepted behavior.
   live-room credentials.
   - Trace: UC-SESSION-ADMIN, UC-MOD-RUNROOM, FEAT-MOD-DELEGATE, AT-MOD-ACCESS.
 -  FR-QA-IDENTITY: Prashna shall resolve a per-session anonymous participant
-  identity with optional profile details and photograph.
+  identity and update optional profile details and photograph when submitted.
   - Trace: UC-PARTICIPANT-QA, FEAT-QA-LIVE, AT-QA-IDENTITY.
 - FR-QA-ASK: Prashna shall store valid participant questions for a live session.
   - Trace: UC-PARTICIPANT-QA, FEAT-QA-LIVE, AT-QA-ASK.
@@ -599,7 +603,7 @@ accepted behavior.
   -  Trace: UC-PARTICIPANT-QUIZ, UC-DISPLAY-PROJECTOR, FEAT-QUIZ-RUN,
     AT-RUN-RESULTS.
 -  FR-FEEDBACK-SUBMIT: Prashna shall store participant feedback for the current
-  session.
+  session only after moderator enablement.
   - Trace: UC-PARTICIPANT-FEEDBACK, FEAT-FEEDBACK-RATE, AT-FEEDBACK-SUBMIT.
 -  FR-FEEDBACK-SUMMARY: Prashna shall summarize session feedback for moderator
   review.
@@ -748,9 +752,9 @@ accepted behavior.
   owner-only actions remain blocked, satisfying UC-MOD-RUNROOM plus
   FR-MOD-ACCESS.
 -  AT-QA-IDENTITY: Given a participant opens a session link, when no participant
-  token exists or profile details change, then a per-session anonymous identity
-  is created or updated with optional text and photograph details, satisfying
-  UC-PARTICIPANT-QA plus FR-QA-IDENTITY plus NFR-PRIVACY-ANON.
+  token exists or profile details are submitted, then a per-session anonymous
+  identity is created or updated with optional text and photograph details,
+  satisfying UC-PARTICIPANT-QA plus FR-QA-IDENTITY plus NFR-PRIVACY-ANON.
 -  AT-QA-ASK: Given a live session, when a participant submits valid question
   text, then the question becomes visible to participants and satisfies
   UC-PARTICIPANT-QA plus FR-QA-ASK.
@@ -790,9 +794,10 @@ accepted behavior.
 -  AT-RUN-RESULTS: Given a submitted quiz question, when the moderator reveals
   results, then participant or projector results follow reveal and count rules,
   satisfying UC-PARTICIPANT-QUIZ plus FR-RUN-RESULTS.
--  AT-FEEDBACK-SUBMIT: Given a participant identity, when the participant
-  submits or clears feedback, then their own feedback state changes and
-  satisfies UC-PARTICIPANT-FEEDBACK plus FR-FEEDBACK-SUBMIT.
+-  AT-FEEDBACK-SUBMIT: Given moderator-enabled feedback and a participant
+  identity, when the participant submits or clears feedback, then their own
+  feedback state changes; before moderator enablement, submission is rejected,
+  satisfying UC-PARTICIPANT-FEEDBACK plus FR-FEEDBACK-SUBMIT.
 -  AT-FEEDBACK-SUMMARY: Given submitted feedback, when a moderator opens the
   summary, then aggregate session feedback appears and satisfies
   UC-PARTICIPANT-FEEDBACK plus FR-FEEDBACK-SUMMARY.

@@ -121,11 +121,17 @@ function renderLifecycle(): void {
   $("#session-status").className = "badge badge-" + status;
   const actions = $("#lifecycle-actions"); actions.innerHTML = "";
   const hint = $("#lifecycle-hint");
+  const feedbackBtn = el("button", { class: "ghost small" },
+    sessionState.feedback_enabled ? "Close rating" : "Open rating");
+  feedbackBtn.addEventListener("click", () => {
+    void setFeedbackEnabled(!sessionState?.feedback_enabled);
+  });
   if (status === "planning") {
     hint.textContent = "Session is in planning. Start it when the audience is ready.";
     const btn = el("button", { class: "primary small" }, "Start session");
     btn.addEventListener("click", () => void transition("start"));
     actions.appendChild(btn);
+    actions.appendChild(feedbackBtn);
   } else if (status === "live") {
     hint.textContent = "Session is live. End it when you're done.";
     const btn = el("button", { class: "danger ghost small" }, "End session");
@@ -134,9 +140,23 @@ function renderLifecycle(): void {
       void transition("end");
     });
     actions.appendChild(btn);
+    actions.appendChild(feedbackBtn);
   } else {
     hint.textContent = "Session has ended. Read-only from here.";
+    actions.appendChild(feedbackBtn);
   }
+}
+
+async function setFeedbackEnabled(enabled: boolean): Promise<void> {
+  try {
+    await api(`/api/sessions/${CODE}/feedback_enabled`, {
+      method: "POST",
+      headers: modHeaders(),
+      body: { enabled },
+    });
+    await loadSession();
+    toast(enabled ? "Rating opened" : "Rating closed");
+  } catch (e) { errorToast((e as Error).message); }
 }
 
 async function transition(action: string): Promise<void> {

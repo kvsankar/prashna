@@ -1,6 +1,6 @@
 # SDLC Work In Progress
 
-Last Updated: 2026-07-19T19:51:03Z
+Last Updated: 2026-07-20T01:07:04Z
 Updated By: agent
 Current Stage: code-create
 Current Gate: verification-passed
@@ -13,78 +13,83 @@ Build and release, Documentation, UI and accessibility
 
 ## Resume Summary
 
-Small feature slice: participant profiles now support an optional photograph.
-The existing participant profile form did not ask for a photo. The change adds
-a participant-scoped image upload endpoint, stores the uploaded URL on the
-participant record, shows the photo on participant reload, allows clearing it,
-and includes it in the moderator participant-profile panel.
+Small follow-up slice after participant profile photographs:
 
-`spec.md` and `design.md` were updated to reflect the new optional photograph
-requirement and data/interface behavior. Because those approved artifacts
-changed, the approval ledger should be refreshed only after explicit human
-approval.
+1. Participant profile updates now have an explicit `Submit profile` action.
+   Resubmission updates the same participant record, including a newly selected
+   optional photograph.
+2. Session feedback/rating is now disabled by default and opened or closed by
+   moderator control. Participant feedback submissions are rejected server-side
+   until rating is opened.
+
+`spec.md` and `design.md` were updated for the explicit profile submission and
+moderator-enabled feedback contracts. Because those approved artifacts changed,
+the approval ledger should be refreshed only after explicit human approval.
 
 ## Current Artifacts
 
 - Process decision: `.sdlc/process-decisions.yaml`, unchanged.
   Records brownfield entry plus Standard review level and extra checks.
 - Spec: `spec.md`, revised.
-  Participant identity/profile requirements now include optional photograph.
-  Draft check passed 7/7.
+  Participant identity/profile requirements now require explicit submission;
+  feedback submission now depends on moderator enablement. Draft check passed
+  7/7.
 - Design: `design.md`, revised.
-  Participant data and upload-file responsibilities now include profile
-  photographs. Draft check passed 13/13.
+  Session data now includes the feedback-enabled flag, and participant room
+  behavior reflects explicit profile submission and moderator-enabled feedback.
+  Draft check passed 13/13.
 - Plan: `plan.md`, unchanged.
   This was a small approved brownfield feature slice; no separate breakdown was
   created.
 - Implementation: app, frontend source, and tests revised.
-  `frontend/dist/` was rebuilt locally for UI verification but remains ignored
-  by Git.
+  `frontend/dist/` is ignored by Git and is rebuilt by test fixtures.
 - Approval ledger: `.sdlc/approvals.yaml`, stale for `spec.md` and
   `design.md` after this feature update.
 
 ## Decisions And Assumptions
 
-- Decision: participant photos use the existing image-upload constraints:
-  `.png`, `.jpg`, `.jpeg`, `.gif`, and `.webp`, with the existing 5 MB limit.
-- Decision: participants cannot set arbitrary `photo_url` values through the
-  profile PATCH route; photos must be uploaded through the participant photo
-  endpoint and can be cleared with `photo_url: null`.
-- Decision: the admin upload route now reuses the shared upload helper while
-  retaining admin authentication.
-- Assumption: retaining uploaded files after a participant clears or replaces a
-  photo is acceptable for this small feature; no existing cleanup lifecycle was
-  present.
+- Decision: profile text fields no longer autosave; the participant must click
+  `Submit profile`. Selecting a photo previews it locally and uploads it as
+  part of that same submit action.
+- Decision: clearing an already saved photograph remains an immediate explicit
+  action.
+- Decision: feedback is session-scoped and disabled by default. Moderators can
+  open or close rating from the lifecycle controls.
+- Decision: feedback POST and DELETE are rejected while feedback is closed,
+  even if a participant manually calls the API.
+- Assumption: existing feedback summaries remain visible to moderators after
+  rating is closed; closing prevents further participant mutation.
 
 ## Check And Review Evidence
 
-- 2026-07-19: `check_update.py` emitted no Sarathi update notice.
-- 2026-07-19: `check_spec.py --spec spec.md --json` passed 7/7.
-- 2026-07-19: `check_design.py --design design.md --spec spec.md --json`
+- 2026-07-20: `check_spec.py --spec spec.md --json` passed 7/7.
+- 2026-07-20: `check_design.py --design design.md --spec spec.md --json`
   passed 13/13.
-- 2026-07-19: `npm run lint` passed TypeScript, ESLint, and Stylelint.
-- 2026-07-19: focused participant photo API tests passed: profile round trip,
-  upload and clear, unsupported type rejection, direct URL rejection, moderator
-  profile summary, and additive migration.
-- 2026-07-19: affected UI tests passed: participant profile persistence with
-  photo upload/clear and moderator profile photo visibility.
-- 2026-07-19: `uv run pytest tests/api -q` passed the full API suite.
+- 2026-07-20: `npm run lint` passed TypeScript, ESLint, and Stylelint.
+- 2026-07-20: `uv run ruff check .` passed.
+- 2026-07-20: focused API tests passed for feedback enablement, session
+  payload shape, participant session lookup, diagnostics, and additive
+  migration.
+- 2026-07-20: affected UI tests passed for profile submit/resubmit behavior,
+  feedback submission/clear, moderator rating control, and mobile paths.
+- 2026-07-20: `uv run pytest tests/api -q` passed the full API suite.
 
 ## Results And Feedback
 
-Expected Result: candidates can optionally submit a photograph with their
-profile, and moderators can see it with the rest of the submitted profile.
+Expected Result: participants have an obvious profile submit action, and the
+rating widget appears only after moderator enablement.
 Feedback From: local implementation checks and browser/API tests.
 Feedback Status: incorporated
-Current Work Group: participant-profile-photo
+Current Work Group: profile-submit-feedback-toggle
 Current Work: ready for human review and approval refresh.
 Parallel Limit: 1
-What Changed: optional participant photograph storage, upload API, participant
-UI controls, moderator rendering, migration coverage, and related tests.
+What Changed: profile save UX, participant photo save timing, feedback-enabled
+session flag, moderator toggle, backend feedback enforcement, migration
+coverage, and tests.
 Documents To Update: `spec.md`, `design.md`, `.sdlc/wip.md`, backend,
 frontend, and test files were updated.
 Stop Conditions: human rejection, failed refreshed checks, new privacy
-requirement, or request for uploaded-file lifecycle cleanup.
+requirement, or request for a different feedback lifecycle policy.
 
 ## Open Questions And Blockers
 

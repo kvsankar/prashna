@@ -420,6 +420,7 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
         assert "session_version" in columns["users"]
         assert "github_id" in columns["users"]
         assert "participant_base_url" in columns["sessions"]
+        assert "feedback_enabled" in columns["sessions"]
         assert "photo_url" in columns["participants"]
         assert "graded" in columns["quiz_questions"]
         assert "graded" in columns["quiz_version_questions"]

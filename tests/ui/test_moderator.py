@@ -439,6 +439,10 @@ def test_uc_m_12_feedback_panel_shows_summary(base_url, admin_setup, page):
     """UC-M-12: the moderator Feedback panel shows the average + comments."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-M12 {secrets.token_hex(3)}")
+    c.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        json={"enabled": True},
+    ).raise_for_status()
     # A participant submits feedback (own client → own voter_token).
     with httpx.Client(base_url=base_url) as pc:
         pc.post(f"/api/sessions/{s['code']}/feedback",
@@ -449,6 +453,32 @@ def test_uc_m_12_feedback_panel_shows_summary(base_url, admin_setup, page):
         page.wait_for_selector("#feedback-card:visible")
         expect(page.locator("#feedback-summary")).to_contain_text("5", timeout=5000)
         expect(page.locator("#feedback-list")).to_contain_text("Great pace")
+    finally:
+        c.close()
+
+
+def test_uc_m_12_moderator_controls_rating_widget(base_url, admin_setup, page):
+    """UC-M-12: moderator opens participant rating from the lifecycle tools."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M12toggle {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#feedback-card", state="attached")
+        expect(page.locator("#feedback-card")).to_be_hidden()
+
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#lifecycle-card:visible")
+        page.locator(
+            "#lifecycle-actions button",
+            has_text="Open rating",
+        ).click()
+        expect(
+            page.locator("#lifecycle-actions button", has_text="Close rating")
+        ).to_be_visible(timeout=5000)
+
+        page.goto(f"{base_url}/s/{s['code']}")
+        expect(page.locator("#feedback-card")).to_be_visible(timeout=5000)
     finally:
         c.close()
 

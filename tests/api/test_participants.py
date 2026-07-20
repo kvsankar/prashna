@@ -21,6 +21,7 @@ def test_uc_p_01_get_session_ok(client, make_session):
     assert body["status"] == "planning"
     assert "created_at" in body
     assert "participant_base_url" in body
+    assert body["feedback_enabled"] is False
 
 
 def test_uc_p_01_get_unknown_404(client):
