@@ -9,11 +9,78 @@ def _ws_recv_types(ws, n=1):
     return [json.loads(ws.receive_text()) for _ in range(n)]
 
 
+def _enable_feedback(admin_client, code: str) -> None:
+    r = admin_client.post(
+        f"/api/sessions/{code}/feedback_enabled",
+        json={"enabled": True},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"feedback_enabled": True}
+
+
 # ---------- UC-P-13: submit feedback ----------
+
+def test_uc_p_13_feedback_disabled_by_default(
+    client,
+    admin_client,
+    make_session,
+):
+    """A participant cannot submit feedback until a moderator opens rating."""
+    s = make_session()
+    admin_client.cookies.clear()
+    r = client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4})
+    assert r.status_code == 403
+    assert r.json() == {"detail": "feedback is not enabled"}
+
+
+def test_uc_m_12_feedback_toggle_by_moderator(
+    client,
+    admin_client,
+    make_session,
+    mod_headers,
+):
+    """A moderator can open and close participant ratings."""
+    s = make_session()
+    admin_client.cookies.clear()
+    r = client.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        headers=mod_headers(s["mod_key"]),
+        json={"enabled": True},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"feedback_enabled": True}
+
+    r = client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4})
+    assert r.status_code == 200, r.text
+
+    r = client.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        headers=mod_headers(s["mod_key"]),
+        json={"enabled": False},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"feedback_enabled": False}
+    assert client.post(
+        f"/api/sessions/{s['code']}/feedback",
+        json={"rating": 5},
+    ).status_code == 403
+
+
+def test_uc_m_12_feedback_toggle_broadcasts_session_state(
+    admin_client,
+    make_session,
+):
+    """Opening rating notifies connected participants through session_state."""
+    s = make_session()
+    with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
+        _enable_feedback(admin_client, s["code"])
+        assert _ws_recv_types(ws) == [{"type": "session_state"}]
+
 
 def test_uc_p_13_submit_feedback(client, admin_client, make_session):
     """A participant submits a rating + comments → 200 echoing the row."""
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     r = client.post(f"/api/sessions/{s['code']}/feedback",
                     json={"rating": 4, "went_well": "Clear pace", "to_improve": "More demos"})
@@ -28,6 +95,7 @@ def test_uc_p_13_submit_feedback(client, admin_client, make_session):
 def test_uc_p_13_rating_only(client, admin_client, make_session):
     """Comments are optional — a bare rating is accepted."""
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     r = client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 5})
     assert r.status_code == 200
@@ -38,10 +106,11 @@ def test_uc_p_13_rating_only(client, admin_client, make_session):
 
 
 def test_uc_p_13_allowed_when_ended(client, admin_client, make_session):
-    """Feedback is allowed in any status (the card is always available)."""
+    """Feedback can be opened after a session has ended."""
     s = make_session()
     admin_client.post(f"/api/sessions/{s['code']}/start")
     admin_client.post(f"/api/sessions/{s['code']}/end")
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     r = client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 3})
     assert r.status_code == 200
@@ -50,6 +119,7 @@ def test_uc_p_13_allowed_when_ended(client, admin_client, make_session):
 def test_uc_p_13_upsert_one_per_participant(client, admin_client, make_session):
     """Resubmitting updates the same row rather than creating a second."""
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 2, "went_well": "ok"})
     r = client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 5, "went_well": "great"})
@@ -73,6 +143,7 @@ def test_uc_p_13_every_submission_is_versioned(client, admin_client, make_sessio
     from app import models as _m
 
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     for rating in (3, 4, 5):
         client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": rating})
@@ -85,6 +156,7 @@ def test_uc_p_13_every_submission_is_versioned(client, admin_client, make_sessio
 
 def test_uc_p_13_rating_out_of_range_400(client, admin_client, make_session):
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     for bad in (0, 6, -1):
         r = client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": bad})
@@ -94,6 +166,7 @@ def test_uc_p_13_rating_out_of_range_400(client, admin_client, make_session):
 
 def test_uc_p_13_rating_missing_or_non_int_400(client, admin_client, make_session):
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     for bad in ({}, {"rating": "4"}, {"rating": 4.5}, {"rating": True}):
         r = client.post(f"/api/sessions/{s['code']}/feedback", json=bad)
@@ -110,6 +183,7 @@ def test_uc_p_13_delete_retracts_feedback(client, admin_client, make_session, mo
     from app import models as _m
 
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4, "went_well": "x"})
     assert client.get(f"/api/sessions/{s['code']}/feedback/mine").json()["rating"] == 4
@@ -127,6 +201,7 @@ def test_uc_p_13_delete_retracts_feedback(client, admin_client, make_session, mo
 def test_uc_p_13_mine_null_then_value(client, admin_client, make_session):
     """GET .../feedback/mine is null before submitting, then echoes the row."""
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     assert client.get(f"/api/sessions/{s['code']}/feedback/mine").json() is None
     client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4})
@@ -139,6 +214,7 @@ def test_uc_p_13_mine_null_then_value(client, admin_client, make_session):
 def test_uc_m_12_summary_aggregates(client, admin_client, make_session, mod_headers):
     """Summary returns count, average, distribution, and per-response items."""
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     # Two distinct participants (separate cookie jars via clear between).
     admin_client.cookies.clear()
     client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 5, "went_well": "A"})
@@ -174,6 +250,7 @@ def test_uc_m_12_summary_owner_cookie(admin_client, make_session):
 def test_uc_m_12_summary_includes_author_name(client, admin_client, make_session, mod_headers):
     """A named participant's feedback carries author_name in the summary."""
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     client.patch(f"/api/sessions/{s['code']}/me", json={"name": "Dana"})
     client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4, "went_well": "ok"})
@@ -187,6 +264,7 @@ def test_uc_m_12_summary_includes_author_name(client, admin_client, make_session
 def test_uc_x_01_feedback_broadcast(client, admin_client, make_session):
     """Submitting feedback broadcasts {type: 'feedback'}."""
     s = make_session()
+    _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
     with client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 5})

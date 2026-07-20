@@ -179,8 +179,9 @@ Readable component responsibilities:
   actions.
 - Moderator Cockpit handles delegated live-room control, Q&A triage, quiz
   playback, and feedback summaries.
-- Participant Room handles anonymous identity, questions, votes, quiz answers,
-  optional profiles with photographs, and feedback.
+- Participant Room handles anonymous identity, explicit profile submission,
+  questions, votes, quiz answers, optional profile photographs, and
+  moderator-enabled feedback.
 - Projector Display presents public join details and current room state.
 - Quiz Library handles reusable templates, image attachment, validation,
   publication, and immutable launch snapshots.
@@ -401,9 +402,10 @@ erDiagram
   session version, and creation time. Supports FR-AUTH-BOOTSTRAP,
   FR-AUTH-LOGIN, FR-AUTH-GITHUB, and FR-AUTH-PASSWORD.
 - Session: live event with code, title, moderator key, owner, lifecycle status,
-  participant base URL, timestamps, queries, quiz runs, participants, feedback,
-  and feedback versions. Supports FR-SESSION-CREATE, FR-SESSION-LIFECYCLE,
-  FR-MOD-ACCESS, FR-DISPLAY-JOIN, and FR-SESSION-DELETE.
+  participant base URL, feedback-enabled flag, timestamps, queries, quiz runs,
+  participants, feedback, and feedback versions. Supports FR-SESSION-CREATE,
+  FR-SESSION-LIFECYCLE, FR-MOD-ACCESS, FR-DISPLAY-JOIN,
+  FR-FEEDBACK-SUBMIT, and FR-SESSION-DELETE.
 - Participant: per-session anonymous identity keyed by voter token, optional
   profile fields, optional photograph URL, and seen timestamps. Supports
   FR-QA-IDENTITY,

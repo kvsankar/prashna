@@ -126,6 +126,10 @@ def test_qna_quiz_feedback_diagnostics(
         json={"removed": True},
     )
 
+    admin_client.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        json={"enabled": True},
+    )
     client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 5})
     admin_client.get(f"/api/sessions/{s['code']}/feedback/summary")
 

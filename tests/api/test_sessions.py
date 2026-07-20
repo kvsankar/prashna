@@ -12,6 +12,7 @@ def test_uc_a_03_create_session_ok(admin_client):
     body = r.json()
     assert body["title"] == "Test"
     assert body["status"] == "planning"
+    assert body["feedback_enabled"] is False
     assert len(body["code"]) == 6
     assert len(body["mod_key"]) == 16
 
@@ -61,7 +62,8 @@ def test_uc_a_04_list_sessions(admin_client, make_session):
     assert len(rows) == 1
     row = rows[0]
     for k in ("code", "title", "status", "mod_key", "participant_base_url",
-              "created_at", "started_at", "ended_at", "query_count", "quiz_run_count"):
+              "feedback_enabled", "created_at", "started_at", "ended_at",
+              "query_count", "quiz_run_count"):
         assert k in row
     assert row["code"] == s["code"]
 

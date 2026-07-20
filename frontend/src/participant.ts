@@ -11,8 +11,10 @@ let latestSessionSeq = 0;
 let latestQueriesSeq = 0;
 let latestQuizSeq = 0;
 let profileToastTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPhotoPreviewUrl: string | null = null;
 
 let sessionEnded = false;
+let feedbackEnabled = false;
 async function loadSession(): Promise<void> {
   const seq = ++latestSessionSeq;
   const s = await api<Session>(`/api/sessions/${CODE}`);
@@ -21,8 +23,11 @@ async function loadSession(): Promise<void> {
   $("#title").textContent = s.title;
   $("#code").textContent = "Code " + CODE;
   sessionEnded = s.status === "ended";
+  feedbackEnabled = s.feedback_enabled;
   $("#ask-card").style.display = sessionEnded ? "none" : "";
   $("#ended-card").style.display = sessionEnded ? "" : "none";
+  $("#feedback-card").style.display = feedbackEnabled ? "" : "none";
+  if (feedbackEnabled) void loadFeedback();
   const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
   try { await renderQR($("#share-qr"), `${base}/s/${s.code}`, { cellSize: 3, margin: 2 }); }
   catch { /* QR is best-effort */ }
@@ -42,6 +47,8 @@ async function loadMe(): Promise<void> {
 }
 
 function renderProfilePhoto(url: string | null): void {
+  if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
+  pendingPhotoPreviewUrl = null;
   const preview = $<HTMLImageElement>("#my-photo-preview");
   const clear = $<HTMLButtonElement>("#my-photo-clear");
   if (url) {
@@ -53,6 +60,23 @@ function renderProfilePhoto(url: string | null): void {
     preview.style.display = "none";
     clear.style.display = "none";
   }
+}
+
+function markProfileDirty(): void {
+  $("#profile-status").textContent = "Unsaved changes";
+}
+
+function previewSelectedProfilePhoto(): void {
+  const input = $<HTMLInputElement>("#my-photo");
+  const file = input.files?.[0];
+  if (!file) return;
+  if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
+  pendingPhotoPreviewUrl = URL.createObjectURL(file);
+  const preview = $<HTMLImageElement>("#my-photo-preview");
+  preview.src = pendingPhotoPreviewUrl;
+  preview.style.display = "";
+  $<HTMLButtonElement>("#my-photo-clear").style.display = "";
+  markProfileDirty();
 }
 
 function currentProfile(): Omit<ParticipantProfile, "id" | "photo_url"> {
@@ -69,39 +93,56 @@ function currentProfile(): Omit<ParticipantProfile, "id" | "photo_url"> {
 }
 
 async function saveProfile(): Promise<void> {
+  const button = $<HTMLButtonElement>("#profile-submit");
+  button.disabled = true;
+  $("#profile-status").textContent = "Saving...";
   try {
     me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me`, { method: "PATCH", body: currentProfile() });
+    const photoInput = $<HTMLInputElement>("#my-photo");
+    if (photoInput.files?.[0]) me = await uploadSelectedProfilePhoto();
+    renderProfilePhoto(me.photo_url);
     $("#profile-status").textContent = "Saved";
     if (profileToastTimer) clearTimeout(profileToastTimer);
     profileToastTimer = setTimeout(() => {
       profileToastTimer = null;
       toast(me?.name ? `Profile saved for "${me.name}"` : "Profile saved");
     }, 250);
-  } catch (e) { errorToast((e as Error).message); }
-}
-
-async function uploadProfilePhoto(): Promise<void> {
-  const input = $<HTMLInputElement>("#my-photo");
-  const file = input.files?.[0];
-  if (!file) return;
-  const form = new FormData();
-  form.append("file", file);
-  try {
-    me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me/photo`, {
-      method: "POST",
-      body: form,
-    });
-    input.value = "";
-    renderProfilePhoto(me.photo_url);
-    $("#profile-status").textContent = "Saved";
-    toast("Photograph saved");
   } catch (e) {
-    input.value = "";
+    $("#profile-status").textContent = "Save failed";
     errorToast((e as Error).message);
+  } finally {
+    button.disabled = false;
   }
 }
 
+async function uploadSelectedProfilePhoto(): Promise<ParticipantProfile> {
+  const input = $<HTMLInputElement>("#my-photo");
+  const file = input.files?.[0];
+  if (!file) {
+    if (!me) throw new Error("Profile has not loaded yet.");
+    return me;
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const saved = await api<ParticipantProfile>(
+    `/api/sessions/${CODE}/me/photo`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+  input.value = "";
+  return saved;
+}
+
 async function clearProfilePhoto(): Promise<void> {
+  const input = $<HTMLInputElement>("#my-photo");
+  if (input.files?.[0]) {
+    input.value = "";
+    renderProfilePhoto(me?.photo_url ?? null);
+    markProfileDirty();
+    return;
+  }
   try {
     me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me`, {
       method: "PATCH",
@@ -123,15 +164,19 @@ for (const id of [
   "#my-current-work",
   "#my-learning-goal",
 ]) {
-  $(id).addEventListener("change", () => void saveProfile());
+  $(id).addEventListener("input", markProfileDirty);
 }
 $<HTMLInputElement>("#my-photo").addEventListener(
   "change",
-  () => void uploadProfilePhoto(),
+  previewSelectedProfilePhoto,
 );
 $<HTMLButtonElement>("#my-photo-clear").addEventListener(
   "click",
   () => void clearProfilePhoto(),
+);
+$<HTMLButtonElement>("#profile-submit").addEventListener(
+  "click",
+  () => void saveProfile(),
 );
 
 async function loadQueries(): Promise<void> {
@@ -332,6 +377,7 @@ function renderStars(): void {
   $("#fb-clear-confirm").style.display = "none";
 }
 async function saveFeedback(toastMsg?: string): Promise<void> {
+  if (!feedbackEnabled) return;
   if (!myRating) return;
   const cur = currentFeedback();
   if (lastSaved
@@ -346,6 +392,7 @@ async function saveFeedback(toastMsg?: string): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 async function clearFeedback(): Promise<void> {
+  if (!feedbackEnabled) return;
   try { await api(`/api/sessions/${CODE}/feedback`, { method: "DELETE" }); }
   catch (e) { errorToast((e as Error).message); return; }
   myRating = 0;
@@ -417,7 +464,6 @@ function onLive(msg: LiveMessage): void {
 (async function () {
   await loadSession();
   await loadMe();
-  void loadFeedback();
   void loadQueries();
   void loadQuiz();
   openLiveSocket(CODE, onLive);

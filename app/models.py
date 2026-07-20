@@ -54,6 +54,7 @@ class Session(Base):
     # Optional override used when generating the participant URL + QR.
     # If unset, frontends fall back to location.origin.
     participant_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    feedback_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     queries: Mapped[list["Query"]] = relationship(back_populates="session", cascade="all, delete-orphan")

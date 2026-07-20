@@ -287,6 +287,22 @@ PROFILE_FIELDS = {
 }
 
 
+def serialize_session(s: m.Session, *, include_mod_key: bool = False) -> dict:
+    body = {
+        "code": s.code,
+        "title": s.title,
+        "status": s.status,
+        "participant_base_url": s.participant_base_url,
+        "feedback_enabled": bool(s.feedback_enabled),
+        "created_at": s.created_at.isoformat(),
+        "started_at": s.started_at.isoformat() if s.started_at else None,
+        "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+    }
+    if include_mod_key:
+        body["mod_key"] = s.mod_key
+    return body
+
+
 def normalize_optional_text(value, max_len: int) -> str | None:
     text = (value or "").strip()
     return text[:max_len] or None
@@ -768,14 +784,7 @@ def list_sessions(db: DbSession = Depends(get_db), me: m.User = Depends(auth.cur
     ).all()
     return [
         {
-            "code": s.code,
-            "title": s.title,
-            "status": s.status,
-            "mod_key": s.mod_key,
-            "participant_base_url": s.participant_base_url,
-            "created_at": s.created_at.isoformat(),
-            "started_at": s.started_at.isoformat() if s.started_at else None,
-            "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+            **serialize_session(s, include_mod_key=True),
             "query_count": len(s.queries),
             "quiz_run_count": len(s.quiz_runs),
         }
@@ -805,19 +814,13 @@ def create_session(payload: dict, db: DbSession = Depends(get_db), me: m.User = 
         session_id=s.id,
         session_code=s.code,
     )
-    return {"code": s.code, "title": s.title, "mod_key": s.mod_key, "status": s.status}
+    return serialize_session(s, include_mod_key=True)
 
 
 @app.get("/api/sessions/{code}")
 def get_session(code: str, db: DbSession = Depends(get_db)):
     s = get_session_by_code(db, code)
-    return {
-        "code": s.code,
-        "title": s.title,
-        "status": s.status,
-        "created_at": s.created_at.isoformat(),
-        "participant_base_url": s.participant_base_url,
-    }
+    return serialize_session(s)
 
 
 @app.patch("/api/sessions/{code}")
@@ -848,7 +851,7 @@ async def update_session(
         session_id=s.id,
         session_code=s.code,
     )
-    return {"code": s.code, "title": s.title, "status": s.status}
+    return serialize_session(s)
 
 
 @app.post("/api/sessions/{code}/participant_base_url")
@@ -883,6 +886,30 @@ async def set_participant_base_url(
         session_code=s.code,
     )
     return {"participant_base_url": s.participant_base_url}
+
+
+@app.post("/api/sessions/{code}/feedback_enabled")
+async def set_feedback_enabled(
+    code: str,
+    payload: dict,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    s = get_session_by_code(db, code)
+    require_mod_or_owner(s, x_mod_key, me)
+    s.feedback_enabled = bool(payload.get("enabled", True))
+    db.commit()
+    await broadcast_session(s, "session_state")
+    log_diagnostic(
+        "session.lifecycle",
+        action="feedback_enabled",
+        outcome="success",
+        session_id=s.id,
+        session_code=s.code,
+        enabled=s.feedback_enabled,
+    )
+    return {"feedback_enabled": bool(s.feedback_enabled)}
 
 
 @app.post("/api/sessions/{code}/start")
@@ -1104,9 +1131,10 @@ async def submit_feedback(
     voter_token: Annotated[str | None, Cookie()] = None,
     db: DbSession = Depends(get_db),
 ):
-    """Upsert the caller's feedback (one row per participant). Allowed in
-    any session status — the feedback card is always available."""
+    """Upsert the caller's feedback when the moderator has enabled it."""
     s = get_session_by_code(db, code)
+    if not s.feedback_enabled:
+        raise HTTPException(403, "feedback is not enabled")
     if not limiter.allow(f"fb:{_client_ip(request)}", *RL_FEEDBACK):
         raise HTTPException(429, "You're submitting feedback too fast — wait a moment and try again")
     rating = payload.get("rating")
@@ -1162,6 +1190,8 @@ async def delete_my_feedback(
     """Retract the caller's current feedback (the 'undo' on the participant
     page). Version history in SessionFeedbackVersion is left intact."""
     s = get_session_by_code(db, code)
+    if not s.feedback_enabled:
+        raise HTTPException(403, "feedback is not enabled")
     p = current_participant(s, request, response, voter_token, db)
     f = db.scalar(select(m.SessionFeedback).where(
         m.SessionFeedback.session_id == s.id,

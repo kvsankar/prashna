@@ -44,9 +44,13 @@ def test_uc_p_13_star_autosaves_and_comment_persists(base_url, admin_setup, page
     the prior rating + comments."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P13 {secrets.token_hex(3)}")
+    c.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        json={"enabled": True},
+    ).raise_for_status()
     try:
         page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#feedback-card")
+        page.wait_for_selector("#feedback-card:visible")
         # No explicit Submit button — saving is automatic.
         expect(page.locator("#fb-submit")).to_have_count(0)
         # The expanded course-feedback section is hidden until a star is picked.
@@ -78,9 +82,13 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
     'No' cancels, 'Yes' clears the rating and hides the comment fields."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P13c {secrets.token_hex(3)}")
+    c.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        json={"enabled": True},
+    ).raise_for_status()
     try:
         page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#feedback-card")
+        page.wait_for_selector("#feedback-card:visible")
         with page.expect_response(
             lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
         ):
@@ -131,6 +139,10 @@ def test_mobile_participants_can_complete_core_flow(
     quiz = api_make_quiz(c, f"UI-P-mobile-q {secrets.token_hex(3)}",
                          publish=True)
     s = api_make_session(c, f"UI-P-mobile {secrets.token_hex(3)}")
+    c.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        json={"enabled": True},
+    ).raise_for_status()
     run = api_queue_quiz_run(c, s["code"], quiz["id"])
     c.post(
         f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start"
@@ -148,7 +160,7 @@ def test_mobile_participants_can_complete_core_flow(
 
         p1.locator("#profile-card > summary").click()
         p1.fill("#my-name", "Mobile Dana")
-        p1.locator("#my-name").blur()
+        p1.click("#profile-submit")
         expect(p1.locator(".toast")).to_contain_text("Mobile Dana")
         assert_no_horizontal_overflow(p1)
 
@@ -196,6 +208,10 @@ def test_mobile_participant_controls_are_keyboard_accessible(
     page.set_viewport_size({"width": 360, "height": 820})
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P-mobile-k {secrets.token_hex(3)}")
+    c.post(
+        f"/api/sessions/{s['code']}/feedback_enabled",
+        json={"enabled": True},
+    ).raise_for_status()
     api_start_session(c, s["code"])
     ask_query_api(base_url, s["code"], "keyboard-votable")
     try:
@@ -319,7 +335,7 @@ def test_uc_p_03_attendee_profile_persists(
         expect(page.locator("#my-photo-preview")).to_be_visible(timeout=5000)
         page.fill("#my-current-work", "Building a training platform")
         page.fill("#my-learning-goal", "Practice live facilitation")
-        page.locator("#my-learning-goal").blur()
+        page.click("#profile-submit")
         saved_toast = page.locator(".toast").filter(has_text="Profile saved")
         expect(saved_toast).to_be_visible(
             timeout=5000

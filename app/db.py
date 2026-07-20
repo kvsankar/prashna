@@ -74,6 +74,7 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
         ("users", "session_version", "INTEGER NOT NULL DEFAULT 1"),
         ("users", "github_id", "INTEGER"),
         ("sessions", "participant_base_url", "VARCHAR(500)"),
+        ("sessions", "feedback_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("participants", "email", "VARCHAR(254)"),
         ("participants", "contact_number", "VARCHAR(40)"),
         ("participants", "organization", "VARCHAR(120)"),
