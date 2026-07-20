@@ -434,8 +434,15 @@ function renderProfile(item: ParticipantProfile): HTMLElement {
   const linkedin = item.linkedin_url
     ? el("div", { class: "small" }, el("strong", {}, "LinkedIn: "), el("a", { href: item.linkedin_url, target: "_blank", rel: "noopener noreferrer" }, item.linkedin_url))
     : null;
+  const photo = item.photo_url
+    ? el("img", {
+      class: "profile-photo-preview",
+      src: item.photo_url,
+      alt: name,
+    })
+    : null;
   return el("div", { class: "fb-item" },
-    el("div", {}, el("strong", {}, name)),
+    el("div", { class: "profile-photo-row" }, photo, el("strong", {}, name)),
     profileLine("Email", item.email),
     profileLine("Contact", item.contact_number),
     profileLine("Organization", item.organization),

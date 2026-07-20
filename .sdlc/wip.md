@@ -1,9 +1,9 @@
 # SDLC Work In Progress
 
-Last Updated: 2026-07-19T19:19:17Z
+Last Updated: 2026-07-19T19:51:03Z
 Updated By: agent
 Current Stage: code-create
-Current Gate: approved
+Current Gate: verification-passed
 Project Entry Mode: brownfield_baseline
 Work Scope: slice/change
 Ready To Implement: Yes
@@ -13,105 +13,78 @@ Build and release, Documentation, UI and accessibility
 
 ## Resume Summary
 
-This branch was reworked after rereading Sarathi 0.3.2. The remediation remains
-a brownfield baseline adoption, not a product redesign. `spec.md`, `design.md`,
-and `plan.md` now use human-first v2 headings and 0.3.2 metadata. The plan is
-one cohesive `PR-BASELINE-REMEDIATION`, and generated `plan.html` remains
-removed. The stricter 0.3.2 code checker exposed legacy skipped-test markers;
-those placeholders are now executable tests, and the remote UI live-count race
-has a local persistence wait. The user reapproved the revised spec, design,
-and plan on 2026-07-19T19:19:17Z, and the approval ledger now matches the
-current file hashes.
+Small feature slice: participant profiles now support an optional photograph.
+The existing participant profile form did not ask for a photo. The change adds
+a participant-scoped image upload endpoint, stores the uploaded URL on the
+participant record, shows the photo on participant reload, allows clearing it,
+and includes it in the moderator participant-profile panel.
+
+`spec.md` and `design.md` were updated to reflect the new optional photograph
+requirement and data/interface behavior. Because those approved artifacts
+changed, the approval ledger should be refreshed only after explicit human
+approval.
 
 ## Current Artifacts
 
-- Process decision: `.sdlc/process-decisions.yaml`, current.
+- Process decision: `.sdlc/process-decisions.yaml`, unchanged.
   Records brownfield entry plus Standard review level and extra checks.
 - Spec: `spec.md`, revised.
-  Human-first v2 with `Product Overview`; draft check passed 7/7.
+  Participant identity/profile requirements now include optional photograph.
+  Draft check passed 7/7.
 - Design: `design.md`, revised.
-  Human-first v2 with `Technical Approach`; draft check passed 13/13.
-- Plan: `plan.md`, revised.
-  Human-first v2 with `Implementation Approach`; check passed 20/20.
-- Traceability: `.sdlc/test-traceability.yaml`, current.
-  Maps tests to `PR-BASELINE-REMEDIATION`.
-- Plan assessment: `plan-assess.md`, historical.
-  Superseded by the Sarathi 0.3.2 plan rewrite.
-- Code assessment: `code-assess.md`, historical.
-  Needs refresh for a formal gate after refreshed human approval.
-- Approval ledger: `.sdlc/approvals.yaml`, current.
-  Spec, design, and plan approvals match current file hashes.
+  Participant data and upload-file responsibilities now include profile
+  photographs. Draft check passed 13/13.
+- Plan: `plan.md`, unchanged.
+  This was a small approved brownfield feature slice; no separate breakdown was
+  created.
+- Implementation: app, frontend source, and tests revised.
+  `frontend/dist/` was rebuilt locally for UI verification but remains ignored
+  by Git.
+- Approval ledger: `.sdlc/approvals.yaml`, stale for `spec.md` and
+  `design.md` after this feature update.
 
 ## Decisions And Assumptions
 
-- Decision: Review Level is Standard because the remediation touches auth,
-  privacy-safe diagnostics, browser behavior, CI, deployment, and docs.
-- Decision: Extra Checks are Security, Privacy and compliance, Reliability and
-  operations, Build and release, Documentation, and UI and accessibility.
-- Decision: no Breakdown plan is needed for this brownfield remediation slice;
-  approved requirements and design are enough for one implementation plan.
-- Decision: the implementation plan remains one cohesive review unit instead
-  of artificial setup, traceability, diagnostics, UI, and ops PRs.
-- Decision: Sarathi process IDs stay in docs and `.sdlc/` artifacts, not in
-  production or test source names.
-- Decision: refreshed `.sdlc/approvals.yaml` only after explicit user
-  reapproval.
-- Assumption: the implemented code changes still represent the same accepted
-  remediation boundary, pending refreshed assessment.
+- Decision: participant photos use the existing image-upload constraints:
+  `.png`, `.jpg`, `.jpeg`, `.gif`, and `.webp`, with the existing 5 MB limit.
+- Decision: participants cannot set arbitrary `photo_url` values through the
+  profile PATCH route; photos must be uploaded through the participant photo
+  endpoint and can be cleared with `photo_url: null`.
+- Decision: the admin upload route now reuses the shared upload helper while
+  retaining admin authentication.
+- Assumption: retaining uploaded files after a participant clears or replaces a
+  photo is acceptable for this small feature; no existing cleanup lifecycle was
+  present.
 
 ## Check And Review Evidence
 
-- 2026-07-20: `check_update.py` emitted no Sarathi update notice.
+- 2026-07-19: `check_update.py` emitted no Sarathi update notice.
 - 2026-07-19: `check_spec.py --spec spec.md --json` passed 7/7.
 - 2026-07-19: `check_design.py --design design.md --spec spec.md --json`
   passed 13/13.
-- 2026-07-19: `check_plan.py --plan plan.md --spec spec.md --design
-  design.md --json` passed 20/20.
-- 2026-07-19: `check_code.py --plan plan.md --spec spec.md --design
-  design.md --tests-argv '[targeted pytest command]'
-  --allow-missing-git-evidence --allow-missing-tdd-evidence --json` passed 3/3
-  with no process IDs, no skip or xfail markers, and no marker warnings.
-- 2026-07-19: `uv run pre-commit run --all-files` passed Ruff, TypeScript,
-  ESLint, and Stylelint.
-- 2026-07-19: `uv run pytest --cov=app --cov-report=term-missing` passed:
-  439 passed, 94% coverage.
-- 2026-07-19: GitHub PR #1 run `29685693604` passed Python lint/tests,
-  frontend lint, and Docker Compose smoke for commit `86fe461`.
-- 2026-07-19: GitHub PR #1 run `29699522477` failed Python lint/tests at
-  `test_uc_m_05_live_counts_toggle`; local fix now waits for persisted server
-  state instead of immediately reading the API after a UI click.
-- 2026-07-19: GitHub PR #1 run `29700136372` passed Python lint/tests,
-  frontend lint, and Docker Compose smoke for commit `43c02fc`; Docker image
-  publication was skipped as expected for a PR.
-- 2026-07-19: user reapproved revised `spec.md`, `design.md`, and `plan.md`;
-  `.sdlc/approvals.yaml` was updated with current hashes.
-- 2026-07-19: approval-gated `check_design.py --require-approvals` passed
-  14/14.
-- 2026-07-19: approval-gated `check_plan.py --require-approvals` passed
-  21/21.
-- 2026-07-19: approval-gated `check_code.py --require-approvals` passed 4/4
-  with the targeted pytest command.
+- 2026-07-19: `npm run lint` passed TypeScript, ESLint, and Stylelint.
+- 2026-07-19: focused participant photo API tests passed: profile round trip,
+  upload and clear, unsupported type rejection, direct URL rejection, moderator
+  profile summary, and additive migration.
+- 2026-07-19: affected UI tests passed: participant profile persistence with
+  photo upload/clear and moderator profile photo visibility.
+- 2026-07-19: `uv run pytest tests/api -q` passed the full API suite.
 
 ## Results And Feedback
 
-Expected Result: the existing remediation branch aligns with Sarathi 0.3.2
-without adding product machinery or a redesign.
-Feedback From: human review of revised artifacts and objective local/CI checks.
+Expected Result: candidates can optionally submit a photograph with their
+profile, and moderators can see it with the rest of the submitted profile.
+Feedback From: local implementation checks and browser/API tests.
 Feedback Status: incorporated
-Feedback Evidence: Sarathi 0.3.2 structural checks, strict code checker, and
-full local pytest/coverage are green; remote CI is green.
-Current Work Group: none
-Current Work: commit and push refreshed approvals.
+Current Work Group: participant-profile-photo
+Current Work: ready for human review and approval refresh.
 Parallel Limit: 1
-What Changed: Sarathi terminology and human-first headings were updated; the
-obsolete complexity-budget section was removed; skipped-test placeholders were
-converted into executable tests; the live-count UI test now waits for server
-persistence.
-Documents To Update: `spec.md`, `design.md`, `plan.md`,
-`.sdlc/process-decisions.yaml`, `.sdlc/wip.md`, and affected test files were
-updated. Approval hashes are current after user reapproval.
-Stop Conditions: human rejection, failed refreshed code checks, failed CI,
-Docker smoke failure, new product gap, or new architecture gap.
+What Changed: optional participant photograph storage, upload API, participant
+UI controls, moderator rendering, migration coverage, and related tests.
+Documents To Update: `spec.md`, `design.md`, `.sdlc/wip.md`, backend,
+frontend, and test files were updated.
+Stop Conditions: human rejection, failed refreshed checks, new privacy
+requirement, or request for uploaded-file lifecycle cleanup.
 
 ## Open Questions And Blockers
 
@@ -119,8 +92,8 @@ Docker smoke failure, new product gap, or new architecture gap.
 
 ## Next Recommended Action
 
-Commit and push refreshed approvals, then proceed to the refreshed code
-assessment or merge handoff.
+Human review of the feature and refreshed approval for the changed
+requirements/design documents.
 
 ## Bootstrap Status
 

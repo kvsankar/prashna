@@ -301,13 +301,17 @@ def serialize_participant_profile(p: m.Participant) -> dict:
         "organization": p.organization,
         "role": p.role,
         "linkedin_url": p.linkedin_url,
+        "photo_url": p.photo_url,
         "current_work": p.current_work,
         "learning_goal": p.learning_goal,
     }
 
 
 def participant_has_profile(p: m.Participant) -> bool:
-    return any(getattr(p, field) for field in PROFILE_FIELDS)
+    return (
+        p.photo_url is not None
+        or any(getattr(p, field) for field in PROFILE_FIELDS)
+    )
 
 
 def serialize_query(q: m.Query, viewer_participant_id: int | None, is_mod: bool) -> dict:
@@ -1013,6 +1017,28 @@ async def update_my_participant(
     for field, max_len in PROFILE_FIELDS.items():
         if field in payload:
             setattr(p, field, normalize_optional_text(payload.get(field), max_len))
+    if "photo_url" in payload:
+        if normalize_optional_text(payload.get("photo_url"), 500) is not None:
+            raise HTTPException(400, "photo must be uploaded")
+        p.photo_url = None
+    db.commit()
+    db.refresh(p)
+    await broadcast_session(s, "participant")
+    return serialize_participant_profile(p)
+
+
+@app.post("/api/sessions/{code}/me/photo")
+async def upload_my_participant_photo(
+    code: str,
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    voter_token: Annotated[str | None, Cookie()] = None,
+    db: DbSession = Depends(get_db),
+):
+    s = get_session_by_code(db, code)
+    p = current_participant(s, request, response, voter_token, db)
+    p.photo_url = await store_uploaded_image(file, actor="participant_profile")
     db.commit()
     db.refresh(p)
     await broadcast_session(s, "participant")
@@ -1652,17 +1678,23 @@ def delete_quiz_answer(
 
 # ---------- routes: uploads ----------
 
-@app.post("/api/uploads")
-async def upload_image(
-    file: UploadFile = File(...),
-    _admin: m.User = Depends(auth.current_admin),
-):
+async def store_uploaded_image(file: UploadFile, *, actor: str) -> str:
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_IMAGE_EXTS:
-        log_diagnostic("upload.reject", reason="extension", extension=ext)
+        log_diagnostic(
+            "upload.reject",
+            actor=actor,
+            reason="extension",
+            extension=ext,
+        )
         raise HTTPException(400, "unsupported image type")
     if file.size is not None and file.size > MAX_UPLOAD_BYTES:
-        log_diagnostic("upload.reject", reason="size", size=file.size)
+        log_diagnostic(
+            "upload.reject",
+            actor=actor,
+            reason="size",
+            size=file.size,
+        )
         raise HTTPException(400, "max 5MB")
     buf = bytearray()
     while True:
@@ -1671,17 +1703,31 @@ async def upload_image(
             break
         buf.extend(chunk)
         if len(buf) > MAX_UPLOAD_BYTES:
-            log_diagnostic("upload.reject", reason="size", size=len(buf))
+            log_diagnostic(
+                "upload.reject",
+                actor=actor,
+                reason="size",
+                size=len(buf),
+            )
             raise HTTPException(400, "max 5MB")
     name = f"{uuid.uuid4().hex}{ext}"
     (UPLOADS / name).write_bytes(bytes(buf))
     log_diagnostic(
         "upload.accept",
+        actor=actor,
         outcome="success",
         extension=ext,
         size=len(buf),
     )
-    return {"url": f"/uploads/{name}"}
+    return f"/uploads/{name}"
+
+
+@app.post("/api/uploads")
+async def upload_image(
+    file: UploadFile = File(...),
+    _admin: m.User = Depends(auth.current_admin),
+):
+    return {"url": await store_uploaded_image(file, actor="admin_quiz")}
 
 
 # ---------- routes: quiz runs ----------

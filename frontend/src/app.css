@@ -100,6 +100,20 @@ details#profile-card[open] .profile-cta { background: transparent; color: var(--
 details#profile-card[open] .profile-cta-closed { display: none; }
 details#profile-card[open] .profile-cta-open { display: inline; }
 details#profile-card .fb-chevron { margin-left: 0; }
+.profile-photo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.profile-photo-preview {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+}
 /* Collapsible "Rate this session" card (participant) — visually distinct
    from the Q&A / quiz cards, with breathing room below it. */
 /* Same box model as section.card (1px border + 16px padding) so the header

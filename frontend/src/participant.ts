@@ -36,11 +36,26 @@ async function loadMe(): Promise<void> {
   $<HTMLInputElement>("#my-organization").value = me.organization || "";
   $<HTMLInputElement>("#my-role").value = me.role || "";
   $<HTMLInputElement>("#my-linkedin-url").value = me.linkedin_url || "";
+  renderProfilePhoto(me.photo_url);
   $<HTMLTextAreaElement>("#my-current-work").value = me.current_work || "";
   $<HTMLTextAreaElement>("#my-learning-goal").value = me.learning_goal || "";
 }
 
-function currentProfile(): Omit<ParticipantProfile, "id"> {
+function renderProfilePhoto(url: string | null): void {
+  const preview = $<HTMLImageElement>("#my-photo-preview");
+  const clear = $<HTMLButtonElement>("#my-photo-clear");
+  if (url) {
+    preview.src = url;
+    preview.style.display = "";
+    clear.style.display = "";
+  } else {
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+    clear.style.display = "none";
+  }
+}
+
+function currentProfile(): Omit<ParticipantProfile, "id" | "photo_url"> {
   return {
     name: $<HTMLInputElement>("#my-name").value,
     email: $<HTMLInputElement>("#my-email").value,
@@ -65,6 +80,39 @@ async function saveProfile(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 
+async function uploadProfilePhoto(): Promise<void> {
+  const input = $<HTMLInputElement>("#my-photo");
+  const file = input.files?.[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me/photo`, {
+      method: "POST",
+      body: form,
+    });
+    input.value = "";
+    renderProfilePhoto(me.photo_url);
+    $("#profile-status").textContent = "Saved";
+    toast("Photograph saved");
+  } catch (e) {
+    input.value = "";
+    errorToast((e as Error).message);
+  }
+}
+
+async function clearProfilePhoto(): Promise<void> {
+  try {
+    me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me`, {
+      method: "PATCH",
+      body: { photo_url: null },
+    });
+    renderProfilePhoto(null);
+    $("#profile-status").textContent = "Saved";
+    toast("Photograph cleared");
+  } catch (e) { errorToast((e as Error).message); }
+}
+
 for (const id of [
   "#my-name",
   "#my-email",
@@ -77,6 +125,14 @@ for (const id of [
 ]) {
   $(id).addEventListener("change", () => void saveProfile());
 }
+$<HTMLInputElement>("#my-photo").addEventListener(
+  "change",
+  () => void uploadProfilePhoto(),
+);
+$<HTMLButtonElement>("#my-photo-clear").addEventListener(
+  "click",
+  () => void clearProfilePhoto(),
+);
 
 async function loadQueries(): Promise<void> {
   const seq = ++latestQueriesSeq;

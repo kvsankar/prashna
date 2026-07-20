@@ -328,12 +328,13 @@ accepted behavior.
   -  Minimal guarantees: Invalid question or vote attempts do not create
     duplicate or corrupt rows.
   -  Success guarantees: Participant can identify themselves within the session,
-    ask bounded questions, vote once per question, and see participant-visible
-    questions sorted by current rules.
+    add optional profile details including a photograph, ask bounded questions,
+    vote once per question, and see participant-visible questions sorted by
+    current rules.
   - Main success scenario:
     1. Participant opens a session URL.
     2. System creates or resolves a per-session participant identity.
-    3. Participant optionally sets display details.
+    3. Participant optionally sets display details and a photograph.
     4. Participant writes a question.
     5. System stores the question under the session.
     6. System broadcasts a Q&A refresh hint.
@@ -341,8 +342,8 @@ accepted behavior.
     8. Participant votes for another question.
     9. System updates the visible vote count.
   -  Alternate flows: Participant revisits with the same cookie. Participant
-    updates display details. Participant removes a prior vote. Moderator
-    responses appear with the question.
+    updates or clears display details or photograph. Participant removes a
+    prior vote. Moderator responses appear with the question.
   -  Error/exception flows: Ended sessions are read-only. Empty or oversized
     question text is rejected. Removed questions disappear from participant
     lists. Duplicate vote conflicts resolve to a controlled state.
@@ -558,7 +559,7 @@ accepted behavior.
   live-room credentials.
   - Trace: UC-SESSION-ADMIN, UC-MOD-RUNROOM, FEAT-MOD-DELEGATE, AT-MOD-ACCESS.
 -  FR-QA-IDENTITY: Prashna shall resolve a per-session anonymous participant
-  identity.
+  identity with optional profile details and photograph.
   - Trace: UC-PARTICIPANT-QA, FEAT-QA-LIVE, AT-QA-IDENTITY.
 - FR-QA-ASK: Prashna shall store valid participant questions for a live session.
   - Trace: UC-PARTICIPANT-QA, FEAT-QA-LIVE, AT-QA-ASK.
@@ -747,7 +748,8 @@ accepted behavior.
   owner-only actions remain blocked, satisfying UC-MOD-RUNROOM plus
   FR-MOD-ACCESS.
 -  AT-QA-IDENTITY: Given a participant opens a session link, when no participant
-  token exists, then a per-session anonymous identity is created and satisfies
+  token exists or profile details change, then a per-session anonymous identity
+  is created or updated with optional text and photograph details, satisfying
   UC-PARTICIPANT-QA plus FR-QA-IDENTITY plus NFR-PRIVACY-ANON.
 -  AT-QA-ASK: Given a live session, when a participant submits valid question
   text, then the question becomes visible to participants and satisfies

@@ -384,6 +384,16 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
             )
         """)
         conn.exec_driver_sql("""
+            CREATE TABLE participants (
+                id INTEGER NOT NULL PRIMARY KEY,
+                session_id INTEGER NOT NULL,
+                voter_token VARCHAR(64) NOT NULL,
+                name VARCHAR(80),
+                first_seen_at DATETIME NOT NULL,
+                last_seen_at DATETIME NOT NULL
+            )
+        """)
+        conn.exec_driver_sql("""
             CREATE TABLE quiz_submissions (
                 id INTEGER NOT NULL PRIMARY KEY,
                 quiz_run_id INTEGER NOT NULL,
@@ -401,6 +411,7 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
             for table in (
                 "users",
                 "sessions",
+                "participants",
                 "quiz_questions",
                 "quiz_version_questions",
                 "quiz_runs",
@@ -409,6 +420,7 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
         assert "session_version" in columns["users"]
         assert "github_id" in columns["users"]
         assert "participant_base_url" in columns["sessions"]
+        assert "photo_url" in columns["participants"]
         assert "graded" in columns["quiz_questions"]
         assert "graded" in columns["quiz_version_questions"]
         assert "show_live_counts" in columns["quiz_runs"]

@@ -77,6 +77,7 @@ class Participant(Base):
     organization: Mapped[str | None] = mapped_column(String(120), nullable=True)
     role: Mapped[str | None] = mapped_column(String(120), nullable=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     current_work: Mapped[str | None] = mapped_column(Text, nullable=True)
     learning_goal: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=now)

@@ -79,6 +79,7 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
         ("participants", "organization", "VARCHAR(120)"),
         ("participants", "role", "VARCHAR(120)"),
         ("participants", "linkedin_url", "VARCHAR(500)"),
+        ("participants", "photo_url", "VARCHAR(500)"),
         ("participants", "current_work", "TEXT"),
         ("participants", "learning_goal", "TEXT"),
         ("quiz_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),

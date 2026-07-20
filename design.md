@@ -180,7 +180,7 @@ Readable component responsibilities:
 - Moderator Cockpit handles delegated live-room control, Q&A triage, quiz
   playback, and feedback summaries.
 - Participant Room handles anonymous identity, questions, votes, quiz answers,
-  optional profiles, and feedback.
+  optional profiles with photographs, and feedback.
 - Projector Display presents public join details and current room state.
 - Quiz Library handles reusable templates, image attachment, validation,
   publication, and immutable launch snapshots.
@@ -405,7 +405,8 @@ erDiagram
   and feedback versions. Supports FR-SESSION-CREATE, FR-SESSION-LIFECYCLE,
   FR-MOD-ACCESS, FR-DISPLAY-JOIN, and FR-SESSION-DELETE.
 - Participant: per-session anonymous identity keyed by voter token, optional
-  profile fields, and seen timestamps. Supports FR-QA-IDENTITY,
+  profile fields, optional photograph URL, and seen timestamps. Supports
+  FR-QA-IDENTITY,
   FR-FEEDBACK-SUBMIT, and NFR-PRIVACY-ANON.
 - Query and QueryVote: Q&A board entries with text, optional response,
   soft-removal timestamp, participant author, and one vote row per participant.
@@ -426,7 +427,8 @@ erDiagram
   live-count flags, timestamps, and participant answer selections. Supports
   FR-RUN-QUEUE, FR-RUN-PROGRESS, FR-RUN-SUBMIT, and FR-RUN-RESULTS.
 - Upload files: image blobs stored outside SQLite and referenced by URL from
-  quiz questions or answers. Supports FR-QUIZ-UPLOAD and NFR-SEC-UPLOADS.
+  quiz questions, answers, or participant profile photographs. Supports
+  FR-QUIZ-UPLOAD, FR-QA-IDENTITY, and NFR-SEC-UPLOADS.
 
 SQLite uses foreign-key enforcement, WAL mode, busy timeout, synchronous normal
 mode, cascade relationships where deletion should remove child records, and
