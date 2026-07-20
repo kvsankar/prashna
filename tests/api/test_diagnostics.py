@@ -61,9 +61,13 @@ def test_state_changing_requests_emit_timing_diagnostics(admin_client, make_sess
 
     assert r.status_code == 200
     assert "http.request" in _events(caplog)
-    text = _log_text(caplog)
-    assert "/api/sessions/:code/feedback_enabled" in text
-    assert s["code"] not in text
+    http_records = [
+        record for record in caplog.records
+        if record.__dict__.get("diag_event") == "http.request"
+    ]
+    http_text = "\n".join(record.getMessage() for record in http_records)
+    assert "/api/sessions/:code/feedback_enabled" in http_text
+    assert s["code"] not in http_text
 
 
 def test_auth_session_upload_and_ws_diagnostics(client, caplog):
