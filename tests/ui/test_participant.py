@@ -286,7 +286,7 @@ def test_uc_p_02_reload_keeps_token_and_mine_flag(base_url, admin_setup, page):
 
 
 def test_uc_p_03_set_display_name_persists(base_url, admin_setup, page):
-    """UC-P-03: typing into #my-name and blurring PATCHes and persists."""
+    """UC-P-03: submitting #my-name PATCHes and persists."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P03 {secrets.token_hex(3)}")
     try:
@@ -294,7 +294,7 @@ def test_uc_p_03_set_display_name_persists(base_url, admin_setup, page):
         page.wait_for_selector("#profile-card:visible")
         page.locator("#profile-card > summary").click()
         page.fill("#my-name", "Alice")
-        page.locator("#my-name").blur()
+        page.click("#profile-submit")
         # Toast confirms.
         expect(page.locator(".toast")).to_contain_text("Alice", timeout=5000)
         # Asking a query attributes to Alice.
