@@ -208,6 +208,7 @@ button.small { padding: 4px 10px; font-size: 13px; }
 button.xsmall { padding: 2px 8px; font-size: 11px; border-radius: 6px; }
 
 /* Compact admin table */
+.table-scroll { overflow-x: auto; }
 .ctable { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ctable th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px;
   text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -221,6 +222,9 @@ button.xsmall { padding: 2px 8px; font-size: 11px; border-radius: 6px; }
 .ctable tr.rowable:hover { background: rgba(255,255,255,0.03); }
 .ctable tr.rowable.selected { background: rgba(99, 102, 241, 0.10); }
 .ctable code { font-size: 12px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.sessions-table th, .sessions-table td { white-space: nowrap; }
+.sessions-table th:first-child, .sessions-table td:first-child { min-width: 18ch; }
+.sessions-table th:nth-child(6), .sessions-table td:nth-child(6) { min-width: 16ch; }
 
 /* Compact editor inside detail pane */
 .row.gap { gap: 8px; flex-wrap: wrap; }
