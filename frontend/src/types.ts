@@ -79,6 +79,7 @@ export interface ParticipantProfile {
   organization: string | null;
   role: string | null;
   linkedin_url: string | null;
+  photo_url: string | null;
   current_work: string | null;
   learning_goal: string | null;
 }

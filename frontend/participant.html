@@ -52,6 +52,29 @@
         <input id="my-linkedin-url" type="url" maxlength="500" placeholder="https://www.linkedin.com/in/...">
       </div>
       <div class="field">
+        <label for="my-photo" class="small muted">Photograph</label>
+        <div class="profile-photo-row">
+          <img
+            id="my-photo-preview"
+            class="profile-photo-preview"
+            alt="Your photograph"
+            style="display:none;"
+          >
+          <input
+            id="my-photo"
+            type="file"
+            accept="image/*"
+            aria-label="Your photograph (optional)"
+          >
+          <button
+            id="my-photo-clear"
+            type="button"
+            class="ghost xsmall"
+            style="display:none;"
+          >Clear</button>
+        </div>
+      </div>
+      <div class="field">
         <label for="my-current-work" class="small muted">What are you working on now?</label>
         <textarea id="my-current-work" maxlength="500" placeholder="Current project, role focus, or problem you're solving"></textarea>
       </div>

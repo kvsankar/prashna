@@ -20,6 +20,11 @@ from ._helpers import (
     ask_query_api,
 )
 
+PNG_BYTES = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
+)
+
 # ---------- UC-M-01 ----------
 
 
@@ -466,6 +471,12 @@ def test_uc_m_13_profiles_panel_shows_attendee_details(base_url, admin_setup, pa
             "current_work": "Building a training platform",
             "learning_goal": "Practice live facilitation",
         }).raise_for_status()
+        photo_response = pc.post(
+            f"/api/sessions/{s['code']}/me/photo",
+            files={"file": ("dana.png", PNG_BYTES, "image/png")},
+        )
+        photo_response.raise_for_status()
+        photo = photo_response.json()["photo_url"]
     try:
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{s['code']}")
@@ -479,6 +490,11 @@ def test_uc_m_13_profiles_panel_shows_attendee_details(base_url, admin_setup, pa
         expect(page.locator("#profiles-list")).to_contain_text("linkedin.com/in/dana-example")
         expect(page.locator("#profiles-list")).to_contain_text("Building a training platform")
         expect(page.locator("#profiles-list")).to_contain_text("Practice live facilitation")
+        photo_preview = page.locator("#profiles-list img.profile-photo-preview")
+        expect(photo_preview).to_have_attribute(
+            "src",
+            photo,
+        )
     finally:
         c.close()
 

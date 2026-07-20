@@ -20,6 +20,11 @@ from ._helpers import (
     ask_query_api,
 )
 
+PNG_BYTES = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
+)
+
 
 def assert_no_horizontal_overflow(page):
     overflow = page.evaluate(
@@ -284,10 +289,17 @@ def test_uc_p_03_set_display_name_persists(base_url, admin_setup, page):
         c.close()
 
 
-def test_uc_p_03_attendee_profile_persists(base_url, admin_setup, page):
+def test_uc_p_03_attendee_profile_persists(
+    base_url,
+    admin_setup,
+    page,
+    tmp_path,
+):
     """UC-P-03: attendee profile fields save and prefill after reload."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P03prof {secrets.token_hex(3)}")
+    photo = tmp_path / "dana.png"
+    photo.write_bytes(PNG_BYTES)
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#profile-card:visible")
@@ -303,10 +315,15 @@ def test_uc_p_03_attendee_profile_persists(base_url, admin_setup, page):
         page.fill("#my-organization", "ExampleCo")
         page.fill("#my-role", "Engineering Manager")
         page.fill("#my-linkedin-url", "https://www.linkedin.com/in/dana-example")
+        page.set_input_files("#my-photo", str(photo))
+        expect(page.locator("#my-photo-preview")).to_be_visible(timeout=5000)
         page.fill("#my-current-work", "Building a training platform")
         page.fill("#my-learning-goal", "Practice live facilitation")
         page.locator("#my-learning-goal").blur()
-        expect(page.locator(".toast")).to_contain_text("Profile saved", timeout=5000)
+        saved_toast = page.locator(".toast").filter(has_text="Profile saved")
+        expect(saved_toast).to_be_visible(
+            timeout=5000
+        )
 
         page.reload()
         page.wait_for_selector("#profile-card:visible")
@@ -322,8 +339,15 @@ def test_uc_p_03_attendee_profile_persists(base_url, admin_setup, page):
         expect(page.locator("#my-organization")).to_have_value("ExampleCo")
         expect(page.locator("#my-role")).to_have_value("Engineering Manager")
         expect(page.locator("#my-linkedin-url")).to_have_value("https://www.linkedin.com/in/dana-example")
+        expect(page.locator("#my-photo-preview")).to_be_visible()
+        expect(page.locator("#my-photo-preview")).to_have_attribute(
+            "src",
+            re.compile(r"/uploads/"),
+        )
         expect(page.locator("#my-current-work")).to_have_value("Building a training platform")
         expect(page.locator("#my-learning-goal")).to_have_value("Practice live facilitation")
+        page.click("#my-photo-clear")
+        expect(page.locator("#my-photo-preview")).to_be_hidden(timeout=5000)
     finally:
         c.close()
 

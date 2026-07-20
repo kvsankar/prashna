@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+PNG_BYTES = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
+)
+
 # ---------- UC-P-01: Join by code ----------
 
 def test_uc_p_01_get_session_ok(client, make_session):
@@ -220,6 +225,7 @@ def test_uc_p_03_profile_fields_round_trip(client, admin_client, make_session):
         "organization": "ExampleCo",
         "role": "Engineering Manager",
         "linkedin_url": "https://www.linkedin.com/in/dana-example",
+        "photo_url": None,
         "current_work": "Building a training platform",
         "learning_goal": "Learn facilitation patterns",
     }
@@ -229,8 +235,68 @@ def test_uc_p_03_profile_fields_round_trip(client, admin_client, make_session):
     assert g["organization"] == "ExampleCo"
     assert g["role"] == "Engineering Manager"
     assert g["linkedin_url"] == "https://www.linkedin.com/in/dana-example"
+    assert g["photo_url"] is None
     assert g["current_work"] == "Building a training platform"
     assert g["learning_goal"] == "Learn facilitation patterns"
+
+
+def test_uc_p_03_profile_photo_upload_and_clear(
+    client,
+    admin_client,
+    make_session,
+):
+    """UC-P-03: participant can add and clear an optional profile photograph."""
+    s = make_session()
+    admin_client.cookies.clear()
+
+    r = client.post(
+        f"/api/sessions/{s['code']}/me/photo",
+        files={"file": ("dana.png", PNG_BYTES, "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    uploaded = r.json()["photo_url"]
+    assert uploaded.startswith("/uploads/")
+
+    g = client.get(f"/api/sessions/{s['code']}/me").json()
+    assert g["photo_url"] == uploaded
+
+    r = client.patch(f"/api/sessions/{s['code']}/me", json={"photo_url": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["photo_url"] is None
+
+
+def test_uc_p_03_profile_photo_rejects_unsupported_type(
+    client,
+    admin_client,
+    make_session,
+):
+    """UC-P-03: participant profile photo uploads use image constraints."""
+    s = make_session()
+    admin_client.cookies.clear()
+
+    r = client.post(
+        f"/api/sessions/{s['code']}/me/photo",
+        files={"file": ("bad.svg", b"<svg/>", "image/svg+xml")},
+    )
+    assert r.status_code == 400
+    assert r.json() == {"detail": "unsupported image type"}
+
+
+def test_uc_p_03_profile_photo_url_cannot_be_set_directly(
+    client,
+    admin_client,
+    make_session,
+):
+    """UC-P-03: profile PATCH cannot point a photo at an arbitrary URL."""
+    s = make_session()
+    admin_client.cookies.clear()
+
+    r = client.patch(
+        f"/api/sessions/{s['code']}/me",
+        json={"photo_url": "https://example.com/avatar.png"},
+    )
+    assert r.status_code == 400
+    assert r.json() == {"detail": "photo must be uploaded"}
 
 
 def test_uc_p_03_profile_blank_fields_become_null(client, admin_client, make_session):
@@ -275,9 +341,14 @@ def test_uc_m_13_participant_profiles_summary(client, admin_client, make_session
         "organization": "ExampleCo",
         "role": "Manager",
         "linkedin_url": "https://www.linkedin.com/in/dana-example",
+        "photo_url": None,
         "current_work": "Building a training platform",
         "learning_goal": "Practice live facilitation",
     })
+    photo = client.post(
+        f"/api/sessions/{s['code']}/me/photo",
+        files={"file": ("dana.png", PNG_BYTES, "image/png")},
+    ).json()["photo_url"]
     client.cookies.clear()
     client.get(f"/api/sessions/{s['code']}/me")
 
@@ -291,6 +362,7 @@ def test_uc_m_13_participant_profiles_summary(client, admin_client, make_session
     assert body["items"][0]["organization"] == "ExampleCo"
     assert body["items"][0]["role"] == "Manager"
     assert body["items"][0]["linkedin_url"] == "https://www.linkedin.com/in/dana-example"
+    assert body["items"][0]["photo_url"] == photo
     assert body["items"][0]["current_work"] == "Building a training platform"
     assert body["items"][0]["learning_goal"] == "Practice live facilitation"
 
