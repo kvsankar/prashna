@@ -228,6 +228,18 @@ button.xsmall { padding: 2px 8px; font-size: 11px; border-radius: 6px; }
 .editor-q.compact { background: var(--panel-2); padding: 10px 12px; border-radius: 8px; margin-top: 10px; }
 .editor-q.compact textarea { min-height: 50px; font-size: 14px; }
 .editor-q.compact .options { margin-top: 6px; }
+.question-head { align-items: center; }
+.poll-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  white-space: nowrap;
+}
+.poll-toggle input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
 .editor-opt { display: flex; gap: 6px; align-items: center; padding: 4px 0; }
 .editor-opt input[type="text"] { flex: 1; }
 .thumb { max-height: 60px; max-width: 100px; border-radius: 4px; }
