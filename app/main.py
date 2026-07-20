@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 import threading
+import time
 import uuid
 from collections import Counter
 from contextlib import asynccontextmanager
@@ -94,6 +95,15 @@ def _client_ip(request: Request) -> str:
 logger = logging.getLogger("prashna")
 
 
+def _diagnostic_path(path: str) -> str:
+    parts = [part for part in path.split("/") if part]
+    if len(parts) >= 3 and parts[0] == "api" and parts[1] == "sessions":
+        parts[2] = ":code"
+    elif len(parts) >= 2 and parts[0] in {"s", "m", "p"}:
+        parts[1] = ":code"
+    return "/" + "/".join(parts)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
@@ -134,6 +144,42 @@ class SecurityHeaders(BaseHTTPMiddleware):
         return response
 
 
+class RequestTiming:
+    """Emit safe duration diagnostics for mutating and slow HTTP requests."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        started = time.perf_counter()
+        status_code = 500
+
+        async def send_with_status(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_status)
+        finally:
+            duration_ms = round((time.perf_counter() - started) * 1000, 2)
+            method = scope["method"].upper()
+            if method not in {"GET", "HEAD", "OPTIONS"} or duration_ms >= 1000:
+                log_diagnostic(
+                    "http.request",
+                    outcome="success" if status_code < 500 else "failure",
+                    method=method,
+                    path=_diagnostic_path(scope["path"]),
+                    status_code=status_code,
+                    duration_ms=duration_ms,
+                )
+
+
+app.add_middleware(RequestTiming)
 app.add_middleware(SecurityHeaders)
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
@@ -900,7 +946,7 @@ async def set_feedback_enabled(
     require_mod_or_owner(s, x_mod_key, me)
     s.feedback_enabled = bool(payload.get("enabled", True))
     db.commit()
-    await broadcast_session(s, "session_state")
+    await broadcast_session(s, "feedback_state")
     log_diagnostic(
         "session.lifecycle",
         action="feedback_enabled",

@@ -493,9 +493,17 @@ function refresh(): void {
   void loadFeedback();
 }
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-function refreshSoon(_msg: LiveMessage): void {
+function refreshSoon(msg: LiveMessage): void {
   if (refreshTimer) return;
-  refreshTimer = setTimeout(() => { refreshTimer = null; refresh(); }, 400);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    if (msg.type === "feedback_state") {
+      void loadSession();
+      void loadFeedback();
+    } else {
+      refresh();
+    }
+  }, 400);
 }
 
 async function boot(): Promise<void> {

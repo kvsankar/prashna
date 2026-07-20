@@ -452,6 +452,8 @@ function onLive(msg: LiveMessage): void {
       void loadQuiz(); break;
     case "session_state":
       void loadSession(); void loadQuiz(); break;
+    case "feedback_state":
+      void loadSession(); break;
     case "quiz_submission":
       if (activeQuiz && activeQuiz.results) scheduleQuizRefresh(); break;
     case "feedback": case "participant":
