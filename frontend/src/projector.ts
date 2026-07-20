@@ -129,7 +129,8 @@ function renderQuiz(run: QuizRun): void {
 // Coalesce WS-driven reloads: a live quiz emits a broadcast per participant
 // answer, and the projector is in that room — debounce.
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-function loadAllSoon(): void {
+function loadAllSoon(msg: { type: string }): void {
+  if (msg.type === "feedback_state") return;
   if (reloadTimer) return;
   reloadTimer = setTimeout(() => { reloadTimer = null; void loadAll(); }, 400);
 }

@@ -30,6 +30,42 @@ def _assert_not_logged(caplog, values):
         assert value not in text
 
 
+def test_diagnostic_message_includes_safe_payload(caplog):
+    """Production log format should carry safe fields, not just logger extras."""
+    from app.diagnostics import log_diagnostic
+
+    caplog.set_level(logging.INFO, logger="prashna")
+    log_diagnostic(
+        "http.request",
+        outcome="success",
+        method="POST",
+        path="/api/sessions/:code/feedback_enabled",
+        duration_ms=12.5,
+        mod_key="secret-value",
+    )
+
+    text = _log_text(caplog)
+    assert "diagnostic_event" in text
+    assert '"event":"http.request"' in text
+    assert '"duration_ms":12.5' in text
+    assert "secret-value" not in text
+
+
+def test_state_changing_requests_emit_timing_diagnostics(admin_client, make_session, caplog):
+    """Mutating API calls should leave request-duration evidence."""
+    caplog.set_level(logging.INFO, logger="prashna")
+    s = make_session()
+
+    r = admin_client.post(f"/api/sessions/{s['code']}/feedback_enabled",
+                          json={"enabled": True})
+
+    assert r.status_code == 200
+    assert "http.request" in _events(caplog)
+    text = _log_text(caplog)
+    assert "/api/sessions/:code/feedback_enabled" in text
+    assert s["code"] not in text
+
+
 def test_auth_session_upload_and_ws_diagnostics(client, caplog):
     """Core operator incidents should emit safe structured diagnostics."""
     caplog.set_level(logging.INFO, logger="prashna")
@@ -169,6 +205,27 @@ def test_websocket_send_failure_logs_safely(caplog):
     assert ok is False
     assert "ws.broadcast_failure" in _events(caplog)
     _assert_not_logged(caplog, ["socket-secret", "secret-message"])
+
+
+def test_websocket_send_timeout_logs_safely(monkeypatch, caplog):
+    """A stalled socket send should timeout quickly and log safely."""
+    from app import ws as ws_module
+    from app.ws import hub
+
+    class StalledSocket:
+        async def send_json(self, _message):
+            await asyncio.sleep(1)
+
+    monkeypatch.setattr(ws_module, "SEND_TIMEOUT_SECS", 0.01)
+    caplog.set_level(logging.INFO, logger="prashna")
+
+    ok = asyncio.run(
+        hub._safe_send(StalledSocket(), {"type": "secret-message"})
+    )
+
+    assert ok is False
+    assert "ws.broadcast_failure" in _events(caplog)
+    _assert_not_logged(caplog, ["secret-message"])
 
 
 def test_diagnostic_helpers_filter_unsafe_field_names(caplog):

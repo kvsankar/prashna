@@ -66,15 +66,15 @@ def test_uc_m_12_feedback_toggle_by_moderator(
     ).status_code == 403
 
 
-def test_uc_m_12_feedback_toggle_broadcasts_session_state(
+def test_uc_m_12_feedback_toggle_broadcasts_feedback_state(
     admin_client,
     make_session,
 ):
-    """Opening rating notifies connected participants through session_state."""
+    """Opening rating notifies connected participants through feedback_state."""
     s = make_session()
     with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         _enable_feedback(admin_client, s["code"])
-        assert _ws_recv_types(ws) == [{"type": "session_state"}]
+        assert _ws_recv_types(ws) == [{"type": "feedback_state"}]
 
 
 def test_uc_p_13_submit_feedback(client, admin_client, make_session):

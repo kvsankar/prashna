@@ -1,4 +1,6 @@
 import asyncio
+import os
+import time
 from collections import defaultdict
 
 from fastapi import WebSocket
@@ -7,7 +9,7 @@ from .diagnostics import log_diagnostic as _log_diagnostic
 
 # Per-send timeout — a stalled client cannot delay other clients' messages
 # nor block the API handler that called broadcast.
-SEND_TIMEOUT_SECS = 2.0
+SEND_TIMEOUT_SECS = float(os.environ.get("PRASHNA_WS_SEND_TIMEOUT_SECS") or 2.0)
 
 
 class Hub:
@@ -23,6 +25,9 @@ class Hub:
         if not self.rooms[room]:
             self.rooms.pop(room, None)
 
+    def client_count(self, room: str) -> int:
+        return len(self.rooms.get(room, ()))
+
     async def broadcast(self, room: str, message: dict) -> None:
         """Fan out concurrently with a per-send timeout.
 
@@ -33,13 +38,26 @@ class Hub:
         clients = list(self.rooms.get(room, ()))
         if not clients:
             return
+        started = time.perf_counter()
         results = await asyncio.gather(
             *(self._safe_send(ws, message) for ws in clients),
             return_exceptions=True,
         )
+        failure_count = 0
         for ws, ok in zip(clients, results):
             if ok is not True:
+                failure_count += 1
                 self.leave(room, ws)
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        if failure_count or duration_ms >= 250:
+            _log_diagnostic(
+                "ws.broadcast",
+                outcome="success" if failure_count == 0 else "partial_failure",
+                client_count=len(clients),
+                failure_count=failure_count,
+                duration_ms=duration_ms,
+                message_type=str(message.get("type", "")),
+            )
 
     async def _safe_send(self, ws: WebSocket, message: dict) -> bool:
         try:
