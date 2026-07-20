@@ -195,9 +195,12 @@ function renderQuestion(qq: EditorQuestion): HTMLElement {
     await patchQuestion(qq.id, { graded: !pollBox.checked });
     void openQuizDetail(quizId);
   });
-  const pollLabel = el("label", { class: "small muted", title: "Poll — collect responses with no correct answer" }, pollBox, " Poll");
+  const pollLabel = el("label", {
+    class: "poll-toggle small muted",
+    title: "Poll — collect responses with no correct answer",
+  }, pollBox, "Poll");
 
-  const head = el("div", { class: "row gap" },
+  const head = el("div", { class: "row gap question-head" },
     el("strong", {}, `Q${qq.order_index + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
     guardClick(el("button", { class: "danger ghost xsmall" }, "Delete") as HTMLButtonElement, async () => {
       if (!confirm("Delete this question?")) return;
