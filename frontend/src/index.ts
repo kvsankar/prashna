@@ -42,6 +42,7 @@ function setHeaderMeta(node: HTMLElement): void {
 // ----- state machine -----
 async function refresh(): Promise<void> {
   const s = await api<AdminStatus>("/api/admin/status");
+  $<HTMLElement>("main").classList.toggle("wide", s.authenticated);
   if (!s.initialized) {
     setHeaderMeta(el("span", { class: "muted small" }, "Initial setup"));
     show("setup");
