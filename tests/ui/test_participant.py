@@ -38,10 +38,13 @@ def assert_no_horizontal_overflow(page):
 # ---------- UC-P-13: session feedback ----------
 
 
-def test_uc_p_13_star_autosaves_and_comment_persists(base_url, admin_setup, page):
-    """UC-P-13: tapping a star auto-saves the rating (no Submit button) and
-    reveals the comment fields; a comment persists on blur; a reload prefills
-    the prior rating + comments."""
+def test_uc_p_13_submit_and_resubmit_prefills_prior_values(
+    base_url,
+    admin_setup,
+    page,
+):
+    """UC-P-13: feedback has an explicit Submit action; after submitting,
+    reload prefills the prior values and changes the action to Resubmit."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P13 {secrets.token_hex(3)}")
     c.post(
@@ -51,28 +54,38 @@ def test_uc_p_13_star_autosaves_and_comment_persists(base_url, admin_setup, page
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#feedback-card:visible")
-        # No explicit Submit button — saving is automatic.
-        expect(page.locator("#fb-submit")).to_have_count(0)
+        submit = page.locator("#fb-submit")
+        expect(submit).to_have_text("Submit feedback")
+        expect(submit).to_be_enabled()
+        submit.click()
+        expect(page.locator(".toast")).to_contain_text("Choose a rating first")
         # The expanded course-feedback section is hidden until a star is picked.
         expect(page.locator("#fb-expand")).to_be_hidden()
-        # Tapping the 4th star saves the rating immediately.
-        with page.expect_response(
-            lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
-        ):
-            page.locator("#fb-stars button.star").nth(3).click()
+        # Picking a rating reveals the optional comments and enables Submit.
+        page.locator("#fb-stars button.star").nth(3).click()
         expect(page.locator("#fb-expand")).to_be_visible()
-        expect(page.locator("#fb-status")).to_contain_text("Saved")
-        # Comment persists on blur.
+        expect(page.locator("#fb-status")).to_have_text("Ready to submit")
+        page.fill("#fb-went-well", "Loved the demos")
+        # Nothing is persisted until the explicit action is used.
         with page.expect_response(
             lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
         ):
-            page.fill("#fb-went-well", "Loved the demos")
-            page.locator("#fb-went-well").blur()
+            submit.click()
+        expect(page.locator("#fb-status")).to_contain_text("Submitted")
+        expect(submit).to_have_text("Resubmit feedback")
         # Reload → prior feedback prefilled.
         page.reload()
         page.wait_for_selector("#fb-expand:visible")
         expect(page.locator("#fb-went-well")).to_have_value("Loved the demos")
         expect(page.locator("#fb-stars button.star.filled")).to_have_count(4)
+        expect(page.locator("#fb-submit")).to_have_text("Resubmit feedback")
+        page.fill("#fb-to-improve", "More time for questions")
+        expect(page.locator("#fb-status")).to_have_text("Unsaved changes")
+        with page.expect_response(
+            lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
+        ):
+            page.click("#fb-submit")
+        expect(page.locator(".toast")).to_contain_text("resubmitted")
     finally:
         c.close()
 
@@ -89,10 +102,11 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#feedback-card:visible")
+        page.locator("#fb-stars button.star").nth(4).click()  # 5 stars
         with page.expect_response(
             lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
         ):
-            page.locator("#fb-stars button.star").nth(4).click()  # 5 stars
+            page.click("#fb-submit")
         expect(page.locator("#fb-stars button.star.filled")).to_have_count(5)
         # First tap reveals the confirm; "No" cancels (no delete).
         page.click("#fb-clear")
@@ -189,7 +203,8 @@ def test_mobile_participants_can_complete_core_flow(
         )
 
         p2.locator("#fb-stars button.star").nth(3).click()
-        expect(p2.locator("#fb-status")).to_contain_text("Saved")
+        p2.locator("#fb-submit").click()
+        expect(p2.locator("#fb-status")).to_contain_text("Submitted")
         assert_no_horizontal_overflow(p2)
     finally:
         p1.close()
@@ -325,6 +340,7 @@ def test_uc_p_03_attendee_profile_persists(
         page.locator("#profile-card > summary").click()
         expect(page.locator(".profile-title-open")).to_be_visible()
         expect(page.locator(".profile-cta-open")).to_be_visible()
+        expect(page.locator("#profile-submit")).to_have_text("Submit profile")
         page.fill("#my-name", "Dana")
         page.fill("#my-email", "dana@example.com")
         page.fill("#my-contact-number", "+1 415 555 0101")
@@ -336,10 +352,11 @@ def test_uc_p_03_attendee_profile_persists(
         page.fill("#my-current-work", "Building a training platform")
         page.fill("#my-learning-goal", "Practice live facilitation")
         page.click("#profile-submit")
-        saved_toast = page.locator(".toast").filter(has_text="Profile saved")
+        saved_toast = page.locator(".toast").filter(has_text="Profile submitted")
         expect(saved_toast).to_be_visible(
             timeout=5000
         )
+        expect(page.locator("#profile-submit")).to_have_text("Resubmit profile")
 
         page.reload()
         page.wait_for_selector("#profile-card:visible")
@@ -349,6 +366,7 @@ def test_uc_p_03_attendee_profile_persists(
         page.locator("#profile-card > summary").click()
         expect(page.locator(".profile-title-open")).to_be_visible()
         expect(page.locator(".profile-cta-open")).to_be_visible()
+        expect(page.locator("#profile-submit")).to_have_text("Resubmit profile")
         expect(page.locator("#my-name")).to_have_value("Dana")
         expect(page.locator("#my-email")).to_have_value("dana@example.com")
         expect(page.locator("#my-contact-number")).to_have_value("+1 415 555 0101")

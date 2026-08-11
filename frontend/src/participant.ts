@@ -12,6 +12,7 @@ let latestQueriesSeq = 0;
 let latestQuizSeq = 0;
 let profileToastTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPhotoPreviewUrl: string | null = null;
+let profileSubmitted = false;
 
 let sessionEnded = false;
 let feedbackEnabled = false;
@@ -44,6 +45,34 @@ async function loadMe(): Promise<void> {
   renderProfilePhoto(me.photo_url);
   $<HTMLTextAreaElement>("#my-current-work").value = me.current_work || "";
   $<HTMLTextAreaElement>("#my-learning-goal").value = me.learning_goal || "";
+  profileSubmitted = profileHasValues(me);
+  renderProfileAction();
+}
+
+function profileHasValues(profile: ParticipantProfile): boolean {
+  return Boolean(
+    profile.name
+    || profile.email
+    || profile.contact_number
+    || profile.organization
+    || profile.role
+    || profile.linkedin_url
+    || profile.photo_url
+    || profile.current_work
+    || profile.learning_goal
+  );
+}
+
+function renderProfileAction(): void {
+  $<HTMLButtonElement>("#profile-submit").textContent = profileSubmitted
+    ? "Resubmit profile"
+    : "Submit profile";
+  $(".profile-title-closed").textContent = profileSubmitted
+    ? "Your profile"
+    : "Add your profile";
+  $(".profile-cta-closed").textContent = profileSubmitted
+    ? "Edit details"
+    : "Add details";
 }
 
 function renderProfilePhoto(url: string | null): void {
@@ -101,11 +130,13 @@ async function saveProfile(): Promise<void> {
     const photoInput = $<HTMLInputElement>("#my-photo");
     if (photoInput.files?.[0]) me = await uploadSelectedProfilePhoto();
     renderProfilePhoto(me.photo_url);
-    $("#profile-status").textContent = "Saved";
+    profileSubmitted = true;
+    renderProfileAction();
+    $("#profile-status").textContent = "Submitted";
     if (profileToastTimer) clearTimeout(profileToastTimer);
     profileToastTimer = setTimeout(() => {
       profileToastTimer = null;
-      toast(me?.name ? `Profile saved for "${me.name}"` : "Profile saved");
+      toast(me?.name ? `Profile submitted for "${me.name}"` : "Profile submitted");
     }, 250);
   } catch (e) {
     $("#profile-status").textContent = "Save failed";
@@ -342,10 +373,10 @@ async function submitQuiz(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 
-// ---- session feedback (star rating → went-well / improve), auto-saved ----
+// ---- session feedback (star rating → went-well / improve) ----
 interface FeedbackDraft { rating: number; went_well: string | null; to_improve: string | null }
 let myRating = 0;
-let lastSaved: FeedbackDraft | null = null;
+let feedbackSubmitted = false;
 function currentFeedback(): FeedbackDraft {
   return {
     rating: myRating,
@@ -365,7 +396,12 @@ function renderStars(): void {
       role: "radio",
       "aria-checked": String(i === myRating),
       "aria-label": `${i} star${i > 1 ? "s" : ""}`,
-      onclick: () => { myRating = i; $("#fb-expand").style.display = ""; renderStars(); void saveFeedback("Thanks for your feedback"); },
+      onclick: () => {
+        myRating = i;
+        $("#fb-expand").style.display = "";
+        renderStars();
+        markFeedbackDirty();
+      },
     }, "★");
     b.addEventListener("mouseenter", () => paint(i));
     btns.push(b);
@@ -375,28 +411,48 @@ function renderStars(): void {
   paint(myRating);
   $("#fb-clear").style.display = myRating > 0 ? "" : "none";
   $("#fb-clear-confirm").style.display = "none";
+  renderFeedbackAction();
 }
-async function saveFeedback(toastMsg?: string): Promise<void> {
+
+function renderFeedbackAction(): void {
+  const button = $<HTMLButtonElement>("#fb-submit");
+  button.textContent = feedbackSubmitted ? "Resubmit feedback" : "Submit feedback";
+  $("#fb-submit-hint").textContent = myRating
+    ? "Your rating and comments are submitted together."
+    : "Choose a rating to submit feedback.";
+}
+
+function markFeedbackDirty(): void {
+  $("#fb-status").textContent = feedbackSubmitted ? "Unsaved changes" : "Ready to submit";
+}
+
+async function saveFeedback(): Promise<void> {
   if (!feedbackEnabled) return;
-  if (!myRating) return;
+  if (!myRating) {
+    toast("Choose a rating first");
+    return;
+  }
   const cur = currentFeedback();
-  if (lastSaved
-      && lastSaved.rating === cur.rating
-      && lastSaved.went_well === cur.went_well
-      && lastSaved.to_improve === cur.to_improve) return;
+  const wasResubmission = feedbackSubmitted;
   try {
     await api(`/api/sessions/${CODE}/feedback`, { method: "POST", body: cur });
-    lastSaved = cur;
-    $("#fb-status").textContent = "Saved ✓";
-    if (toastMsg) toast(toastMsg);
-  } catch (e) { errorToast((e as Error).message); }
+    feedbackSubmitted = true;
+    $("#fb-status").textContent = "Submitted ✓";
+    renderFeedbackAction();
+    toast(wasResubmission ? "Feedback resubmitted" : "Thanks for your feedback");
+  } catch (e) {
+    $("#fb-status").textContent = "Submit failed";
+    errorToast((e as Error).message);
+  }
 }
 async function clearFeedback(): Promise<void> {
   if (!feedbackEnabled) return;
-  try { await api(`/api/sessions/${CODE}/feedback`, { method: "DELETE" }); }
-  catch (e) { errorToast((e as Error).message); return; }
+  if (feedbackSubmitted) {
+    try { await api(`/api/sessions/${CODE}/feedback`, { method: "DELETE" }); }
+    catch (e) { errorToast((e as Error).message); return; }
+  }
   myRating = 0;
-  lastSaved = null;
+  feedbackSubmitted = false;
   $<HTMLTextAreaElement>("#fb-went-well").value = "";
   $<HTMLTextAreaElement>("#fb-to-improve").value = "";
   $("#fb-expand").style.display = "none";
@@ -424,14 +480,22 @@ async function loadFeedback(): Promise<void> {
       $<HTMLTextAreaElement>("#fb-went-well").value = f.went_well || "";
       $<HTMLTextAreaElement>("#fb-to-improve").value = f.to_improve || "";
       $("#fb-expand").style.display = "";
-      lastSaved = currentFeedback();
-      $("#fb-status").textContent = "Saved ✓";
+      feedbackSubmitted = true;
+      $("#fb-status").textContent = "Submitted ✓";
+    } else {
+      myRating = 0;
+      feedbackSubmitted = false;
+      $<HTMLTextAreaElement>("#fb-went-well").value = "";
+      $<HTMLTextAreaElement>("#fb-to-improve").value = "";
+      $("#fb-expand").style.display = "none";
+      $("#fb-status").textContent = "";
     }
   } catch { /* no feedback yet */ }
   renderStars();
 }
-$("#fb-went-well").addEventListener("change", () => void saveFeedback("Comment saved"));
-$("#fb-to-improve").addEventListener("change", () => void saveFeedback("Comment saved"));
+$("#fb-went-well").addEventListener("input", markFeedbackDirty);
+$("#fb-to-improve").addEventListener("input", markFeedbackDirty);
+guardClick($<HTMLButtonElement>("#fb-submit"), saveFeedback);
 
 function refreshAll(): void { void loadSession(); void loadQueries(); void loadQuiz(); }
 
