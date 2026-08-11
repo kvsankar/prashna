@@ -36,7 +36,9 @@ The list route uses the existing `require_mod_or_owner` authorization model, sor
 Participant page:
 
 - Replace the single inline name input with a compact `Your profile` card.
-- Save profile fields on blur/change through the existing `/me` endpoint.
+- Submit profile fields together through the existing `/me` endpoint. After a
+  submitted profile is loaded, prefill its values and label the action
+  `Resubmit profile`.
 - Keep the existing `#my-name` selector for current UI tests.
 
 Moderator page:

@@ -1316,27 +1316,29 @@ fill up to that star (hovering the 5th lights all five).
 
 - **Given** the participant is on `/s/<CODE>`
 - **When** they pick a star
-- **Then** the rating **auto-saves immediately** (`POST
-  /api/sessions/{code}/feedback`) — there is **no Submit button** (per the
-  app's persist-on-blur convention) — and the expanded section
-  (`#fb-expand`) appears with the two optional comment fields; the status
-  line confirms "Saved"
-- **And** editing a comment auto-saves it **on blur** (a helper line says
-  so, and a "Saved ✓" status sits on the star row — not below the
-  comments); the rating card is visually distinct from the Q&A/quiz cards
+- **Then** the expanded section (`#fb-expand`) appears with the two optional
+  comment fields and the explicit **Submit feedback** button (`#fb-submit`)
+  is ready to use; choosing a star or editing a comment does not persist the
+  draft by itself. Submitting without a rating shows a "Choose a rating first"
+  cue instead of silently doing nothing
+- **And** clicking **Submit feedback** sends the rating and comments together
+  (`POST /api/sessions/{code}/feedback`), confirms "Submitted ✓", and changes
+  the action to **Resubmit feedback**; the rating card is visually distinct
+  from the Q&A/quiz cards
 - **And** the participant can retract their feedback via a subtle
   **two-step inline confirm** (`#fb-clear` → "Clear feedback? Yes / No"):
   "Yes" (`#fb-clear-yes`) issues `DELETE /api/sessions/{code}/feedback`,
   "No" (`#fb-clear-no`) cancels. (Deterministic — no auto-revert timer.)
   History in `SessionFeedbackVersion` is retained; afterward `mine`
   returns null and the summary count drops
-- **And** participants may **change their feedback any number of times**:
-  each save is appended to an immutable history (`SessionFeedbackVersion`)
+- **And** participants may **resubmit their feedback any number of times**:
+  each submission is appended to an immutable history (`SessionFeedbackVersion`)
   and the **latest** version is mirrored into the current view
   (`SessionFeedback`, one per participant keyed by `voter_token`) used by
-  `mine`/`summary`; redundant saves (no change) are skipped client-side
+  `mine`/`summary`
 - **And** reloading prefills their prior rating + comments (via
-  `GET /api/sessions/{code}/feedback/mine`, which returns the latest)
+  `GET /api/sessions/{code}/feedback/mine`, which returns the latest) and
+  shows **Resubmit feedback**
 - **And** comments are optional — a bare rating is valid; `rating` must be
   an integer 1–5 or the POST returns `400`
 - **And** submitting broadcasts `{type: "feedback"}` (UC-X-01) so the
@@ -1353,8 +1355,8 @@ fill up to that star (hovering the 5th lights all five).
 
 **Tests (UI)**
 - `#feedback-card` is the first card on `/s/<CODE>` and is a collapsible `<details>` that is open by default.
-- There is no `#fb-submit` button. `#fb-expand` is hidden until a star in `#fb-stars` is clicked; clicking a star fires a `POST .../feedback` and reveals `#fb-expand` with a "Saved" status. Editing `#fb-went-well` and blurring fires another `POST .../feedback`.
-- After reload, the prior rating (filled stars count) and comment values are prefilled.
+- `#fb-submit` is present and enabled. With no rating it shows a "Choose a rating first" cue; selecting a star reveals `#fb-expand` without submitting, and clicking **Submit feedback** fires one `POST .../feedback` with the rating and both comments.
+- After reload, the prior rating (filled stars count) and comment values are prefilled, and the button reads **Resubmit feedback**. Editing then resubmitting fires another `POST`.
 - Clicking `#fb-clear` reveals an inline confirm (`#fb-clear-confirm`); `#fb-clear-no` cancels (rating unchanged), `#fb-clear-yes` clears the stars (filled count 0) and hides `#fb-expand`.
 
 ---
