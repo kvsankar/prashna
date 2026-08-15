@@ -60,11 +60,23 @@ the read density.
 ## 3. Page chrome
 
 - Every page has a top `<header class="top">` with: page title (left),
-  navigation/meta (right). One line. No subnav for now.
+  navigation/meta (right).
 - `main` is centered, max-width 900 px (`main`) or 1200 px
   (`main.wide` for dense admin views).
-- No breadcrumbs (depth is shallow). Back-link in the header right
-  (`← home`) if the page is not `/`.
+- Interactive role surfaces use a shared `<div class="page-nav">`
+  immediately below the header. Its `nav.breadcrumbs` identifies the
+  hierarchy and provides an up link; its `nav.section-links` jumps to
+  the important sections of long pages. The bar is sticky on desktop
+  and wraps into two rows on narrow screens.
+- Moderator navigation is the most complete example: **Sessions →
+  session → Moderator** plus Lifecycle, Set up, Quiz, Questions,
+  Profiles, and Feedback section links. The session crumb uses
+  `/?session=<CODE>` so an authenticated owner returns directly to the
+  corresponding admin detail card. A section link that targets a
+  collapsed `<details>` opens it before scrolling.
+- The participant surface uses the same pattern with read-appropriate
+  section links. The projector remains the exception: as a public
+  presentation surface it has no interactive chrome.
 
 ---
 
@@ -157,6 +169,13 @@ disclosure (not a custom popover) for keyboard/no-JS robustness.
 ## 5. Lists: tables vs cards-per-row
 
 **Default to a compact table for work surfaces.** Use `class="ctable"`.
+
+The global quiz-run report supports four explicit views: **Flat**,
+**By quiz**, **By version**, and **By session**. Use a compact
+`aria-pressed` button group in the card tools. Grouped views retain the
+same run columns inside open `<details class="run-group">` sections so
+the data remains comparable; the selection is reflected in the
+`?runs=` URL parameter for bookmarking and browser history.
 
 ```
 <table class="ctable">

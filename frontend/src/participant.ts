@@ -23,6 +23,7 @@ async function loadSession(): Promise<void> {
   document.title = `Prashna — ${s.title}`;
   $("#title").textContent = s.title;
   $("#code").textContent = "Code " + CODE;
+  $("#participant-breadcrumb-session").textContent = s.title;
   sessionEnded = s.status === "ended";
   feedbackEnabled = s.feedback_enabled;
   $("#ask-card").style.display = sessionEnded ? "none" : "";
