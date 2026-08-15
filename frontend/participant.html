@@ -13,6 +13,23 @@
     </div>
   </header>
 
+  <div class="page-nav">
+    <nav class="breadcrumbs" id="participant-breadcrumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="/">Prashna</a></li>
+        <li><span id="participant-breadcrumb-session">Session</span></li>
+        <li><span aria-current="page">Participant</span></li>
+      </ol>
+    </nav>
+    <nav class="section-links" aria-label="Participant sections">
+      <a href="#profile-card">Profile</a>
+      <a href="#feedback-card">Rating</a>
+      <a href="#quiz-card">Quiz</a>
+      <a href="#ask-card">Ask</a>
+      <a href="#questions-card">Questions</a>
+    </nav>
+  </div>
+
   <main>
     <details class="card" id="profile-card">
       <summary class="card-head">
@@ -143,7 +160,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" id="questions-card">
       <div class="card-head"><h2>Questions</h2></div>
       <div id="queries"></div>
     </section>

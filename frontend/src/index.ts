@@ -1,6 +1,8 @@
 import { $, api, el, errorToast, escapeHtml, guardClick, renderQR, statusLabel, toast } from "./common";
 import type { AdminStatus, FeedbackSummary, SessionRow } from "./types";
 
+let requestedSessionCode = new URLSearchParams(location.search).get("session")?.toUpperCase() ?? null;
+
 // ----- bad code banner from /s/BOGUS redirect -----
 const bad = new URLSearchParams(location.search).get("bad_code");
 if (bad) {
@@ -43,6 +45,7 @@ function setHeaderMeta(node: HTMLElement): void {
 async function refresh(): Promise<void> {
   const s = await api<AdminStatus>("/api/admin/status");
   $<HTMLElement>("main").classList.toggle("wide", s.authenticated);
+  $("#admin-page-nav").style.display = s.authenticated ? "" : "none";
   if (!s.initialized) {
     setHeaderMeta(el("span", { class: "muted small" }, "Initial setup"));
     show("setup");
@@ -152,6 +155,14 @@ async function loadSessions(): Promise<void> {
       actions.appendChild(delBtn);
       tr.appendChild(actions);
       tbody.appendChild(tr);
+    }
+    if (requestedSessionCode && currentDetail !== requestedSessionCode) {
+      const requested = rows.find((row) => row.code === requestedSessionCode);
+      requestedSessionCode = null;
+      if (requested) {
+        history.replaceState({}, "", "/");
+        void openSessionDetail(requested);
+      }
     }
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="error-banner">${escapeHtml((e as Error).message)}</td></tr>`;

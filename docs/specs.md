@@ -176,6 +176,8 @@ setup form for the first visitor to claim admin.
 **Tests (UI)**
 - On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
 - Most-recently-created session appears at the top.
+- Authenticated admin chrome shows `#admin-page-nav` with an Admin breadcrumb and links to Sessions and Quiz library.
+- Opening `/?session=<owned-code>` opens `#session-detail-card` for that session, enabling moderator breadcrumbs to navigate one level up.
 
 ### UC-A-05: Edit session title
 
@@ -570,6 +572,10 @@ Used by question and answer editors to set `image_url`.
 - **Then** they see every QuizRun across all their sessions (joined
   via owner), with quiz title, version number, session code, status,
   progress, respondent count, and created time
+- **And** they can switch between **Flat**, **By quiz**, **By version**,
+  and **By session** without refetching or changing the underlying run set
+- **And** grouped views use collapsible group sections, while the chosen
+  non-flat view is reflected in `?runs=quiz|version|session`
 
 **Tests (API)**
 - `GET /api/quiz_runs` → `200 [{id, status, session_code, session_title, quiz_id, quiz_title, version_no, current_question_idx, question_count, respondent_count, created_at, started_at, closed_at}, ...]`. Auth: admin cookie.
@@ -579,6 +585,8 @@ Used by question and answer editors to set `image_url`.
 
 **Tests (UI)**
 - On `/quizzes`, `#qs-rows` shows one row per QuizRun across owned sessions, with quiz title, version, session code, status badge, progress, and respondents.
+- `#run-view-switcher` exposes four `aria-pressed` buttons. Selecting By quiz groups on `quiz_id`; By version groups on `(quiz_id, version_no)`; By session groups on `session_code`; selecting Flat restores `#qs-rows`.
+- The quiz-library breadcrumb links back to Admin, and its section links target the quiz library and quiz-run report cards.
 
 ### UC-A-24: View one quiz-run's results
 
@@ -707,6 +715,7 @@ the UI shows no button.
 - Opening `/m/<code>#k=<mod_key>` as a delegate stores the key in `localStorage` under the session code and strips `#k=` from the address bar.
 - Opening `/m/<code>` with neither cookie nor stored key renders `#modkey-card`; submitting `#modkey-input` via `#modkey-submit` boots the surface.
 - Opening `/m/<code>` with a wrong stored key renders `#modkey-card` with toast "Couldn't load — re-enter the moderator key".
+- `#moderator-breadcrumbs` shows Sessions → session title → Moderator. Its session link targets `/?session=<code>`, and the adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
 
 ### UC-M-02: Session lifecycle: Start → End
 
@@ -1057,6 +1066,7 @@ by default while the session is `planning`.
 **Tests (UI)**
 - On `/`, typing a valid code into `#join-code` and clicking `#join-btn` (or pressing Enter) navigates to `/s/<CODE>`.
 - `/s/<CODE>` shows `#title`, `#code`, `#my-name`, `#ask-card`, `#queries-card`, `#invite-card`.
+- `#participant-breadcrumbs` shows Prashna → session title → Participant, with section links for the long participant page.
 - Typing an unknown code redirects to `/?bad_code=XXX`; `#bad-code-msg` shows "Session 'XXX' does not exist." in red.
 
 ### UC-P-02: Anonymous identity per session

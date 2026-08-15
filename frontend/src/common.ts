@@ -49,6 +49,16 @@ export function el(tag: string, attrs: Attrs = {}, ...children: (Child | Child[]
   return node;
 }
 
+// Section navigation is shared by the long role-based pages. If a jump target
+// is a collapsed disclosure (for example moderator Set up), open it before the
+// browser scrolls to the anchor.
+document.addEventListener("click", (event) => {
+  const link = (event.target as Element | null)?.closest<HTMLAnchorElement>(".section-links a[href^='#']");
+  if (!link) return;
+  const target = document.querySelector<HTMLElement>(link.hash);
+  if (target instanceof HTMLDetailsElement) target.open = true;
+});
+
 export function escapeHtml(s: unknown): string {
   const map: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   return String(s ?? "").replace(/[&<>"']/g, (c) => map[c]);

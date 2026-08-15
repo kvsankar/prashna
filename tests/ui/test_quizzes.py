@@ -445,6 +445,20 @@ def test_uc_a_22_unpublish_flips_badge_to_draft(base_url, admin_setup, page):
 # ---------- UC-A-23 ----------
 
 
+def test_quiz_library_breadcrumbs_link_admin_and_report_sections(
+    base_url, admin_setup, page
+):
+    """Quiz authoring remains visibly nested under the admin role."""
+    _goto_quizzes(page, base_url)
+    crumbs = page.locator(".breadcrumbs")
+    expect(crumbs).to_contain_text("Admin")
+    expect(crumbs).to_contain_text("Quiz library")
+    expect(crumbs.locator("a", has_text="Admin")).to_have_attribute("href", "/")
+    expect(page.locator(".section-links a", has_text="Quiz runs")).to_have_attribute(
+        "href", "#quiz-runs-card"
+    )
+
+
 def test_uc_a_23_qs_rows_lists_quiz_runs(base_url, admin_setup, page):
     """UC-A-23: #qs-rows shows one row per QuizRun across owned sessions."""
     c = api_login(base_url)
@@ -456,6 +470,70 @@ def test_uc_a_23_qs_rows_lists_quiz_runs(base_url, admin_setup, page):
         row = page.locator("#qs-rows tr").filter(has_text=quiz["title"]).filter(has_text=s["code"])
         expect(row).to_be_visible()
         expect(row.locator(".badge-queued")).to_be_visible()
+    finally:
+        c.close()
+
+
+def test_uc_a_23_switches_flat_quiz_version_and_session_views(
+    base_url, admin_setup, page
+):
+    """The global report can regroup the same runs without another API shape."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q23groups {secrets.token_hex(3)}", publish=True)
+    first = api_make_session(c, f"UI-Q23-first {secrets.token_hex(3)}")
+    second = api_make_session(c, f"UI-Q23-second {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, first["code"], quiz["id"])
+    question_id = c.get(
+        f"/api/quizzes/{quiz['id']}?include_correct=true"
+    ).json()["questions"][0]["id"]
+    c.patch(
+        f"/api/quiz_questions/{question_id}",
+        json={"text": "Updated question for version two?"},
+    ).raise_for_status()
+    api_queue_quiz_run(c, second["code"], quiz["id"])
+    try:
+        _goto_quizzes(page, base_url)
+
+        page.locator("[data-run-view='quiz']").click()
+        expect(page.locator("[data-run-view='quiz']")).to_have_attribute(
+            "aria-pressed", "true"
+        )
+        quiz_group = page.locator("#qs-groups .run-group").filter(
+            has_text=quiz["title"]
+        )
+        expect(quiz_group).to_have_count(1)
+        expect(quiz_group).to_contain_text(first["code"])
+        expect(quiz_group).to_contain_text(second["code"])
+
+        page.locator("[data-run-view='version']").click()
+        version_groups = page.locator("#qs-groups .run-group").filter(
+            has_text=quiz["title"]
+        )
+        expect(version_groups).to_have_count(2)
+        version_titles = " ".join(version_groups.locator("summary").all_text_contents())
+        assert "v1" in version_titles and "v2" in version_titles
+        assert "runs=version" in page.url
+        page.reload()
+        expect(page.locator("[data-run-view='version']")).to_have_attribute(
+            "aria-pressed", "true"
+        )
+        expect(page.locator("#qs-groups .run-group").filter(
+            has_text=quiz["title"]
+        )).to_have_count(2)
+
+        page.locator("[data-run-view='session']").click()
+        expect(page.locator("#qs-groups .run-group").filter(
+            has_text=first["code"]
+        )).to_have_count(1)
+        expect(page.locator("#qs-groups .run-group").filter(
+            has_text=second["code"]
+        )).to_have_count(1)
+
+        page.locator("[data-run-view='flat']").click()
+        expect(page.locator("#qs-flat")).to_be_visible()
+        expect(page.locator("#qs-rows tr").filter(
+            has_text=quiz["title"]
+        )).to_have_count(2)
     finally:
         c.close()
 

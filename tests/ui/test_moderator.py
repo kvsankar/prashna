@@ -41,6 +41,33 @@ def test_uc_m_01_admin_owner_no_key_gate(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_01_breadcrumbs_jump_within_page_and_back_to_session(
+    base_url, admin_setup, page
+):
+    """Moderator navigation supports section jumps and an admin-level up link."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M01nav {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
+        crumbs = page.locator("#moderator-breadcrumbs")
+        expect(crumbs).to_contain_text(s["title"])
+        expect(page.locator("#moderator-session-link")).to_have_attribute(
+            "href", f"/?session={s['code']}"
+        )
+
+        page.locator(".section-links a", has_text="Set up").click()
+        expect(page.locator("#setup-section")).to_have_attribute("open", "")
+        assert page.evaluate("location.hash") == "#setup-section"
+
+        page.locator("#moderator-session-link").click()
+        expect(page.locator("#session-detail-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#sd-title")).to_contain_text(s["title"])
+    finally:
+        c.close()
+
+
 def test_uc_m_01_delegate_with_hash_stores_key(base_url, admin_setup, page):
     """UC-M-01: opening /m/<code>#k=<key> persists key to localStorage and strips fragment."""
     c = api_login(base_url)

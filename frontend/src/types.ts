@@ -139,6 +139,7 @@ export interface QuizEditor {
 
 export interface QuizRunRow {
   id: number;
+  quiz_id: number;
   quiz_title: string;
   version_no: number;
   session_title: string;

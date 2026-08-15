@@ -21,6 +21,22 @@ from ._helpers import (
 # ---------- UC-A-03 ----------
 
 
+def test_admin_breadcrumbs_link_sessions_and_quiz_library(
+    base_url, admin_setup, page
+):
+    """Authenticated admin chrome exposes the current role and its child areas."""
+    admin_login_via_ui(page, base_url)
+    nav = page.locator("#admin-page-nav")
+    expect(nav).to_be_visible()
+    expect(nav.locator(".breadcrumbs")).to_contain_text("Admin")
+    expect(nav.locator(".section-links a", has_text="Sessions")).to_have_attribute(
+        "href", "#sessions-card"
+    )
+    expect(nav.locator(".section-links a", has_text="Quiz library")).to_have_attribute(
+        "href", "/quizzes"
+    )
+
+
 def test_uc_a_03_create_session_via_ui(base_url, admin_setup, page):
     """UC-A-03: typing a title and clicking + New session adds a row with .badge-planning."""
     admin_login_via_ui(page, base_url)

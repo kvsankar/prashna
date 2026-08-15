@@ -56,6 +56,12 @@ moderator UI directly with their cookie. The `mod_key` (delivered
 via `/m/<code>#k=<key>` URL) is the *delegation* mechanism —
 hand it to a TA / co-host who has no admin account.
 
+Interactive role pages include breadcrumbs and section jump links. The
+moderator session breadcrumb returns an authenticated owner directly to
+that session's admin detail. The quiz library's run report can be viewed
+flat or grouped by quiz, immutable quiz version, or session. The projector
+deliberately remains chrome-free for presentation use.
+
 ## Entities
 
 | Entity              | What it is                                                     |

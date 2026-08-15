@@ -35,6 +35,23 @@ def assert_no_horizontal_overflow(page):
     )
     assert overflow["scrollWidth"] <= overflow["clientWidth"] + 1, overflow
 
+
+def test_participant_breadcrumbs_show_context_and_section_links(
+    base_url, admin_setup, page
+):
+    """Participant chrome identifies the role and supports long-page jumps."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P-nav {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        crumbs = page.locator("#participant-breadcrumbs")
+        expect(crumbs).to_contain_text(s["title"], timeout=5000)
+        expect(crumbs).to_contain_text("Participant")
+        page.locator(".section-links a", has_text="Questions").click()
+        assert page.evaluate("location.hash") == "#questions-card"
+    finally:
+        c.close()
+
 # ---------- UC-P-13: session feedback ----------
 
 

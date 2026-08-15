@@ -11,8 +11,21 @@
     <div class="meta"><a href="/">← home</a></div>
   </header>
 
+  <div class="page-nav wide">
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="/">Admin</a></li>
+        <li><span aria-current="page">Quiz library</span></li>
+      </ol>
+    </nav>
+    <nav class="section-links" aria-label="Quiz library sections">
+      <a href="#quiz-library-card">Quizzes</a>
+      <a href="#quiz-runs-card">Quiz runs</a>
+    </nav>
+  </div>
+
   <main class="wide">
-    <section class="card compact">
+    <section class="card compact" id="quiz-library-card">
       <div class="card-head">
         <h2>Quizzes</h2>
         <div class="card-tools">
@@ -28,17 +41,26 @@
       </table>
     </section>
 
-    <section class="card compact">
+    <section class="card compact" id="quiz-runs-card">
       <div class="card-head">
         <h2>Quiz runs</h2>
-        <span class="muted small">Each row is one playthrough of a quiz inside a session.</span>
+        <div class="card-tools run-view-switcher" id="run-view-switcher" role="group" aria-label="Group quiz runs">
+          <button class="view-option small" type="button" data-run-view="flat" aria-pressed="true">Flat</button>
+          <button class="view-option small" type="button" data-run-view="quiz" aria-pressed="false">By quiz</button>
+          <button class="view-option small" type="button" data-run-view="version" aria-pressed="false">By version</button>
+          <button class="view-option small" type="button" data-run-view="session" aria-pressed="false">By session</button>
+        </div>
       </div>
-      <table class="ctable" id="qs-table">
-        <thead><tr>
-          <th>Quiz</th><th>Ver</th><th>In session</th><th>Status</th><th class="num">Progress</th><th class="num">Resp.</th><th>Created</th>
-        </tr></thead>
-        <tbody id="qs-rows"><tr><td colspan="7" class="muted small">Loading…</td></tr></tbody>
-      </table>
+      <p class="muted small" id="qs-view-summary">Each row is one playthrough of a quiz inside a session.</p>
+      <div class="table-scroll" id="qs-flat">
+        <table class="ctable" id="qs-table">
+          <thead><tr>
+            <th>Quiz</th><th>Ver</th><th>In session</th><th>Status</th><th class="num">Progress</th><th class="num">Resp.</th><th>Created</th>
+          </tr></thead>
+          <tbody id="qs-rows"><tr><td colspan="7" class="muted small">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="qs-groups" style="display:none;"></div>
     </section>
 
     <section class="card compact" id="editor-card" style="display:none;">

@@ -6,6 +6,13 @@ import type {
 let editing: QuizEditor | null = null;
 let editingId: number | null = null;
 let resultsId: number | null = null;
+type RunView = "flat" | "quiz" | "version" | "session";
+const RUN_VIEWS: RunView[] = ["flat", "quiz", "version", "session"];
+const requestedRunView = new URLSearchParams(location.search).get("runs");
+let runView: RunView = RUN_VIEWS.includes(requestedRunView as RunView)
+  ? requestedRunView as RunView
+  : "flat";
+let quizRunRows: QuizRunRow[] = [];
 
 // ---------- list loaders ----------
 
@@ -39,29 +46,131 @@ async function loadQuizzes(): Promise<void> {
 }
 
 async function loadQSessions(): Promise<void> {
-  const qsessions = await api<QuizRunRow[]>("/api/quiz_runs");
+  quizRunRows = await api<QuizRunRow[]>("/api/quiz_runs");
+  renderQSessions();
+}
+
+function renderRunRow(r: QuizRunRow): HTMLTableRowElement {
+  const tr = el("tr", { class: "rowable" + (resultsId === r.id ? " selected" : "") }) as HTMLTableRowElement;
+  tr.appendChild(el("td", {}, r.quiz_title));
+  tr.appendChild(el("td", { class: "muted small" }, "v" + r.version_no));
+  tr.appendChild(el("td", {},
+    el("span", { class: "muted small" }, r.session_title + " "),
+    el("code", { class: "small" }, r.session_code)));
+  tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + r.status }, statusLabel(r.status))));
+  const progress = r.status === "queued" ? "—"
+    : `${Math.min(r.current_question_idx + 1, r.question_count)}/${r.question_count}`;
+  tr.appendChild(el("td", { class: "num muted" }, progress));
+  tr.appendChild(el("td", { class: "num muted" }, String(r.respondent_count)));
+  tr.appendChild(el("td", { class: "muted small" }, new Date(r.created_at).toLocaleString()));
+  tr.addEventListener("click", () => void openQSDetail(r.id));
+  return tr;
+}
+
+function renderRunTable(rows: QuizRunRow[], tbody?: HTMLTableSectionElement): HTMLTableElement {
+  if (tbody) {
+    tbody.innerHTML = "";
+    for (const row of rows) tbody.appendChild(renderRunRow(row));
+    return tbody.closest("table") as HTMLTableElement;
+  }
+  const table = el("table", { class: "ctable" }) as HTMLTableElement;
+  table.appendChild(el("thead", {}, el("tr", {},
+    el("th", {}, "Quiz"),
+    el("th", {}, "Ver"),
+    el("th", {}, "In session"),
+    el("th", {}, "Status"),
+    el("th", { class: "num" }, "Progress"),
+    el("th", { class: "num" }, "Resp."),
+    el("th", {}, "Created"),
+  )));
+  const body = document.createElement("tbody");
+  for (const row of rows) body.appendChild(renderRunRow(row));
+  table.appendChild(body);
+  return table;
+}
+
+interface RunGroup {
+  key: string;
+  title: string;
+  rows: QuizRunRow[];
+}
+
+function groupedRuns(view: Exclude<RunView, "flat">): RunGroup[] {
+  const groups = new Map<string, RunGroup>();
+  for (const row of quizRunRows) {
+    let key: string;
+    let title: string;
+    if (view === "quiz") {
+      key = String(row.quiz_id);
+      title = row.quiz_title;
+    } else if (view === "version") {
+      key = `${row.quiz_id}:${row.version_no}`;
+      title = `${row.quiz_title} · v${row.version_no}`;
+    } else {
+      key = row.session_code;
+      title = `${row.session_title} · ${row.session_code}`;
+    }
+    const existing = groups.get(key);
+    if (existing) existing.rows.push(row);
+    else groups.set(key, { key, title, rows: [row] });
+  }
+  return [...groups.values()];
+}
+
+function renderQSessions(): void {
   const tbody = $("#qs-rows");
-  if (!qsessions.length) {
+  const flat = $("#qs-flat");
+  const grouped = $("#qs-groups");
+  const summaries: Record<RunView, string> = {
+    flat: "Each row is one playthrough of a quiz inside a session.",
+    quiz: "Runs are grouped by reusable quiz, across versions and sessions.",
+    version: "Runs are grouped by the immutable quiz version used for each playthrough.",
+    session: "Runs are grouped by the session in which they were played.",
+  };
+  $("#qs-view-summary").textContent = summaries[runView];
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-run-view]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.runView === runView));
+  }
+
+  if (!quizRunRows.length) {
+    flat.style.display = "";
+    grouped.style.display = "none";
     tbody.innerHTML = `<tr><td colspan="7" class="muted small">No quiz runs yet. Open a session as moderator and click <strong>Add to session</strong> to queue one.</td></tr>`;
     return;
   }
-  tbody.innerHTML = "";
-  for (const r of qsessions) {
-    const tr = el("tr", { class: "rowable" + (resultsId === r.id ? " selected" : "") });
-    tr.appendChild(el("td", {}, r.quiz_title));
-    tr.appendChild(el("td", { class: "muted small" }, "v" + r.version_no));
-    tr.appendChild(el("td", {},
-      el("span", { class: "muted small" }, r.session_title + " "),
-      el("code", { class: "small" }, r.session_code)));
-    tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + r.status }, statusLabel(r.status))));
-    const progress = r.status === "queued" ? "—"
-      : `${Math.min(r.current_question_idx + 1, r.question_count)}/${r.question_count}`;
-    tr.appendChild(el("td", { class: "num muted" }, progress));
-    tr.appendChild(el("td", { class: "num muted" }, String(r.respondent_count)));
-    tr.appendChild(el("td", { class: "muted small" }, new Date(r.created_at).toLocaleString()));
-    tr.addEventListener("click", () => void openQSDetail(r.id));
-    tbody.appendChild(tr);
+
+  if (runView === "flat") {
+    flat.style.display = "";
+    grouped.style.display = "none";
+    renderRunTable(quizRunRows, tbody as HTMLTableSectionElement);
+    return;
   }
+
+  flat.style.display = "none";
+  grouped.style.display = "";
+  grouped.innerHTML = "";
+  for (const group of groupedRuns(runView)) {
+    const details = el("details", { class: "run-group", open: true, "data-group-key": group.key }) as HTMLDetailsElement;
+    details.appendChild(el("summary", {},
+      el("span", { class: "run-group-title" }, group.title),
+      el("span", { class: "run-group-meta" }, `${group.rows.length} run${group.rows.length === 1 ? "" : "s"}`),
+    ));
+    details.appendChild(el("div", { class: "table-scroll" }, renderRunTable(group.rows)));
+    grouped.appendChild(details);
+  }
+}
+
+function setRunView(view: RunView): void {
+  runView = view;
+  const url = new URL(location.href);
+  if (view === "flat") url.searchParams.delete("runs");
+  else url.searchParams.set("runs", view);
+  history.replaceState({}, "", url);
+  renderQSessions();
+}
+
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-run-view]")) {
+  button.addEventListener("click", () => setRunView(button.dataset.runView as RunView));
 }
 
 // ---------- detail panes ----------

@@ -14,6 +14,8 @@ import type {
 } from "./types";
 
 const CODE = pathCode();
+$("#moderator-breadcrumb-code").textContent = CODE;
+$<HTMLAnchorElement>("#moderator-session-link").href = `/?session=${encodeURIComponent(CODE)}`;
 
 // Pick up mod_key from URL hash on first visit.
 if (location.hash.includes("k=")) {
@@ -76,6 +78,9 @@ async function loadSession(): Promise<void> {
   document.title = `Mod — ${sessionState.title}`;
   $("#title").textContent = sessionState.title;
   $("#code").textContent = "Code " + CODE;
+  const sessionLink = $<HTMLAnchorElement>("#moderator-session-link");
+  sessionLink.textContent = sessionState.title;
+  sessionLink.href = `/?session=${encodeURIComponent(CODE)}`;
   $<HTMLAnchorElement>("#participant-link").href = `/s/${CODE}`;
   $<HTMLAnchorElement>("#projector-link").href = `/p/${CODE}`;
   renderLifecycle();
