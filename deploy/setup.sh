@@ -95,8 +95,9 @@ sudo cp \
 sudo ln -sf \
   "/etc/nginx/sites-available/$DOMAIN" \
   "/etc/nginx/sites-enabled/$DOMAIN"
-sudo nginx -t
-sudo systemctl reload nginx
+
+log "Preparing nginx for optional Cloudflare proxying"
+"$REPO_DIR/deploy/prepare-cloudflare-proxy.sh"
 
 if [[ ! -d "/etc/letsencrypt/live/$DOMAIN" ]]; then
   log "Requesting TLS cert via certbot"
