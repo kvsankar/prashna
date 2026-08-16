@@ -1723,6 +1723,64 @@ capacity is the allowed burst and refill is the sustained rate.
 - `_client_ip`: with hops=0 returns the socket peer; with hops=1 returns the rightmost `X-Forwarded-For` entry even when a spoofed value precedes it; with hops=2 the second-from-right; with hops>0 and no XFF falls back to the peer.
 - Endpoint floods (limiter re-enabled for the test): login → `429` after the burst, and a correct login resets the throttle; `POST queries` / `vote` / `submit` each return `429` under a sustained flood; rapid fresh `voter_token`s eventually `429` on participant creation. With the limiter off (suite default) none of these `429`.
 
+### UC-X-09: Local operation through an ngrok tunnel
+
+- **Given** the operator has built the Vite frontend and started the
+  single-process Uvicorn app on localhost
+- **And** the operator completes first-run admin setup on localhost before
+  making the port public
+- **When** an ngrok HTTP endpoint forwards its public HTTPS origin to that
+  local port
+- **Then** the landing and participant pages, API calls, and same-origin
+  WebSocket live updates work through the public endpoint without a remote
+  deployment
+- **And** the local process uses `PRASHNA_TRUSTED_PROXY_HOPS=1` so rate-limit
+  buckets use the client address ngrok recorded rather than the tunnel peer
+- **And** the frontend derives `wss://<public-host>/ws/sessions/{CODE}` from
+  the public HTTPS page origin.
+
+**Tests (API)**
+- A WebSocket request with matching public `Origin:
+  https://prashna-smoke.ngrok.app` and `Host:
+  prashna-smoke.ngrok.app` is accepted and receives a session-state
+  broadcast; a mismatched origin remains rejected by UC-X-02.
+- The one-hop forwarded-client-IP behavior is covered by UC-X-08.
+
+**Tests (Ops, opt-in)**
+- With an authenticated ngrok CLI installed, run
+  `PRASHNA_NGROK_SMOKE=1 uv run pytest tests/ops/test_ngrok_smoke.py`.
+  The test builds the frontend, starts an isolated Uvicorn process, performs
+  admin setup and creates a session through localhost, then starts a real
+  ngrok endpoint and verifies the public health API, landing/participant
+  pages, and a WSS session-state broadcast.
+
+### UC-X-10: Portable container distribution and data recovery
+
+- **Given** a user installs Prashna from a versioned distribution bundle
+- **Then** its root `compose.yaml` runs the published GHCR image on localhost
+  with separate named volumes for `/data` and `/app/uploads`
+- **And** it requires a stable `PRASHNA_SECRET_KEY`, exposes a health check,
+  and remains independent of the Hetzner-only `/opt/prashna` configuration
+- **And** tagged bundles pin the image tag to the matching release rather than
+  silently following `latest`
+- **And** published images cover `linux/amd64` and `linux/arm64`
+- **And** backup creates a consistent SQLite snapshot plus uploads without
+  storing secrets; restore validates the archive and database, requires an
+  explicit confirmation flag, and creates a pre-restore recovery archive
+  before replacing current data.
+
+**Tests (Ops)**
+- Root Compose config without `PRASHNA_SECRET_KEY` fails with an actionable
+  message; with a test env it resolves the requested image tag and port, health
+  endpoint, and named-volume mounts without `/opt/prashna` host paths.
+- Backup/restore round-trip restores the original SQLite contents and uploads;
+  restore refuses without `--confirm` and rejects archive path traversal.
+- Release-bundle build for `1.2.3` emits `.tar.gz`, `.zip`, and `SHA256SUMS`;
+  both Compose and env defaults inside the bundle pin `1.2.3`.
+- The release workflow declares amd64+arm64 publication, pulls the just-pushed
+  image digest for a Compose smoke, and attaches the versioned bundle to the
+  matching GitHub Release.
+
 ---
 
 ## Deferred (decision needed)

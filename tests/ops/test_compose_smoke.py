@@ -1,4 +1,5 @@
 """Docker Compose deployment smoke coverage."""
+
 from __future__ import annotations
 
 import os
@@ -11,13 +12,15 @@ from pathlib import Path
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
-COMPOSE = ROOT / "deploy" / "docker-compose.yml"
+SERVER_COMPOSE = ROOT / "deploy" / "docker-compose.yml"
+LOCAL_COMPOSE = ROOT / "compose.yaml"
 SETUP = ROOT / "deploy" / "setup.sh"
 PNG_BYTES = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
     "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
 )
 SMOKE_SECRET = "dummy_secret_not_real"
+PUBLISHED_IMAGE = os.environ.get("PRASHNA_COMPOSE_SMOKE_IMAGE")
 
 
 def _free_port() -> int:
@@ -71,14 +74,20 @@ def _write_env(path: Path, *, port: int, data_dir: Path, uploads_dir: Path):
     )
 
 
-def _compose_cmd(project: str, env_file: Path, override: Path) -> list[str]:
+def _compose_cmd(
+    project: str,
+    env_file: Path,
+    override: Path,
+    *,
+    compose_file: Path = SERVER_COMPOSE,
+) -> list[str]:
     return [
         "docker",
         "compose",
         "--env-file",
         str(env_file),
         "-f",
-        str(COMPOSE),
+        str(compose_file),
         "-f",
         str(override),
         "--project-name",
@@ -98,14 +107,20 @@ def _wait_for_status(base_url: str, *, timeout: int = 90) -> dict:
         except Exception as exc:
             last_error = str(exc)
         time.sleep(1)
-    raise AssertionError(
-        f"compose health endpoint did not become ready: {last_error}"
-    )
+    raise AssertionError(f"compose health endpoint did not become ready: {last_error}")
 
 
 def test_compose_config_reports_missing_secret_actionably():
     result = _run(
-        ["docker", "compose", "-f", str(COMPOSE), "config"],
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            os.devnull,
+            "-f",
+            str(SERVER_COMPOSE),
+            "config",
+        ],
         env=_compose_env(),
         timeout=30,
     )
@@ -133,7 +148,7 @@ def test_compose_config_declares_health_and_persistent_paths(tmp_path):
             "--env-file",
             str(env_file),
             "-f",
-            str(COMPOSE),
+            str(SERVER_COMPOSE),
             "config",
         ],
         env=_compose_env(),
@@ -161,11 +176,13 @@ def test_setup_script_provisions_container_writable_persistent_paths():
     assert '"$APP_DIR" "$APP_DIR/data" "$APP_DIR/uploads"' not in script
 
 
-if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1":
+if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1" or PUBLISHED_IMAGE:
 
     def test_compose_deploy_smoke_preserves_state_and_logs_safely(tmp_path):
         project = f"prashna-smoke-{secrets.token_hex(4)}"
-        image = f"{project}:latest"
+        image = PUBLISHED_IMAGE or f"{project}:latest"
+        build_local_image = PUBLISHED_IMAGE is None
+        compose_file = LOCAL_COMPOSE if PUBLISHED_IMAGE else SERVER_COMPOSE
         port = _free_port()
         env_file = tmp_path / ".env"
         override = tmp_path / "compose.override.yml"
@@ -181,29 +198,28 @@ if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1":
             data_dir=data_dir,
             uploads_dir=uploads_dir,
         )
-        override.write_text(
-            "\n".join(
-                [
-                    "services:",
-                    "  prashna:",
-                    f"    image: {image}",
-                    "    build:",
-                    f"      context: {ROOT}",
-                    f"    container_name: {project}",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
+        override_lines = [
+            "services:",
+            "  prashna:",
+            f'    image: "{image}"',
+        ]
+        if build_local_image:
+            override_lines.extend(["    build:", f"      context: {ROOT}"])
+        override_lines.extend([f"    container_name: {project}", ""])
+        override.write_text("\n".join(override_lines), encoding="utf-8")
+        cmd = _compose_cmd(
+            project,
+            env_file,
+            override,
+            compose_file=compose_file,
         )
-        cmd = _compose_cmd(project, env_file, override)
         base_url = f"http://127.0.0.1:{port}"
 
         try:
-            up = _run(
-                cmd + ["up", "--build", "-d"],
-                env=_compose_env(),
-                timeout=300,
-            )
+            up_args = ["up", "-d"]
+            if build_local_image:
+                up_args.insert(1, "--build")
+            up = _run(cmd + up_args, env=_compose_env(), timeout=300)
             assert up.returncode == 0, up.stdout
             assert _wait_for_status(base_url)["initialized"] is False
 
@@ -220,8 +236,26 @@ if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1":
                     files={"file": ("a.png", PNG_BYTES, "image/png")},
                 )
                 assert upload.status_code == 200, upload.text
-                uploaded = uploads_dir / Path(upload.json()["url"]).name
-                assert uploaded.is_file()
+                uploaded_name = Path(upload.json()["url"]).name
+                if build_local_image:
+                    uploaded = uploads_dir / uploaded_name
+                    assert uploaded.is_file()
+                else:
+                    backup = _run(
+                        cmd
+                        + [
+                            "exec",
+                            "-T",
+                            "prashna",
+                            "python",
+                            "-m",
+                            "app.backup",
+                            "create",
+                            "/data/smoke-backup.tar.gz",
+                        ],
+                        env=_compose_env(),
+                    )
+                    assert backup.returncode == 0, backup.stdout
 
             restarted = _run(cmd + ["restart", "prashna"], env=_compose_env())
             assert restarted.returncode == 0, restarted.stdout
@@ -233,8 +267,27 @@ if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1":
             ) as client:
                 status = client.get("/api/admin/status")
                 assert status.json()["authenticated"] is True
-            assert (data_dir / "prashna.db").is_file()
-            assert uploaded.is_file()
+            if build_local_image:
+                assert (data_dir / "prashna.db").is_file()
+                assert uploaded.is_file()
+            else:
+                persisted = _run(
+                    cmd
+                    + [
+                        "exec",
+                        "-T",
+                        "prashna",
+                        "python",
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"assert Path('/app/uploads/{uploaded_name}').is_file(); "
+                            "assert Path('/data/smoke-backup.tar.gz').is_file()"
+                        ),
+                    ],
+                    env=_compose_env(),
+                )
+                assert persisted.returncode == 0, persisted.stdout
 
             logs = _run(
                 cmd + ["logs", "--no-color", "prashna"],
