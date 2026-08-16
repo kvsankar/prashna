@@ -3,6 +3,10 @@
 This directory holds everything the **Hetzner** box needs to run Prashna at
 `https://prashna.sankara.net`.
 
+It is not the end-user distribution bundle. Laptop and generic self-hosted
+installs use the root `compose.yaml`; tagged GitHub Releases contain a
+version-pinned copy with their own README and named-volume storage.
+
 ## One-time setup
 
 1. **DNS** — add an `A` record:
@@ -60,6 +64,10 @@ The smoke builds the local image, starts Compose with temporary data and upload
 directories, waits for `/api/admin/status`, creates the first admin user,
 uploads an image, restarts the service, and verifies the SQLite file, upload,
 health endpoint, cookie signing, and safe diagnostics survive the restart.
+
+After an image is published, CI runs the same state/restart checks against its
+exact digest through the root distribution Compose model and also verifies the
+in-image backup command.
 
 The test removes its Compose project at the end. If it is interrupted, clean up
 with `docker compose --project-name <printed-project> down --volumes

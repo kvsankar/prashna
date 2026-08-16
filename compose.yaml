@@ -1,0 +1,33 @@
+name: prashna
+
+# Laptop/self-host distribution model. The Hetzner production model remains
+# deploy/docker-compose.yml because it uses host paths and nginx-specific
+# defaults that are intentionally inappropriate for a local installation.
+services:
+  prashna:
+    image: "${PRASHNA_IMAGE:-ghcr.io/kvsankar/prashna}:${PRASHNA_IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    ports:
+      - "${PRASHNA_BIND_ADDR:-127.0.0.1}:${PRASHNA_PORT:-8000}:8000"
+    environment:
+      PRASHNA_SECRET_KEY: ${PRASHNA_SECRET_KEY:?Copy compose.env.example to .env and set PRASHNA_SECRET_KEY}
+      PRASHNA_TRUSTED_PROXY_HOPS: ${PRASHNA_TRUSTED_PROXY_HOPS:-0}
+      PRASHNA_RATELIMIT: ${PRASHNA_RATELIMIT:-}
+      PRASHNA_GITHUB_CLIENT_ID: ${PRASHNA_GITHUB_CLIENT_ID:-}
+      PRASHNA_GITHUB_CLIENT_SECRET: ${PRASHNA_GITHUB_CLIENT_SECRET:-}
+      PRASHNA_GITHUB_ADMINS: ${PRASHNA_GITHUB_ADMINS:-}
+      PRASHNA_DB_PATH: /data/prashna.db
+      PRASHNA_UPLOADS_DIR: /app/uploads
+    volumes:
+      - prashna-data:/data
+      - prashna-uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/admin/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  prashna-data:
+  prashna-uploads:

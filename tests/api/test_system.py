@@ -190,6 +190,25 @@ def test_uc_x_02_cross_origin_4403(admin_client, make_session):
     assert ei.value.code == 4403
 
 
+def test_uc_x_09_matching_ngrok_origin_accepts_live_updates(admin_client, make_session):
+    """UC-X-09: a matching public HTTPS Origin/Host works behind ngrok."""
+    s = make_session()
+    public_host = "prashna-smoke.ngrok.app"
+    with admin_client.websocket_connect(
+        f"/ws/sessions/{s['code']}",
+        headers={
+            "host": public_host,
+            "origin": f"https://{public_host}",
+        },
+    ) as ws:
+        r = admin_client.patch(
+            f"/api/sessions/{s['code']}",
+            json={"title": "Tunnel update"},
+        )
+        assert r.status_code == 200
+        assert _ws_recv_types(ws) == [{"type": "session_state"}]
+
+
 def test_uc_x_02_no_session_4404(admin_client):
     """UC-X-02: unknown code → close 4404."""
     from starlette.websockets import WebSocketDisconnect
