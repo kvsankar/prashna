@@ -43,6 +43,18 @@ def test_uc_a_10_list_quizzes(admin_client, make_quiz):
         assert k in rows[0]
 
 
+def test_uc_a_10_aggregate_question_count(admin_client, make_quiz):
+    """Quiz summaries count questions without loading answer trees."""
+    quiz = make_quiz("two questions")
+    admin_client.post(
+        f"/api/quizzes/{quiz['id']}/questions",
+        json={"text": "Second?", "qtype": "single"},
+    )
+    rows = admin_client.get("/api/quizzes").json()
+    row = next(item for item in rows if item["id"] == quiz["id"])
+    assert row["question_count"] == 2
+
+
 def test_uc_a_10_other_admins_quiz_excluded(admin_client, make_quiz):
     """UC-A-10: another admin's quiz not in response."""
     make_quiz("mine")

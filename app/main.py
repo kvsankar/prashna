@@ -34,6 +34,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import selectinload
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from . import auth, oauth
 from . import models as m
@@ -132,7 +133,8 @@ class SecurityHeaders(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/uploads/"):
+        path = request.url.path
+        if path.startswith("/uploads/"):
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
             response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
@@ -141,6 +143,14 @@ class SecurityHeaders(BaseHTTPMiddleware):
             response.headers.setdefault("X-Frame-Options", "DENY")
             response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
             response.headers.setdefault("Referrer-Policy", "no-referrer")
+        if path.startswith("/static/assets/"):
+            # Vite fingerprints these filenames, so they are safe to retain
+            # across visits without a revalidation round trip.
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path.startswith("/static/") or path == "/" or path.startswith(("/s/", "/m/", "/p/")):
+            response.headers.setdefault("Cache-Control", "no-cache")
+        elif path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")
         return response
 
 
@@ -161,6 +171,10 @@ class RequestTiming:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
+                app_ms = (time.perf_counter() - started) * 1000
+                headers = list(message.get("headers", []))
+                headers.append((b"server-timing", f"app;dur={app_ms:.2f}".encode("ascii")))
+                message = {**message, "headers": headers}
             await send(message)
 
         try:
@@ -180,6 +194,7 @@ class RequestTiming:
 
 
 app.add_middleware(RequestTiming)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(SecurityHeaders)
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
@@ -839,17 +854,34 @@ def admin_change_password(
 
 @app.get("/api/sessions")
 def list_sessions(db: DbSession = Depends(get_db), me: m.User = Depends(auth.current_admin)):
-    rows = db.scalars(
-        select(m.Session).where(m.Session.owner_user_id == me.id)
+    query_count = (
+        select(func.count(m.Query.id))
+        .where(m.Query.session_id == m.Session.id)
+        .correlate(m.Session)
+        .scalar_subquery()
+    )
+    quiz_run_count = (
+        select(func.count(m.QuizRun.id))
+        .where(m.QuizRun.session_id == m.Session.id)
+        .correlate(m.Session)
+        .scalar_subquery()
+    )
+    rows = db.execute(
+        select(
+            m.Session,
+            query_count.label("query_count"),
+            quiz_run_count.label("quiz_run_count"),
+        )
+        .where(m.Session.owner_user_id == me.id)
         .order_by(m.Session.created_at.desc())
     ).all()
     return [
         {
             **serialize_session(s, include_mod_key=True),
-            "query_count": len(s.queries),
-            "quiz_run_count": len(s.quiz_runs),
+            "query_count": query_total,
+            "quiz_run_count": run_total,
         }
-        for s in rows
+        for s, query_total, run_total in rows
     ]
 
 
@@ -1310,6 +1342,7 @@ def list_queries(
     code: str,
     request: Request,
     response: Response,
+    display: bool = False,
     voter_token: Annotated[str | None, Cookie()] = None,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
@@ -1317,7 +1350,7 @@ def list_queries(
 ):
     s = get_session_by_code(db, code)
     is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
-    p = current_participant(s, request, response, voter_token, db)
+    p = None if display else current_participant(s, request, response, voter_token, db)
     qs = db.scalars(
         select(m.Query)
         .where(m.Query.session_id == s.id)
@@ -1326,7 +1359,8 @@ def list_queries(
     ).all()
     if not is_mod:
         qs = [q for q in qs if q.removed_at is None]
-    return [serialize_query(q, p.id, is_mod) for q in qs]
+    viewer_id = p.id if p else None
+    return [serialize_query(q, viewer_id, is_mod) for q in qs]
 
 
 @app.post("/api/sessions/{code}/queries")
@@ -1507,18 +1541,23 @@ def list_quizzes(
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
+    question_count = (
+        select(func.count(m.Question.id))
+        .where(m.Question.quiz_id == m.Quiz.id)
+        .correlate(m.Quiz)
+        .scalar_subquery()
+    )
     stmt = (
-        select(m.Quiz)
+        select(m.Quiz, question_count.label("question_count"))
         .where(m.Quiz.owner_user_id == me.id)
-        .options(selectinload(m.Quiz.questions).selectinload(m.Question.answers))
         .order_by(m.Quiz.created_at.desc())
     )
     if ready_only:
         stmt = stmt.where(m.Quiz.status == "ready")
-    quizzes = db.scalars(stmt).all()
+    quizzes = db.execute(stmt).all()
     return [
-        {"id": q.id, "title": q.title, "status": q.status, "question_count": len(q.questions)}
-        for q in quizzes
+        {"id": q.id, "title": q.title, "status": q.status, "question_count": count}
+        for q, count in quizzes
     ]
 
 
@@ -1830,31 +1869,43 @@ def list_all_quiz_runs(
     me: m.User = Depends(auth.current_admin),
 ):
     """Admin-wide view of every quiz run for sessions this admin owns."""
-    rows = db.scalars(
-        select(m.QuizRun)
-        .join(m.Session, m.QuizRun.session_id == m.Session.id)
-        .where(m.Session.owner_user_id == me.id)
-        .options(
-            selectinload(m.QuizRun.session),
-            selectinload(m.QuizRun.quiz_version).selectinload(m.QuizVersion.questions),
-            selectinload(m.QuizRun.submissions),
+    question_count = (
+        select(func.count(m.QuizVersionQuestion.id))
+        .where(m.QuizVersionQuestion.version_id == m.QuizRun.quiz_version_id)
+        .correlate(m.QuizRun)
+        .scalar_subquery()
+    )
+    respondent_count = (
+        select(func.count(func.distinct(m.QuizSubmission.participant_id)))
+        .where(m.QuizSubmission.quiz_run_id == m.QuizRun.id)
+        .correlate(m.QuizRun)
+        .scalar_subquery()
+    )
+    rows = db.execute(
+        select(
+            m.QuizRun,
+            m.Session,
+            m.QuizVersion,
+            question_count.label("question_count"),
+            respondent_count.label("respondent_count"),
         )
+        .join(m.Session, m.QuizRun.session_id == m.Session.id)
+        .join(m.QuizVersion, m.QuizRun.quiz_version_id == m.QuizVersion.id)
+        .where(m.Session.owner_user_id == me.id)
         .order_by(m.QuizRun.created_at.desc())
     ).all()
     out = []
-    for r in rows:
-        question_count = len(r.quiz_version.questions)
-        respondents = len({sub.participant_id for sub in r.submissions})
+    for r, session, version, questions, respondents in rows:
         out.append({
             "id": r.id,
             "status": r.status,
-            "session_code": r.session.code,
-            "session_title": r.session.title,
-            "quiz_id": r.quiz_version.quiz_id,
-            "quiz_title": r.quiz_version.quiz_title,
-            "version_no": r.quiz_version.version_no,
+            "session_code": session.code,
+            "session_title": session.title,
+            "quiz_id": version.quiz_id,
+            "quiz_title": version.quiz_title,
+            "version_no": version.version_no,
             "current_question_idx": r.current_question_idx,
-            "question_count": question_count,
+            "question_count": questions,
             "respondent_count": respondents,
             "created_at": r.created_at.isoformat(),
             "started_at": r.started_at.isoformat() if r.started_at else None,
@@ -1911,6 +1962,7 @@ def list_quiz_runs(
     code: str,
     request: Request,
     response: Response,
+    display: bool = False,
     voter_token: Annotated[str | None, Cookie()] = None,
     x_mod_key: Annotated[str | None, Header()] = None,
     db: DbSession = Depends(get_db),
@@ -1918,14 +1970,15 @@ def list_quiz_runs(
 ):
     s = get_session_by_code(db, code)
     is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
-    p = current_participant(s, request, response, voter_token, db)
+    p = None if display else current_participant(s, request, response, voter_token, db)
     rows = db.scalars(
         select(m.QuizRun).where(m.QuizRun.session_id == s.id)
         .order_by(m.QuizRun.created_at.desc())
     ).all()
     # Non-mods see queued/live/closed (queued powers the projector "Next up"
     # lobby). The participant page itself ignores queued in its own render.
-    return [serialize_quiz_run(db, r, viewer_participant_id=p.id, is_mod=is_mod) for r in rows]
+    viewer_id = p.id if p else None
+    return [serialize_quiz_run(db, r, viewer_participant_id=viewer_id, is_mod=is_mod) for r in rows]
 
 
 @app.get("/api/sessions/{code}/available_quizzes")
@@ -1943,15 +1996,20 @@ def list_available_quizzes(
     """
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
-    quizzes = db.scalars(
-        select(m.Quiz)
+    question_count = (
+        select(func.count(m.Question.id))
+        .where(m.Question.quiz_id == m.Quiz.id)
+        .correlate(m.Quiz)
+        .scalar_subquery()
+    )
+    quizzes = db.execute(
+        select(m.Quiz, question_count.label("question_count"))
         .where(m.Quiz.owner_user_id == s.owner_user_id, m.Quiz.status == "ready")
-        .options(selectinload(m.Quiz.questions))
         .order_by(m.Quiz.created_at.desc())
     ).all()
     return [
-        {"id": q.id, "title": q.title, "status": q.status, "question_count": len(q.questions)}
-        for q in quizzes
+        {"id": q.id, "title": q.title, "status": q.status, "question_count": count}
+        for q, count in quizzes
     ]
 
 

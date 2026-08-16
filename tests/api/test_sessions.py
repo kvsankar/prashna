@@ -68,6 +68,25 @@ def test_uc_a_04_list_sessions(admin_client, make_session):
     assert row["code"] == s["code"]
 
 
+def test_uc_a_04_aggregate_counts_are_correct(
+    admin_client, make_quiz, make_session
+):
+    """Session counts come from SQL aggregates without lazy-loading every child."""
+    s = make_session("with activity")
+    q = make_quiz()
+    admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "one"})
+    admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "two"})
+    admin_client.post(
+        f"/api/sessions/{s['code']}/quiz_runs",
+        json={"quiz_id": q["id"]},
+    )
+
+    rows = admin_client.get("/api/sessions").json()
+    row = next(item for item in rows if item["code"] == s["code"])
+    assert row["query_count"] == 2
+    assert row["quiz_run_count"] == 1
+
+
 def test_uc_a_04_only_my_sessions(client, admin_client, make_session):
     """UC-A-04: only sessions owned by me."""
     make_session("mine")

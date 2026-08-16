@@ -70,6 +70,25 @@ def test_state_changing_requests_emit_timing_diagnostics(admin_client, make_sess
     assert s["code"] not in http_text
 
 
+def test_response_timing_cache_and_compression_headers(client, app_module):
+    """Browser measurements can separate app time and reuse fingerprinted assets."""
+    api_response = client.get("/api/admin/status")
+    assert api_response.headers["server-timing"].startswith("app;dur=")
+    assert api_response.headers["cache-control"] == "no-store"
+
+    assets = sorted((app_module.STATIC / "assets").glob("*.js"))
+    assert assets, "the session frontend build should contain a JS asset"
+    asset_response = client.get(
+        f"/static/assets/{assets[0].name}",
+        headers={"Accept-Encoding": "gzip"},
+    )
+    assert asset_response.status_code == 200
+    assert asset_response.headers["cache-control"] == (
+        "public, max-age=31536000, immutable"
+    )
+    assert asset_response.headers["content-encoding"] == "gzip"
+
+
 def test_auth_session_upload_and_ws_diagnostics(client, caplog):
     """Core operator incidents should emit safe structured diagnostics."""
     caplog.set_level(logging.INFO, logger="prashna")

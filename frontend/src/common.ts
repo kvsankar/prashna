@@ -109,6 +109,7 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
   let ws: WebSocket;
   let retry = 0;
   let alive = true;
+  let connectedOnce = false;
   if (import.meta.env.MODE === "test") {
     let exposeTestHook = false;
     try {
@@ -133,9 +134,13 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
     ws = new WebSocket(url);
     ws.onopen = () => {
       retry = 0;
-      // Refetch on EVERY (re)connect, including the first, so a broadcast
-      // fired between page load and socket-ready isn't missed.
-      try { onMessage({ type: "reconnect" }); } catch { /* page may be tearing down */ }
+      // The page performs its own initial load. Refetch only after a real
+      // reconnect so opening the socket does not duplicate every first-load
+      // API request.
+      if (connectedOnce) {
+        try { onMessage({ type: "reconnect" }); } catch { /* page may be tearing down */ }
+      }
+      connectedOnce = true;
     };
     ws.onmessage = (ev) => {
       try { onMessage(JSON.parse(ev.data)); } catch { /* ignore malformed frame */ }

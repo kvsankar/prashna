@@ -20,6 +20,67 @@ def test_uc_a_23_list_runs(admin_client, make_quiz, make_session):
         assert k in rows[0]
 
 
+def test_uc_a_23_aggregate_respondent_count(admin_client, make_quiz, make_session):
+    """Run summaries count distinct respondents without loading submissions."""
+    q = make_quiz()
+    s = make_session()
+    run = admin_client.post(
+        f"/api/sessions/{s['code']}/quiz_runs",
+        json={"quiz_id": q["id"]},
+    ).json()
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        quiz_run = db.get(m.QuizRun, run["id"])
+        question = quiz_run.quiz_version.questions[0]
+        answer = question.answers[0]
+        participants = [
+            m.Participant(session_id=quiz_run.session_id, voter_token=f"perf-{idx}")
+            for idx in range(2)
+        ]
+        db.add_all(participants)
+        db.flush()
+        db.add_all([
+            m.QuizSubmission(
+                quiz_run_id=quiz_run.id,
+                question_id=question.id,
+                answer_id=answer.id,
+                participant_id=participant.id,
+            )
+            for participant in participants
+        ])
+        db.commit()
+
+    row = admin_client.get("/api/quiz_runs").json()[0]
+    assert row["question_count"] == 1
+    assert row["respondent_count"] == 2
+
+
+def test_projector_display_reads_do_not_create_participants(
+    client, admin_client, make_quiz, make_session
+):
+    """Display-only projector requests must not create attendee identities."""
+    q = make_quiz()
+    s = make_session()
+    admin_client.post(
+        f"/api/sessions/{s['code']}/quiz_runs",
+        json={"quiz_id": q["id"]},
+    )
+    client.cookies.clear()
+
+    queries = client.get(f"/api/sessions/{s['code']}/queries?display=true")
+    runs = client.get(f"/api/sessions/{s['code']}/quiz_runs?display=true")
+    assert queries.status_code == 200
+    assert runs.status_code == 200
+    assert "voter_token" not in queries.cookies
+    assert "voter_token" not in runs.cookies
+
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        assert db.query(m.Participant).count() == 0
+
+
 def test_uc_a_23_other_admin_runs_excluded(admin_client, make_quiz, make_session):
     """UC-A-23: rows from other admin's sessions are excluded."""
     q = make_quiz()
