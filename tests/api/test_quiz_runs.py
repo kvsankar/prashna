@@ -233,6 +233,21 @@ def test_uc_m_04_start_already_live_400(admin_client, make_quiz, make_session):
     assert r.json() == {"detail": "Cannot start from status: live"}
 
 
+def test_uc_m_04_start_queued_in_ended_session_400(admin_client, make_quiz, make_session):
+    """UC-M-04: legacy queued runs cannot be started after session end."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        session = db.query(m.Session).filter_by(code=s["code"]).one()
+        session.status = "ended"
+        db.commit()
+
+    r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Session has ended"}
+
+
 def test_uc_m_04_unknown_run_404(admin_client, make_session):
     """UC-M-04: unknown run id → 404."""
     s = make_session()
@@ -385,6 +400,23 @@ def test_uc_m_06_no_auth_403(client, admin_client, make_quiz, make_session):
 def test_uc_m_07_delete_queued(admin_client, make_quiz, make_session):
     """UC-M-07: delete a queued run → ok."""
     s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    r = admin_client.request("DELETE", f"/api/sessions/{s['code']}/quiz_runs/{run['id']}")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+
+
+def test_uc_m_07_delete_legacy_queued_from_ended_session(
+    admin_client, make_quiz, make_session
+):
+    """UC-M-07: an orphaned queued run remains removable after session end."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        session = db.query(m.Session).filter_by(code=s["code"]).one()
+        session.status = "ended"
+        db.commit()
+
     r = admin_client.request("DELETE", f"/api/sessions/{s['code']}/quiz_runs/{run['id']}")
     assert r.status_code == 200
     assert r.json() == {"ok": True}

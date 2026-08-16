@@ -148,6 +148,27 @@ def test_uc_m_02_end_button_flips_status(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_02_end_with_queued_quiz_explains_removal(base_url, admin_setup, page):
+    """UC-M-02: End stays blocked until queued quizzes are removed."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M02queued {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M02queued-s {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz["id"])
+    api_start_session(c, s["code"])
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-runs .badge-queued")
+        page.on("dialog", lambda d: d.accept())
+        page.locator("#lifecycle-actions button", has_text="End session").click()
+        expect(page.locator(".toast-error")).to_contain_text(
+            "Remove queued quizzes before ending the session", timeout=5000
+        )
+        expect(page.locator("#session-status")).to_have_class("badge badge-live")
+    finally:
+        c.close()
+
+
 # ---------- UC-M-03 ----------
 
 
@@ -370,7 +391,7 @@ def test_uc_m_06_close_run_flips_badge_and_hides_menu(base_url, admin_setup, pag
 
 
 def test_uc_m_07_delete_queued_run_removes_row(base_url, admin_setup, page):
-    """UC-M-07: ✕ on a queued/live row (confirm) removes the row."""
+    """UC-M-07: Remove from session on a queued row removes the row."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-M07 {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-M07s {secrets.token_hex(3)}")
@@ -380,10 +401,12 @@ def test_uc_m_07_delete_queued_run_removes_row(base_url, admin_setup, page):
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-queued")
         page.on("dialog", lambda d: d.accept())
-        # Delete now lives in the run's ⋯ overflow menu.
+        # Removal lives in the run's ⋯ overflow menu.
         queued_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-queued"))
         queued_row.locator("details.menu > summary").click()
-        queued_row.locator("button", has_text="Delete run").click()
+        remove = queued_row.locator("button", has_text="Remove from session")
+        expect(remove).to_have_attribute("aria-label", "Remove this queued quiz from the session")
+        remove.click()
         expect(page.locator("#quiz-runs .badge-queued")).to_have_count(0, timeout=5000)
     finally:
         c.close()

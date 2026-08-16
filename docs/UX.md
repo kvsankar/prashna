@@ -162,7 +162,10 @@ disclosure (not a custom popover) for keyboard/no-JS robustness.
   silent toggle with a toast.
 - First use: the moderator quiz-run row keeps the morphing primary +
   ← Prev inline; "Finish quiz", the Show/Hide vote-counts toggle, and
-  "Delete run" live in the ⋯ menu.
+  the destructive run action live in the ⋯ menu. Queued rows say
+  **Remove from session**; live rows say **Delete run (discard results)**.
+  An ended session never offers Start for a legacy queued row, but keeps
+  **Remove from session** available so the orphan can be cleaned up.
 
 ---
 
