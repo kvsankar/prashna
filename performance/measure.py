@@ -89,10 +89,18 @@ def budget_failures(report: dict, budgets: dict) -> list[str]:
 
 
 def regression_failures(comparison: dict, maximum_pct: float) -> list[str]:
+    """Guard stable release metrics while retaining p95s for diagnosis.
+
+    Browser p95 from the default five public samples is effectively a maximum
+    and is too sensitive to one network-path outlier. Release regression gates
+    use medians for browser/transfer metrics and p95 for application time.
+    """
     failures = []
     for route, phases in comparison.items():
         for phase, metrics in phases.items():
             for metric, change in metrics.items():
+                if not metric.endswith("_median") and metric != "app_server_ms_p95":
+                    continue
                 if change > maximum_pct:
                     failures.append(
                         f"{route}.{phase}.{metric} regressed {change}% (limit {maximum_pct}%)"

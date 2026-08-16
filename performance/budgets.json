@@ -2,21 +2,21 @@
   "routes": {
     "landing": {
       "cold": {
-        "ready_ms_p95": 3500,
+        "ready_ms_median": 3500,
         "app_server_ms_p95": 250
       },
       "warm": {
-        "ready_ms_p95": 1500,
+        "ready_ms_median": 1500,
         "app_server_ms_p95": 250
       }
     },
     "projector": {
       "cold": {
-        "ready_ms_p95": 3500,
+        "ready_ms_median": 3500,
         "app_server_ms_p95": 250
       },
       "warm": {
-        "ready_ms_p95": 1500,
+        "ready_ms_median": 1500,
         "app_server_ms_p95": 250
       }
     }

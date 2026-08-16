@@ -58,5 +58,7 @@ For every performance-sensitive release:
    and compressed, and API responses expose `Server-Timing` with `no-store`.
 
 Absolute budgets catch severe regressions; they do not replace comparisons,
-resource inspection, or application timing. Network variance means a single
-public request is not useful release evidence.
+resource inspection, or application timing. Five-run release gates use browser
+medians and application p95 while retaining browser p95s in the report. Use at
+least 20 samples when interpreting a browser p95. Network variance means a
+single public request is not useful release evidence.

@@ -51,24 +51,25 @@ def test_comparison_and_regression_limit():
     baseline = {
         "routes": {
             "landing": {
-                "cold": {"summary": {"ready_ms_p95": 1000}},
-                "warm": {"summary": {"ready_ms_p95": 500}},
+                "cold": {"summary": {"ready_ms_median": 1000, "ready_ms_p95": 2000}},
+                "warm": {"summary": {"ready_ms_median": 500, "ready_ms_p95": 1000}},
             }
         }
     }
     report = {
         "routes": {
             "landing": {
-                "cold": {"summary": {"ready_ms_p95": 1250}},
-                "warm": {"summary": {"ready_ms_p95": 450}},
+                "cold": {"summary": {"ready_ms_median": 1250, "ready_ms_p95": 5000}},
+                "warm": {"summary": {"ready_ms_median": 450, "ready_ms_p95": 4000}},
             }
         }
     }
     comparison = compare_reports(report, baseline)
-    assert comparison["landing"]["cold"]["ready_ms_p95"] == 25
-    assert comparison["landing"]["warm"]["ready_ms_p95"] == -10
+    assert comparison["landing"]["cold"]["ready_ms_median"] == 25
+    assert comparison["landing"]["cold"]["ready_ms_p95"] == 150
+    assert comparison["landing"]["warm"]["ready_ms_median"] == -10
     assert regression_failures(comparison, 20) == [
-        "landing.cold.ready_ms_p95 regressed 25.0% (limit 20%)"
+        "landing.cold.ready_ms_median regressed 25.0% (limit 20%)"
     ]
 
 
