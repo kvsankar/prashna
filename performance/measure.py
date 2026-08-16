@@ -132,7 +132,27 @@ def _wait_for_quiet(page, *, quiet_ms: int, timeout_ms: int) -> bool:
 
 def _capture(page, navigate, *, quiet_ms: int, timeout_ms: int) -> dict:
     started = time.perf_counter()
-    response = navigate()
+    try:
+        response = navigate()
+    except Exception as exc:
+        # Preserve a machine-readable failed sample and continue the run. A
+        # public network timeout is performance evidence, not a reason to lose
+        # every successful sample collected before it.
+        return {
+            "status": None,
+            "final_path": urlparse(page.url).path,
+            "ready_ms": round((time.perf_counter() - started) * 1000, 2),
+            "quiet": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "dcl_ms": None,
+            "load_ms": None,
+            "fcp_ms": None,
+            "transfer_bytes": None,
+            "request_count": None,
+            "app_server_ms": None,
+            "protocols": [],
+            "slowest": [],
+        }
     quiet = _wait_for_quiet(page, quiet_ms=quiet_ms, timeout_ms=timeout_ms)
     ready_ms = round((time.perf_counter() - started) * 1000, 2)
     timing = page.evaluate(

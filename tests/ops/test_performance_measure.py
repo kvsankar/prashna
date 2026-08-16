@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from performance.measure import (
+    _capture,
     budget_failures,
     compare_reports,
     measurement_failures,
@@ -84,3 +85,17 @@ def test_measurement_failures_reject_error_pages_and_incomplete_samples():
         "landing.cold[1] returned HTTP 503",
         "landing.warm[1] did not reach a quiet window",
     ]
+
+
+def test_capture_preserves_navigation_timeout_as_a_failed_sample():
+    class FakePage:
+        url = "https://prashna.example/"
+
+    def fail_navigation():
+        raise TimeoutError("navigation exceeded 30 seconds")
+
+    sample = _capture(FakePage(), fail_navigation, quiet_ms=300, timeout_ms=1000)
+    assert sample["status"] is None
+    assert sample["quiet"] is False
+    assert sample["error"] == "TimeoutError: navigation exceeded 30 seconds"
+    assert sample["app_server_ms"] is None
