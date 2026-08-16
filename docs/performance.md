@@ -83,6 +83,33 @@ real-IP configuration is safe to leave installed because it trusts the
 Cloudflare header only when the connection source is a published Cloudflare
 network.
 
+### 2026-08-16 Cloudflare cutover
+
+The `prashna` DNS record was changed from DNS-only to proxied after nginx was
+prepared. Public resolvers returned Cloudflare anycast addresses, responses
+included a Singapore `CF-Ray`, all landing/participant/moderator/projector and
+session API smoke requests returned HTTP 200, and a secure WebSocket connected
+and sent successfully through the edge. Production access-log inspection also
+confirmed that nginx restored the visitor address instead of recording a
+shared Cloudflare address. Fingerprinted assets changed from `MISS` to `HIT`
+while retaining their immutable cache policy.
+
+Eight bounded API samples through the edge all succeeded with a median around
+0.79 seconds. A warmed landing-page browser sample completed five of six loads
+with a 1.37-second successful median; one 15-second timeout remained. Control
+requests during the same interval also showed multi-second TLS stalls and one
+failure against Google, and packet loss appeared against Cloudflare, Google,
+and the Hetzner origin. The remaining tail was therefore attributable to the
+measurement workstation's access link rather than Prashna or the
+Cloudflare-to-origin path. Keep HTTP/3 enabled: disabling QUIC on the same
+workstation increased the successful landing median to 4.38 seconds and did
+not remove the one-in-six timeout.
+
+Recursive resolvers may continue returning the former origin address until
+their pre-cutover TTL expires. During that window, use an explicit resolver or
+host override for edge verification; do not mistake a cached DNS answer for a
+failed Cloudflare change.
+
 ## Release verification
 
 For every performance-sensitive release:
