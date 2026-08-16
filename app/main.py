@@ -518,6 +518,21 @@ def _no_live_quiz_run(db: DbSession, session: m.Session) -> None:
         )
 
 
+def _no_queued_quiz_run(db: DbSession, session: m.Session) -> None:
+    """Raise 400 if this Session still has an unstarted QuizRun."""
+    queued = db.scalar(
+        select(m.QuizRun.id).where(
+            m.QuizRun.session_id == session.id,
+            m.QuizRun.status == "queued",
+        )
+    )
+    if queued:
+        raise HTTPException(
+            400,
+            "Remove queued quizzes before ending the session",
+        )
+
+
 # ---------- quiz lifecycle helpers ----------
 
 def _validate_quiz_publishable(quiz: m.Quiz) -> None:
@@ -1002,6 +1017,7 @@ async def end_session(
     require_mod_or_owner(s, x_mod_key, me)
     if s.status != "ended":
         _no_live_quiz_run(db, s)
+        _no_queued_quiz_run(db, s)
         s.status = "ended"
         s.ended_at = datetime.utcnow()
         db.commit()
@@ -2000,6 +2016,8 @@ async def start_quiz_run(
     s, run = _get_run_mod(db, code, run_id, x_mod_key, me)
     if run.status != "queued":
         raise HTTPException(400, f"Cannot start from status: {run.status}")
+    if s.status == "ended":
+        raise HTTPException(400, "Session has ended")
     if s.status == "planning":
         s.status = "live"
         s.started_at = datetime.utcnow()

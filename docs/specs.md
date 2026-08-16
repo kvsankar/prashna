@@ -741,7 +741,8 @@ the UI shows no button.
 - `POST /api/sessions/{code}/end` on a `live` session → `200 {status: "ended"}` and sets `ended_at`.
 - `POST /api/sessions/{code}/end` on a `planning` session → `200 {status: "ended"}` (allowed without first going live).
 - `POST /api/sessions/{code}/end` on an `ended` session → `200` (no-op).
-- `POST /api/sessions/{code}/end` while any QuizRun in this Session is still `live` → `400 "Close the live quiz before ending the session"`. The moderator must explicitly close the run first.
+- `POST /api/sessions/{code}/end` while any QuizRun in this Session is still `live` → `400 "A quiz run is currently live — close it before ending the session"`. The moderator must explicitly close the run first.
+- `POST /api/sessions/{code}/end` while any QuizRun is still `queued` → `400 "Remove queued quizzes before ending the session"`. This prevents an ended Session from retaining an unstartable staged run.
 - Each successful state change broadcasts `{type: "session_state"}`.
 - With no auth → `403`.
 
@@ -799,6 +800,7 @@ themselves render in the **operational** Quiz card (`#quiz-runs`).
 - Starting on a `planning` Session auto-advances it to `live` and sets `started_at`.
 - Starting a run while another run on the same Session is already `live` → `409 "Another quiz is already live — close it first."`.
 - Starting a run that's not `queued` (e.g., `live`, `closed`) → `400 "Cannot start from status: <status>"`.
+- Starting a queued run in an `ended` Session → `400 "Session has ended"`, including legacy queued rows created before this invariant was enforced.
 - For a non-existent run id (or wrong session) → `404`.
 - With no auth → `403`.
 - Success broadcasts `{type: "quiz_run_update"}`.
@@ -840,9 +842,10 @@ recognizes which phase the current question is in.
   menu** (`details.menu`, see UX.md §4): **Finish quiz** (close while
   keeping results — shown only when the primary isn't already the finish
   step, so it never appears twice), a **Show / Hide vote counts** audience
-  toggle, and **Delete run** (discard the run entirely). "Finish" and
-  "Delete" are the two distinct outcomes — finishing keeps results;
-  deleting discards them.
+  toggle, **Remove from session** for queued runs, and **Delete run
+  (discard results)** for live runs. "Finish" and "Delete" are the two
+  distinct outcomes for a live run — finishing keeps results; deleting
+  discards them.
 - **In-flight guard.** Every run-control button ignores repeat clicks while
   an action is pending and disables itself for the duration. This prevents
   a slow request (server briefly busy) from being clicked several times and
@@ -904,7 +907,8 @@ recognizes which phase the current question is in.
 
 - **Given** a queued or live QuizRun
 - **When** the moderator opens the run's ⋯ overflow menu, clicks
-  **Delete run**, and confirms
+  **Remove from session** for a queued run or **Delete run (discard
+  results)** for a live run, and confirms
 - **Then** `DELETE /api/sessions/{code}/quiz_runs/{id}` deletes the
   run and its responses
 - **And** a closed run returns `400 Closed quiz runs are historical
@@ -912,13 +916,15 @@ recognizes which phase the current question is in.
 
 **Tests (API)**
 - `DELETE /api/sessions/{code}/quiz_runs/{id}` on a `queued` run → `200 {ok: true}`; cascade removes QuizSubmissions. Auth: mod-key OR admin cookie.
+- The same delete remains available for a legacy queued run whose Session is already `ended`, so orphaned staging state can be repaired without starting it.
 - On a `live` run → `200 {ok: true}` and similar cleanup.
 - On a `closed` run → `400 "Closed quiz runs are historical and cannot be deleted"`.
 - Broadcasts `{type: "quiz_run_deleted"}`.
 - With no auth → `403`.
 
 **Tests (UI)**
-- In `#quiz-runs`, opening the ⋯ menu on a queued/live row and clicking "Delete run" (after native confirm) removes the row. The control has `aria-label="Delete this quiz run"`.
+- In `#quiz-runs`, opening the ⋯ menu on a queued row and clicking "Remove from session" (after native confirm) removes the row. Its control has `aria-label="Remove this queued quiz from the session"`; live rows retain "Delete run (discard results)" with `aria-label="Delete this quiz run"`.
+- On an ended Session, a legacy queued row does not offer Start or vote-count controls; it offers only **Remove from session**. The backend also rejects a direct Start request.
 - No ⋯ menu (and thus no Delete control) is rendered on `.badge-closed` rows.
 
 ### UC-M-08: Respond to a query

@@ -147,7 +147,7 @@ function renderLifecycle(): void {
     actions.appendChild(btn);
     actions.appendChild(feedbackBtn);
   } else {
-    hint.textContent = "Session has ended. Read-only from here.";
+    hint.textContent = "Session has ended. Results are read-only.";
     actions.appendChild(feedbackBtn);
   }
 }
@@ -285,6 +285,7 @@ function renderQuizRuns(): void {
 }
 
 function renderQuizRun(r: QuizRun): HTMLElement {
+  const sessionEnded = sessionState?.status === "ended";
   const tag = el("span", { class: "badge badge-" + r.status }, statusLabel(r.status));
   const head = el("div", { class: "row", style: "margin-bottom: 8px; gap: 6px;" },
     el("strong", {}, r.quiz_title),
@@ -298,10 +299,10 @@ function renderQuizRun(r: QuizRun): HTMLElement {
       el("span", { class: "small", style: "color: var(--accent);" }, "voting closed"),
       head.querySelector(".spacer"));
   }
-  if (r.status === "queued") {
+  if (r.status === "queued" && !sessionEnded) {
     head.appendChild(actBtn("primary", "Start", () => act(r.id, "start")));
   }
-  if (r.status === "live") {
+  if (r.status === "live" && !sessionEnded) {
     const phase = r.reveal_current ? "results" : "answering";
     const nextLabel = phase === "answering"
       ? "Reveal results →"
@@ -336,19 +337,25 @@ function renderQuizRun(r: QuizRun): HTMLElement {
 
 function buildRunMenu(r: QuizRun): HTMLElement | null {
   if (r.status === "closed") return null;
+  const sessionEnded = sessionState?.status === "ended";
+  if (sessionEnded && r.status !== "queued") return null;
   const panel = el("div", { class: "menu-panel" });
   const onFinishStep = r.status === "live" && r.reveal_current && r.current_question_idx + 1 >= r.question_count;
-  if (r.status === "live" && !onFinishStep) {
+  if (!sessionEnded && r.status === "live" && !onFinishStep) {
     panel.appendChild(actBtn("ghost", "Finish quiz", () => act(r.id, "close")));
   }
-  if (r.status === "live" && r.reveal_current) {
+  if (!sessionEnded && r.status === "live" && r.reveal_current) {
     panel.appendChild(actBtn("ghost", "Reopen voting", () => reveal(r.id, false)));
   }
-  const countsLabel = r.show_live_counts ? "Hide vote counts from audience" : "Show vote counts to audience";
-  panel.appendChild(actBtn("ghost", countsLabel, () => toggleLiveCounts(r.id, !r.show_live_counts)));
-  const delLabel = r.status === "live" ? "Delete run (discard results)" : "Delete run";
-  const del_ = actBtn("danger ghost", delLabel, () => del(r.id));
-  del_.setAttribute("aria-label", "Delete this quiz run");
+  if (!sessionEnded) {
+    const countsLabel = r.show_live_counts ? "Hide vote counts from audience" : "Show vote counts to audience";
+    panel.appendChild(actBtn("ghost", countsLabel, () => toggleLiveCounts(r.id, !r.show_live_counts)));
+  }
+  const delLabel = r.status === "queued" ? "Remove from session" : "Delete run (discard results)";
+  const del_ = actBtn("danger ghost", delLabel, () => del(r.id, r.status));
+  del_.setAttribute("aria-label", r.status === "queued"
+    ? "Remove this queued quiz from the session"
+    : "Delete this quiz run");
   panel.appendChild(el("div", { class: "menu-sep" }));
   panel.appendChild(del_);
   return el("details", { class: "menu" },
@@ -391,8 +398,11 @@ async function toggleLiveCounts(id: number, show: boolean): Promise<void> {
     toast(show ? "Vote counts shown to audience" : "Vote counts hidden");
   } catch (e) { errorToast((e as Error).message); }
 }
-async function del(id: number): Promise<void> {
-  if (!confirm("Delete this quiz run? Its responses are discarded and it leaves the session.")) return;
+async function del(id: number, status: string): Promise<void> {
+  const prompt = status === "queued"
+    ? "Remove this queued quiz from the session?"
+    : "Delete this quiz run? Its responses are discarded and it leaves the session.";
+  if (!confirm(prompt)) return;
   try {
     await api(`/api/sessions/${CODE}/quiz_runs/${id}`, { method: "DELETE", headers: modHeaders() });
     await loadQuizRuns();

@@ -113,6 +113,20 @@ def test_uc_m_02_end_planning_allowed(admin_client, make_session):
     assert r.json() == {"status": "ended"}
 
 
+def test_uc_m_02_end_with_queued_quiz_400(admin_client, make_quiz, make_session):
+    """UC-M-02: queued runs must be removed before the session can end."""
+    q = make_quiz()
+    s = make_session()
+    admin_client.post(
+        f"/api/sessions/{s['code']}/quiz_runs",
+        json={"quiz_id": q["id"]},
+    )
+    r = admin_client.post(f"/api/sessions/{s['code']}/end")
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Remove queued quizzes before ending the session"}
+    assert admin_client.get(f"/api/sessions/{s['code']}").json()["status"] == "planning"
+
+
 def test_uc_m_02_end_ended_noop(admin_client, make_session):
     """UC-M-02: end on ended → 200 ended (no-op)."""
     s = make_session()
