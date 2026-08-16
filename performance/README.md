@@ -39,6 +39,10 @@ Use repeated samples from the same machine and network. Do not compare one
 cold browser run with one warm run or infer browser speed from server timing
 alone. Production budgets are intentionally broad enough for normal network
 variation; baseline comparison provides the more sensitive release signal.
+With the default five samples, release gates use browser/transfer medians and
+application-time p95. Browser p95 remains in every report for diagnosis, but
+needs at least 20 samples before it is a useful percentile rather than nearly
+the single slowest request.
 
 Optional authenticated measurements read secrets from environment variables
 without writing them to reports:
