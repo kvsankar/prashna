@@ -45,6 +45,44 @@ from the same location and retain the JSON reports.
 - Independent first-load requests run concurrently, while lower-priority
   moderator panels no longer block the operational controls.
 
+## Network-path incidents
+
+If browser navigation is slow while `Server-Timing` remains low, test the
+public path separately from the origin before tuning the application. Capture
+several samples rather than relying on one request, compare HTTP/1.1 and
+HTTP/2, and check packet loss to both the origin and unrelated control hosts.
+
+On 2026-08-16, a slow episode showed 55% packet loss from the measurement
+network to the Hetzner origin and public requests taking up to tens of seconds,
+while the origin interface reported no errors or drops, host load was low, and
+the application completed the same requests in milliseconds. Control requests
+to unrelated public services had no packet loss. That combination identifies
+the direct Internet route to the Finland origin as the dominant fault domain,
+not FastAPI, SQLite, nginx processing, or HTTP/2.
+
+For `prashna.sankara.net`, the supported mitigation for an unstable direct
+client-to-Hetzner route is Cloudflare's HTTP proxy. Before changing the DNS
+record from DNS-only to proxied, run:
+
+```bash
+deploy/prepare-cloudflare-proxy.sh
+```
+
+The helper downloads and validates Cloudflare's published IPv4 and IPv6
+ranges, configures nginx's real-IP module to trust `CF-Connecting-IP` only
+from those networks, takes timestamped backups, validates nginx, and reloads
+only on success. This preserves per-visitor rate-limit buckets with the
+existing `PRASHNA_TRUSTED_PROXY_HOPS=1` setting. Re-run it periodically to
+refresh Cloudflare's address ranges.
+
+After proxying the DNS record, verify that public DNS returns Cloudflare
+addresses, responses include `CF-Ray`, the landing/moderator/projector flows
+and WebSockets work, and nginx access logs retain distinct visitor addresses.
+Changing the record back to DNS-only is the traffic rollback; the nginx
+real-IP configuration is safe to leave installed because it trusts the
+Cloudflare header only when the connection source is a published Cloudflare
+network.
+
 ## Release verification
 
 For every performance-sensitive release:
