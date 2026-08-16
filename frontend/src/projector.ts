@@ -11,8 +11,8 @@ async function loadAll(): Promise<void> {
   const seq = ++latestLoadSeq;
   const [s, qs, runs] = await Promise.all([
     api<Session>(`/api/sessions/${CODE}`),
-    api<Query[]>(`/api/sessions/${CODE}/queries`),
-    api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs`),
+    api<Query[]>(`/api/sessions/${CODE}/queries?display=true`),
+    api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs?display=true`),
   ]);
   if (seq !== latestLoadSeq) return;
   $("#title").textContent = s.title;

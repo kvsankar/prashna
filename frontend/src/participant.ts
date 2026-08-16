@@ -529,9 +529,9 @@ function onLive(msg: LiveMessage): void {
 }
 
 (async function () {
-  await loadSession();
-  await loadMe();
-  void loadQueries();
-  void loadQuiz();
+  // Connect before rendering interactive state so a session transition cannot
+  // land between the initial fetch and socket readiness.
   openLiveSocket(CODE, onLive);
+  await Promise.all([loadSession(), loadMe()]);
+  await Promise.all([loadQueries(), loadQuiz()]);
 })();

@@ -110,6 +110,9 @@ else
   log "TLS cert already exists for $DOMAIN — skipping certbot"
 fi
 
+log "Enabling HTTP/2 for browser asset delivery"
+"$REPO_DIR/deploy/enable-http2.sh"
+
 # 5. Start the container.
 log "Starting container"
 ( cd "$APP_DIR" && docker compose up -d )

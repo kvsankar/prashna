@@ -499,7 +499,7 @@ function renderProfiles(sum: ParticipantProfileSummary): void {
   for (const item of sum.items) root.appendChild(renderProfile(item));
 }
 
-function refresh(): void {
+function refreshAll(): void {
   void loadSession();
   void loadQueries();
   void loadQuizRuns();
@@ -508,16 +508,27 @@ function refresh(): void {
   void loadFeedback();
 }
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingLiveTypes = new Set<string>();
 function refreshSoon(msg: LiveMessage): void {
+  pendingLiveTypes.add(msg.type);
   if (refreshTimer) return;
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
-    if (msg.type === "feedback_state") {
-      void loadSession();
-      void loadFeedback();
-    } else {
-      refresh();
-    }
+    const types = new Set(pendingLiveTypes);
+    pendingLiveTypes.clear();
+    if (types.has("reconnect")) { refreshAll(); return; }
+    const knownTypes = new Set([
+      "session_state", "feedback_state", "query_new", "query_vote",
+      "query_responded", "query_removed", "query_deleted", "quiz_run_new",
+      "quiz_run_update", "quiz_run_deleted", "quiz_submission", "feedback",
+      "participant",
+    ]);
+    if ([...types].some((type) => !knownTypes.has(type))) { refreshAll(); return; }
+    if (["session_state", "feedback_state"].some((type) => types.has(type))) void loadSession();
+    if (["query_new", "query_vote", "query_responded", "query_removed", "query_deleted"].some((type) => types.has(type))) void loadQueries();
+    if (["quiz_run_new", "quiz_run_update", "quiz_run_deleted", "quiz_submission"].some((type) => types.has(type))) void loadQuizRuns();
+    if (["feedback", "feedback_state"].some((type) => types.has(type))) void loadFeedback();
+    if (types.has("participant")) { void loadPresence(); void loadProfiles(); }
   }, 400);
 }
 
@@ -526,14 +537,19 @@ async function boot(): Promise<void> {
     const st = await api<AdminStatus>("/api/admin/status");
     isOwner = !!(st && st.authenticated);
   } catch { isOwner = false; }
-  await loadSession();
+  await Promise.all([loadSession(), loadQuizzes()]);
   $<HTMLDetailsElement>("#setup-section").open = sessionState?.status === "planning";
-  await loadQuizzes();
-  refresh();
+  showWorkSurfaces(true);
+  void loadQueries();
+  void loadQuizRuns();
+  void loadPresence();
+  // Profiles and feedback are below the operational controls. Load them in
+  // parallel without delaying the usable moderator surface.
+  void loadProfiles();
+  void loadFeedback();
   openLiveSocket(CODE, refreshSoon);
   if (presenceTimer) clearInterval(presenceTimer);
   presenceTimer = setInterval(() => void loadPresence(), 15000);
-  showWorkSurfaces(true);
 }
 
 boot().catch(() => {

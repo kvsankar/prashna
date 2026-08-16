@@ -45,6 +45,25 @@ def test_uc_d_01_projector_renders_basic_elements(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_d_01_first_load_fetches_display_state_once(base_url, admin_setup, page):
+    """The initial socket connection must not duplicate projector API reads."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-D01-load {secrets.token_hex(3)}")
+    seen: list[str] = []
+    page.on("request", lambda request: seen.append(request.url))
+    try:
+        page.goto(f"{base_url}/p/{s['code']}")
+        expect(page.locator("#title")).to_contain_text(s["title"], timeout=5000)
+        page.wait_for_timeout(750)
+
+        prefix = f"/api/sessions/{s['code']}"
+        assert sum(url.endswith(prefix) for url in seen) == 1
+        assert sum(url.endswith(f"{prefix}/queries?display=true") for url in seen) == 1
+        assert sum(url.endswith(f"{prefix}/quiz_runs?display=true") for url in seen) == 1
+    finally:
+        c.close()
+
+
 def test_uc_d_01_bad_code_redirects(base_url, admin_setup, page):
     """UC-D-01: invalid code → 303 redirect to /; landing shows bad-code banner.
 
