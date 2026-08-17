@@ -3,20 +3,24 @@
     "landing": {
       "cold": {
         "ready_ms_median": 3500,
+        "usable_ms_median": 2000,
         "app_server_ms_p95": 250
       },
       "warm": {
         "ready_ms_median": 1500,
+        "usable_ms_median": 1000,
         "app_server_ms_p95": 250
       }
     },
     "projector": {
       "cold": {
         "ready_ms_median": 3500,
+        "usable_ms_median": 2500,
         "app_server_ms_p95": 250
       },
       "warm": {
         "ready_ms_median": 1500,
+        "usable_ms_median": 1250,
         "app_server_ms_p95": 250
       }
     }

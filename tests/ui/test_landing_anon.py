@@ -8,6 +8,7 @@ Covers:
 """
 from __future__ import annotations
 
+import json
 import secrets
 
 import httpx
@@ -52,6 +53,35 @@ def test_uc_a_01_setup_password_mismatch_no_api_call(fresh_base_url, page):
 
 
 # ---------- UC-A-02 ----------
+
+
+def test_uc_a_02_shell_visible_while_status_is_pending(base_url, admin_setup, page):
+    """UC-A-02 / UC-X-11: useful landing controls do not wait on auth status."""
+    pending = []
+    page.route("**/api/admin/status", lambda route: pending.append(route))
+
+    page.goto(base_url + "/", wait_until="domcontentloaded")
+
+    expect(page.locator("#join-card")).to_be_visible()
+    expect(page.locator("#login-card")).to_be_visible()
+    assert pending
+    assert page.evaluate(
+        "performance.getEntriesByName('prashna-usable').length"
+    ) == 1
+
+    pending[0].fulfill(
+        status=200,
+        content_type="application/json",
+        body=json.dumps(
+            {
+                "initialized": True,
+                "authenticated": False,
+                "username": None,
+                "github_enabled": False,
+            }
+        ),
+    )
+    expect(page.locator("#login-card")).to_be_visible()
 
 
 def test_uc_a_02_login_swaps_to_authed_view(base_url, admin_setup, page):

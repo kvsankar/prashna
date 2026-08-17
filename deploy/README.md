@@ -52,6 +52,27 @@ cd /opt/prashna && docker compose pull && docker compose up -d
 Or wire up the optional `deploy.yml` workflow (not included by default) that
 SSHes in and runs that on every push to `main`.
 
+## Cloudflare HTML-shell caching
+
+The application marks only its static HTML page shells as edge-cacheable. API
+responses, bad-session redirects, and personalized data remain `no-store`.
+Cloudflare still needs a Cache Rule to make non-static HTML eligible. Preview
+the idempotent ruleset update, then apply it with a token that can edit zone
+rulesets:
+
+```bash
+export CLOUDFLARE_API_TOKEN=...       # Zone Rulesets:Edit and Zone:Read
+export CLOUDFLARE_ZONE_ID=...         # optional; discovered by zone name
+deploy/configure-cloudflare-cache.sh --dry-run
+deploy/configure-cloudflare-cache.sh --apply
+```
+
+The helper preserves unrelated cache rules and replaces only the stable
+`prashna_html_shells` rule. It covers `/`, `/quizzes`, and the `/s/`, `/m/`,
+and `/p/` page prefixes, and respects the application's browser and edge TTLs.
+Verify a repeated page response with `CF-Cache-Status`; purge the affected URLs
+after a deploy if the five-minute edge TTL is too long for an urgent shell fix.
+
 ## Smoke test
 
 Run the production-like Docker Compose smoke from a development checkout with:
@@ -79,6 +100,8 @@ with `docker compose --project-name <printed-project> down --volumes
 - `env.example` — copy to `/opt/prashna/.env` with a real `PRASHNA_SECRET_KEY`.
 - `nginx-prashna.conf` — nginx server block; symlinked into `sites-enabled/`.
 - `setup.sh` — idempotent bootstrap script.
+- `configure-cloudflare-cache.sh` — dry-run/apply Cache Rule reconciler for
+  static HTML shells.
 
 ## Persistent data
 

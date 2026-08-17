@@ -1,6 +1,7 @@
 """UI tests for the projector surface (/p/<code>)."""
 from __future__ import annotations
 
+import json
 import secrets
 
 import httpx
@@ -57,9 +58,10 @@ def test_uc_d_01_first_load_fetches_display_state_once(base_url, admin_setup, pa
         page.wait_for_timeout(750)
 
         prefix = f"/api/sessions/{s['code']}"
-        assert sum(url.endswith(prefix) for url in seen) == 1
-        assert sum(url.endswith(f"{prefix}/queries?display=true") for url in seen) == 1
-        assert sum(url.endswith(f"{prefix}/quiz_runs?display=true") for url in seen) == 1
+        assert sum(url.endswith(f"{prefix}/display-bootstrap") for url in seen) == 1
+        assert sum(url.endswith(prefix) for url in seen) == 0
+        assert sum(url.endswith(f"{prefix}/queries?display=true") for url in seen) == 0
+        assert sum(url.endswith(f"{prefix}/quiz_runs?display=true") for url in seen) == 0
     finally:
         c.close()
 
@@ -161,22 +163,30 @@ def test_uc_d_02_qr_rerenders_when_join_url_changes_with_same_base(base_url, adm
     try:
         calls = {"session": 0}
 
-        def route_session(route):
+        def route_bootstrap(route):
             calls["session"] += 1
+            code = s["code"] if calls["session"] == 1 else "NEWS01"
+            title = s["title"] if calls["session"] == 1 else "Changed title"
             route.fulfill(
                 status=200,
                 content_type="application/json",
-                body=(
-                    '{"code":"%s","title":"%s","status":"planning",'
-                    '"created_at":"2026-06-25T00:00:00","participant_base_url":"%s"}'
-                ) % (
-                    s["code"] if calls["session"] == 1 else "NEWS01",
-                    s["title"] if calls["session"] == 1 else "Changed title",
-                    base_url,
-                ),
+                body=json.dumps({
+                    "session": {
+                        "code": code,
+                        "title": title,
+                        "status": "planning",
+                        "participant_base_url": base_url,
+                        "feedback_enabled": False,
+                    },
+                    "queries": [],
+                    "quiz_runs": [],
+                }),
             )
 
-        page.route(f"**/api/sessions/{s['code']}", route_session)
+        page.route(
+            f"**/api/sessions/{s['code']}/display-bootstrap",
+            route_bootstrap,
+        )
         page.goto(f"{base_url}/p/{s['code']}")
         page.wait_for_selector("#join-qr svg")
         first_qr = page.locator("#join-qr").inner_html()

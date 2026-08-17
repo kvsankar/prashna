@@ -1,10 +1,10 @@
 import {
   $, api, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
-  openLiveSocket, pathCode, renderQR, setModKey, statusLabel, toast,
+  markUsable, openLiveSocket, pathCode, renderQR, setModKey, statusLabel, toast,
 } from "./common";
 import type {
-  AdminStatus,
   FeedbackSummary,
+  ModeratorBootstrap,
   ParticipantProfile,
   ParticipantProfileSummary,
   Query,
@@ -32,7 +32,6 @@ let isOwner = false;
 const pendingResponseText = new Map<number, string>();
 let latestSessionSeq = 0;
 let latestQueriesSeq = 0;
-let latestQuizzesSeq = 0;
 let latestQuizRunsSeq = 0;
 let latestPresenceSeq = 0;
 let latestFeedbackSeq = 0;
@@ -48,6 +47,7 @@ function showKeyGate(): void {
   $("#modkey-card").style.display = "";
   showWorkSurfaces(false);
   $("#modkey-input").focus();
+  markUsable("moderator");
 }
 async function trySubmitKey(): Promise<void> {
   const k = $<HTMLInputElement>("#modkey-input").value.trim();
@@ -74,6 +74,10 @@ async function loadSession(): Promise<void> {
   const seq = ++latestSessionSeq;
   const loaded = await api<Session>(`/api/sessions/${CODE}`);
   if (seq !== latestSessionSeq) return;
+  applySession(loaded, seq);
+}
+
+function applySession(loaded: Session, seq = latestSessionSeq): void {
   sessionState = loaded;
   document.title = `Mod — ${sessionState.title}`;
   $("#title").textContent = sessionState.title;
@@ -252,10 +256,7 @@ function renderQuery(q: Query): HTMLElement {
   return el("div", { class: "question" + (q.responded ? " answered" : "") + (q.removed ? " hidden-q" : "") }, voteBox, body);
 }
 
-async function loadQuizzes(): Promise<void> {
-  const seq = ++latestQuizzesSeq;
-  const rows = await api<QuizSummary[]>(`/api/sessions/${CODE}/available_quizzes`, { headers: modHeaders() });
-  if (seq !== latestQuizzesSeq) return;
+function applyQuizzes(rows: QuizSummary[]): void {
   quizzes = rows;
   const sel = $<HTMLSelectElement>("#quiz-select");
   sel.innerHTML = "";
@@ -533,13 +534,13 @@ function refreshSoon(msg: LiveMessage): void {
 }
 
 async function boot(): Promise<void> {
-  try {
-    const st = await api<AdminStatus>("/api/admin/status");
-    isOwner = !!(st && st.authenticated);
-  } catch { isOwner = false; }
-  await Promise.all([loadSession(), loadQuizzes()]);
+  const state = await api<ModeratorBootstrap>(`/api/sessions/${CODE}/moderator-bootstrap`, { headers: modHeaders() });
+  isOwner = state.is_owner;
+  applySession(state.session);
+  applyQuizzes(state.available_quizzes);
   $<HTMLDetailsElement>("#setup-section").open = sessionState?.status === "planning";
   showWorkSurfaces(true);
+  markUsable("moderator");
   void loadQueries();
   void loadQuizRuns();
   void loadPresence();

@@ -329,6 +329,10 @@ Deferred until any list exceeds ~50 rows. When we add them:
 - For inline actions: button shows its label unchanged but is disabled
   until the request returns. No spinners on buttons.
 - **Never block the whole page** with a loader.
+- Render a useful static shell before boot requests complete. Public join and
+  login controls must not be hidden behind an authentication-status round trip;
+  role pages may use their existing inline loading primers until their single
+  bootstrap response paints the operational surface.
 
 ### Empty
 

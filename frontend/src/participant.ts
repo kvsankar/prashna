@@ -1,5 +1,5 @@
-import { $, api, el, errorToast, guardClick, type LiveMessage, openLiveSocket, pathCode, renderQR, toast } from "./common";
-import type { Feedback, ParticipantProfile, Query, QuizRun, Session } from "./types";
+import { $, api, el, errorToast, guardClick, markUsable, type LiveMessage, openLiveSocket, pathCode, renderQR, toast } from "./common";
+import type { Feedback, ParticipantBootstrap, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
 let queries: Query[] = [];
@@ -20,6 +20,10 @@ async function loadSession(): Promise<void> {
   const seq = ++latestSessionSeq;
   const s = await api<Session>(`/api/sessions/${CODE}`);
   if (seq !== latestSessionSeq) return;
+  applySession(s);
+}
+
+function applySession(s: Session, refreshFeedback = true): void {
   document.title = `Prashna — ${s.title}`;
   $("#title").textContent = s.title;
   $("#code").textContent = "Code " + CODE;
@@ -29,14 +33,14 @@ async function loadSession(): Promise<void> {
   $("#ask-card").style.display = sessionEnded ? "none" : "";
   $("#ended-card").style.display = sessionEnded ? "" : "none";
   $("#feedback-card").style.display = feedbackEnabled ? "" : "none";
-  if (feedbackEnabled) void loadFeedback();
+  if (feedbackEnabled && refreshFeedback) void loadFeedback();
   const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
-  try { await renderQR($("#share-qr"), `${base}/s/${s.code}`, { cellSize: 3, margin: 2 }); }
-  catch { /* QR is best-effort */ }
+  void renderQR($("#share-qr"), `${base}/s/${s.code}`, { cellSize: 3, margin: 2 })
+    .catch(() => { /* QR is best-effort */ });
 }
 
-async function loadMe(): Promise<void> {
-  me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me`);
+function applyMe(profile: ParticipantProfile): void {
+  me = profile;
   $<HTMLInputElement>("#my-name").value = me.name || "";
   $<HTMLInputElement>("#my-email").value = me.email || "";
   $<HTMLInputElement>("#my-contact-number").value = me.contact_number || "";
@@ -215,6 +219,10 @@ async function loadQueries(): Promise<void> {
   const seq = ++latestQueriesSeq;
   const rows = await api<Query[]>(`/api/sessions/${CODE}/queries`);
   if (seq !== latestQueriesSeq) return;
+  applyQueries(rows);
+}
+
+function applyQueries(rows: Query[]): void {
   queries = rows;
   renderQueries();
 }
@@ -282,6 +290,10 @@ async function loadQuiz(): Promise<void> {
   const seq = ++latestQuizSeq;
   const rows = await api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs`);
   if (seq !== latestQuizSeq) return;
+  applyQuizRuns(rows);
+}
+
+function applyQuizRuns(rows: QuizRun[]): void {
   activeQuiz = rows.find((r) => r.status === "live") ?? null;
   if (activeQuiz && activeQuiz.current_question && activeQuiz.current_question.id !== lastQuestionId) {
     pendingSelection = new Set(activeQuiz.my_selections ?? []);
@@ -476,22 +488,26 @@ $("#fb-clear-yes").addEventListener("click", () => {
 async function loadFeedback(): Promise<void> {
   try {
     const f = await api<Feedback | null>(`/api/sessions/${CODE}/feedback/mine`);
-    if (f) {
+    applyFeedback(f);
+  } catch { /* no feedback yet */ }
+}
+
+function applyFeedback(f: Feedback | null): void {
+  if (f) {
       myRating = f.rating;
       $<HTMLTextAreaElement>("#fb-went-well").value = f.went_well || "";
       $<HTMLTextAreaElement>("#fb-to-improve").value = f.to_improve || "";
       $("#fb-expand").style.display = "";
       feedbackSubmitted = true;
       $("#fb-status").textContent = "Submitted ✓";
-    } else {
+  } else {
       myRating = 0;
       feedbackSubmitted = false;
       $<HTMLTextAreaElement>("#fb-went-well").value = "";
       $<HTMLTextAreaElement>("#fb-to-improve").value = "";
       $("#fb-expand").style.display = "none";
       $("#fb-status").textContent = "";
-    }
-  } catch { /* no feedback yet */ }
+  }
   renderStars();
 }
 $("#fb-went-well").addEventListener("input", markFeedbackDirty);
@@ -528,10 +544,15 @@ function onLive(msg: LiveMessage): void {
   }
 }
 
-(async function () {
+(async function boot() {
   // Connect before rendering interactive state so a session transition cannot
   // land between the initial fetch and socket readiness.
   openLiveSocket(CODE, onLive);
-  await Promise.all([loadSession(), loadMe()]);
-  await Promise.all([loadQueries(), loadQuiz()]);
-})();
+  const state = await api<ParticipantBootstrap>(`/api/sessions/${CODE}/participant-bootstrap`);
+  applySession(state.session, false);
+  applyMe(state.me);
+  applyQueries(state.queries);
+  applyQuizRuns(state.quiz_runs);
+  applyFeedback(state.feedback);
+  markUsable("participant");
+})().catch((error: unknown) => errorToast((error as Error).message));

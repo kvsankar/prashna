@@ -1,4 +1,4 @@
-import { $, api, el, errorToast, escapeHtml, guardClick, renderQR, statusLabel, toast } from "./common";
+import { $, api, el, errorToast, escapeHtml, guardClick, markUsable, renderQR, statusLabel, toast } from "./common";
 import type { AdminStatus, FeedbackSummary, SessionRow } from "./types";
 
 let requestedSessionCode = new URLSearchParams(location.search).get("session")?.toUpperCase() ?? null;
@@ -414,4 +414,5 @@ document.addEventListener("keydown", (e) => {
   if ($("#session-detail-card").style.display !== "none") closeSessionDetail();
 });
 
+markUsable("landing");
 void refresh();

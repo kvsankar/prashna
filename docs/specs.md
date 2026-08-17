@@ -128,6 +128,9 @@ setup form for the first visitor to claim admin.
 
 **Tests (UI)**
 - On `/` with an admin existing and no session cookie, `#login-card` is visible.
+- While `GET /api/admin/status` is delayed, the static `#join-card` and
+  `#login-card` shell is already visible and usable; authentication
+  reconciliation must not leave the landing page blank.
 - Filling `#li-user` and `#li-pass`, clicking `#li-btn`, swaps to the authed view (`#sessions-card` visible).
 - Pressing Enter inside `#li-pass` submits (same effect as clicking `#li-btn`).
 - Invalid credentials produce an error toast "Invalid username or password" and `#login-card` stays visible.
@@ -708,6 +711,9 @@ the UI shows no button.
 - Same with admin owner cookie and no mod_key → `200`.
 - With no auth and no mod_key → `403 "Not authorized — moderator key or admin login required"`.
 - With wrong mod_key and no admin cookie → `403`.
+- `GET /api/sessions/{code}/moderator-bootstrap` with mod-key or owner
+  auth returns the session, ready quiz summaries, and `is_owner` in one
+  response; unauthenticated and wrong-key calls return `403`.
 - `GET /m/<code>` for an unknown code → `303` redirect to `/?bad_code=<code>`.
 
 **Tests (UI)**
@@ -1066,6 +1072,10 @@ by default while the session is `planning`.
 **Tests (API)**
 - `GET /api/sessions/{code}` for an existing code → `200 {code, title, status, created_at, participant_base_url}`. Auth: none (public read).
 - `GET /api/sessions/{code}` for an unknown code → `404 "Session not found"`.
+- `GET /api/sessions/{code}/participant-bootstrap` returns the session,
+  participant profile, visible questions, quiz runs, and current feedback in
+  one response. A fresh caller receives one `voter_token` cookie and creates
+  only one Participant row.
 - `GET /s/{code}` for a valid code → serves `participant.html`.
 - `GET /s/{code}` for an unknown code → `303` redirect to `/?bad_code=<code>`.
 
@@ -1398,6 +1408,9 @@ session.
 - `GET /p/<code>` for an existing code → `200` and serves `projector.html`.
 - `GET /p/<code>` for an unknown code → `303` redirect to `/?bad_code=<code>`.
 - `GET /api/sessions/{code}` (used by projector boot) requires no auth.
+- `GET /api/sessions/{code}/display-bootstrap` returns the session, public
+  questions, and display-safe quiz runs in one response without creating a
+  Participant row or issuing a `voter_token` cookie.
 
 **Tests (UI)**
 - On `/p/<CODE>`, `#title` shows session title, `#code` shows the join code in large type, `#origin` shows the participant URL host, `#join-qr` renders the full participant URL.
@@ -1780,6 +1793,47 @@ capacity is the allowed burst and refill is the sustained rate.
 - The release workflow declares amd64+arm64 publication, pulls the just-pushed
   image digest for a Compose smoke, and attaches the versioned bundle to the
   matching GitHub Release.
+
+### UC-X-11: Fast, observable page bootstrap
+
+- **Given** a visitor opens a Prashna HTML surface through a reverse proxy or
+  CDN
+- **Then** successful HTML shells are browser-revalidated and may be retained
+  at the shared edge for five minutes, while API responses, redirects, and
+  errors remain non-cacheable
+- **And** the landing join/login shell is useful before the authentication
+  status request completes
+- **And** participant, moderator, and projector initial state is delivered by
+  one role-specific bootstrap request rather than multiple sequential request
+  waves
+- **And** each page records a `prashna-usable` Performance mark when its useful
+  surface is ready
+- **And** a non-blocking, rate-limited performance beacon logs only bounded
+  timing, role, negotiated protocol, navigation type, and Cloudflare colo
+  fields; it never logs a session code, URL, cookie, token, or client IP.
+
+**Tests (API)**
+- Successful `/`, `/quizzes`, `/s/{code}`, `/m/{code}`, and `/p/{code}` page
+  responses carry browser-revalidation plus five-minute CDN cache directives;
+  an invalid session redirect is `no-store`, and `/api/*` remains `no-store`.
+- `POST /api/diagnostics/performance` accepts a bounded valid payload with
+  `204`, emits `performance.usable`, derives only the colo suffix from
+  `CF-Ray`, and ignores invalid or rate-limited samples without exposing input
+  secrets.
+- Participant, moderator, and display bootstrap contracts are covered by
+  UC-P-01, UC-M-01, and UC-D-01.
+
+**Tests (UI / Ops)**
+- The landing shell remains visible while `/api/admin/status` is artificially
+  delayed.
+- Participant, moderator, and projector boots use their single bootstrap
+  endpoints and create `performance.getEntriesByName("prashna-usable")`.
+- `performance/measure.py` records `usable_ms`, fails an otherwise successful
+  navigation that never reaches the usable mark, and retains the existing
+  network/application metrics.
+- The Cloudflare cache rule is scoped only to `prashna.sankara.net` HTML page
+  routes and respects the origin cache directives; `/api/`, `/ws/`, and
+  `/uploads/` are never matched.
 
 ---
 

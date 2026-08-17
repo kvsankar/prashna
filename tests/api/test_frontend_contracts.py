@@ -29,3 +29,28 @@ def test_live_socket_reconnect_test_hook_is_gated():
     assert "__prashnaLiveSocketTest" in src
     assert "closeActive" in src
     assert "activeCount" in src
+
+
+def test_role_pages_use_single_bootstrap_requests_and_usable_marks():
+    sources = {
+        "participant": "participant-bootstrap",
+        "moderator": "moderator-bootstrap",
+        "projector": "display-bootstrap",
+    }
+    for role, endpoint in sources.items():
+        src = (ROOT / f"frontend/src/{role}.ts").read_text()
+        assert endpoint in src, role
+        assert f'markUsable("{role}")' in src, role
+
+    common = (ROOT / "frontend/src/common.ts").read_text()
+    assert 'performance.mark("prashna-usable")' in common
+    assert 'navigator.sendBeacon("/api/diagnostics/performance"' in common
+
+
+def test_landing_shell_is_visible_before_auth_reconciliation():
+    html = (ROOT / "frontend/index.html").read_text()
+    assert 'id="join-card" style="display:none;"' not in html
+    assert 'id="login-card" style="display:none;"' not in html
+
+    src = (ROOT / "frontend/src/index.ts").read_text()
+    assert 'markUsable("landing")' in src

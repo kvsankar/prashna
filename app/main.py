@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import secrets
 import threading
@@ -74,6 +75,11 @@ RL_ASK = (6, 1 / 10)         # query submissions per IP
 RL_VOTE = (30, 2.0)          # query vote toggles per IP
 RL_SUBMIT = (20, 0.5)        # quiz-answer submissions per IP
 RL_FEEDBACK = (10, 0.5)      # session-feedback submissions per IP
+RL_PERFORMANCE = (10, 0.2)   # non-blocking usable-UI samples per IP
+
+PAGE_BROWSER_CACHE = "public, max-age=0, must-revalidate"
+PAGE_CDN_CACHE = "public, s-maxage=300, stale-while-revalidate=60"
+PERFORMANCE_ROLES = {"landing", "participant", "moderator", "projector", "quizzes"}
 
 
 def _client_ip(request: Request) -> str:
@@ -143,11 +149,26 @@ class SecurityHeaders(BaseHTTPMiddleware):
             response.headers.setdefault("X-Frame-Options", "DENY")
             response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
             response.headers.setdefault("Referrer-Policy", "no-referrer")
+        page_shell = (
+            path in {"/", "/quizzes"}
+            or path.startswith(("/s/", "/m/", "/p/"))
+        )
         if path.startswith("/static/assets/"):
             # Vite fingerprints these filenames, so they are safe to retain
             # across visits without a revalidation round trip.
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        elif path.startswith("/static/") or path == "/" or path.startswith(("/s/", "/m/", "/p/")):
+        elif page_shell and response.status_code == 200:
+            # Page files contain no user/session state. Browsers revalidate so
+            # a deploy cannot strand an old HTML shell, while a CDN may retain
+            # the shell briefly and absorb the geographic origin round trip.
+            response.headers["Cache-Control"] = PAGE_BROWSER_CACHE
+            response.headers["CDN-Cache-Control"] = PAGE_CDN_CACHE
+        elif page_shell:
+            # In particular, never let the CDN retain a bad-code redirect.
+            response.headers["Cache-Control"] = "no-store"
+            if "CDN-Cache-Control" in response.headers:
+                del response.headers["CDN-Cache-Control"]
+        elif path.startswith("/static/"):
             response.headers.setdefault("Cache-Control", "no-cache")
         elif path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
@@ -384,6 +405,18 @@ def serialize_participant_profile(p: m.Participant) -> dict:
     }
 
 
+def serialize_feedback(f: m.SessionFeedback, *, include_author: bool = False) -> dict:
+    body = {
+        "rating": f.rating,
+        "went_well": f.went_well,
+        "to_improve": f.to_improve,
+        "updated_at": f.updated_at.isoformat() if f.updated_at else None,
+    }
+    if include_author:
+        body["author_name"] = f.participant.name if f.participant else None
+    return body
+
+
 def participant_has_profile(p: m.Participant) -> bool:
     return (
         p.photo_url is not None
@@ -516,6 +549,76 @@ def serialize_quiz_run(
         if show_results:
             payload["results"] = tally_question(db, run, current)
     return payload
+
+
+def serialize_session_queries(
+    db: DbSession,
+    session: m.Session,
+    *,
+    viewer_participant_id: int | None,
+    is_mod: bool,
+) -> list[dict]:
+    rows = db.scalars(
+        select(m.Query)
+        .where(m.Query.session_id == session.id)
+        .options(selectinload(m.Query.votes), selectinload(m.Query.participant))
+        .order_by(m.Query.created_at.desc())
+    ).all()
+    if not is_mod:
+        rows = [row for row in rows if row.removed_at is None]
+    return [
+        serialize_query(row, viewer_participant_id, is_mod)
+        for row in rows
+    ]
+
+
+def serialize_session_quiz_runs(
+    db: DbSession,
+    session: m.Session,
+    *,
+    viewer_participant_id: int | None,
+    is_mod: bool,
+) -> list[dict]:
+    rows = db.scalars(
+        select(m.QuizRun)
+        .where(m.QuizRun.session_id == session.id)
+        .order_by(m.QuizRun.created_at.desc())
+    ).all()
+    return [
+        serialize_quiz_run(
+            db,
+            row,
+            viewer_participant_id=viewer_participant_id,
+            is_mod=is_mod,
+        )
+        for row in rows
+    ]
+
+
+def available_quiz_summaries(db: DbSession, session: m.Session) -> list[dict]:
+    question_count = (
+        select(func.count(m.Question.id))
+        .where(m.Question.quiz_id == m.Quiz.id)
+        .correlate(m.Quiz)
+        .scalar_subquery()
+    )
+    quizzes = db.execute(
+        select(m.Quiz, question_count.label("question_count"))
+        .where(
+            m.Quiz.owner_user_id == session.owner_user_id,
+            m.Quiz.status == "ready",
+        )
+        .order_by(m.Quiz.created_at.desc())
+    ).all()
+    return [
+        {
+            "id": quiz.id,
+            "title": quiz.title,
+            "status": quiz.status,
+            "question_count": count,
+        }
+        for quiz, count in quizzes
+    ]
 
 
 def _no_live_quiz_run(db: DbSession, session: m.Session) -> None:
@@ -687,6 +790,63 @@ def admin_status(db: DbSession = Depends(get_db), me: m.User | None = Depends(au
         "username": me.username if me else None,
         "github_enabled": oauth.enabled(),
     }
+
+
+def _bounded_performance_metric(
+    payload: dict,
+    name: str,
+    *,
+    maximum: float = 120_000,
+) -> float | None:
+    value = payload.get(name)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < 0 or numeric > maximum:
+        return None
+    return round(numeric, 2)
+
+
+@app.post("/api/diagnostics/performance", status_code=204)
+def performance_beacon(payload: dict, request: Request):
+    """Retain a bounded, identifier-free usable-UI timing sample."""
+    if not limiter.allow(f"perf:{_client_ip(request)}", *RL_PERFORMANCE):
+        return Response(status_code=204)
+    role = payload.get("role")
+    usable_ms = _bounded_performance_metric(payload, "usable_ms")
+    if role not in PERFORMANCE_ROLES or usable_ms is None:
+        return Response(status_code=204)
+
+    protocol = payload.get("protocol")
+    if protocol not in {"h2", "h3", "http/1.1", "unknown"}:
+        protocol = "unknown"
+    navigation_type = payload.get("navigation_type")
+    if navigation_type not in {"navigate", "reload", "back_forward", "prerender"}:
+        navigation_type = "navigate"
+
+    cf_colo = None
+    cf_ray = request.headers.get("cf-ray", "")
+    if "-" in cf_ray:
+        candidate = cf_ray.rsplit("-", 1)[-1].upper()
+        if 3 <= len(candidate) <= 8 and candidate.isalnum():
+            cf_colo = candidate
+
+    log_diagnostic(
+        "performance.usable",
+        role=role,
+        usable_ms=usable_ms,
+        dcl_ms=_bounded_performance_metric(payload, "dcl_ms"),
+        fcp_ms=_bounded_performance_metric(payload, "fcp_ms"),
+        app_server_ms=_bounded_performance_metric(
+            payload,
+            "app_server_ms",
+            maximum=10_000,
+        ),
+        protocol=protocol,
+        navigation_type=navigation_type,
+        cf_colo=cf_colo,
+    )
+    return Response(status_code=204)
 
 
 # ---------- routes: GitHub OAuth login (UC-A-26) ----------
@@ -914,6 +1074,86 @@ def create_session(payload: dict, db: DbSession = Depends(get_db), me: m.User = 
 def get_session(code: str, db: DbSession = Depends(get_db)):
     s = get_session_by_code(db, code)
     return serialize_session(s)
+
+
+@app.get("/api/sessions/{code}/participant-bootstrap")
+def participant_bootstrap(
+    code: str,
+    request: Request,
+    response: Response,
+    voter_token: Annotated[str | None, Cookie()] = None,
+    db: DbSession = Depends(get_db),
+):
+    """Return one cookie-consistent participant startup snapshot."""
+    session = get_session_by_code(db, code)
+    participant = current_participant(
+        session,
+        request,
+        response,
+        voter_token,
+        db,
+    )
+    feedback = db.scalar(
+        select(m.SessionFeedback).where(
+            m.SessionFeedback.session_id == session.id,
+            m.SessionFeedback.participant_id == participant.id,
+        )
+    )
+    return {
+        "session": serialize_session(session),
+        "me": serialize_participant_profile(participant),
+        "queries": serialize_session_queries(
+            db,
+            session,
+            viewer_participant_id=participant.id,
+            is_mod=False,
+        ),
+        "quiz_runs": serialize_session_quiz_runs(
+            db,
+            session,
+            viewer_participant_id=participant.id,
+            is_mod=False,
+        ),
+        "feedback": serialize_feedback(feedback) if feedback else None,
+    }
+
+
+@app.get("/api/sessions/{code}/moderator-bootstrap")
+def moderator_bootstrap(
+    code: str,
+    x_mod_key: Annotated[str | None, Header()] = None,
+    db: DbSession = Depends(get_db),
+    me: m.User | None = Depends(auth.optional_admin),
+):
+    """Return the moderator's operational first paint in one request."""
+    session = get_session_by_code(db, code)
+    require_mod_or_owner(session, x_mod_key, me)
+    return {
+        "session": serialize_session(session),
+        "available_quizzes": available_quiz_summaries(db, session),
+        "is_owner": is_admin_owner(session, me),
+    }
+
+
+@app.get("/api/sessions/{code}/display-bootstrap")
+def display_bootstrap(code: str, db: DbSession = Depends(get_db)):
+    """Return public display state without creating participant identity."""
+    session = get_session_by_code(db, code)
+    return {
+        "session": serialize_session(session),
+        "queries": serialize_session_queries(
+            db,
+            session,
+            viewer_participant_id=None,
+            is_mod=False,
+        ),
+        "quiz_runs": serialize_session_quiz_runs(
+            db,
+            session,
+            viewer_participant_id=None,
+            is_mod=False,
+        ),
+    }
 
 
 @app.patch("/api/sessions/{code}")
@@ -1186,17 +1426,6 @@ def list_participant_profiles(
 
 # ---------- routes: session feedback (participant rating + comments) ----------
 
-def serialize_feedback(f: m.SessionFeedback, *, include_author: bool = False) -> dict:
-    d = {
-        "rating": f.rating,
-        "went_well": f.went_well,
-        "to_improve": f.to_improve,
-        "updated_at": f.updated_at.isoformat() if f.updated_at else None,
-    }
-    if include_author:
-        d["author_name"] = f.participant.name if f.participant else None
-    return d
-
 
 @app.get("/api/sessions/{code}/feedback/mine")
 def my_feedback(
@@ -1351,16 +1580,12 @@ def list_queries(
     s = get_session_by_code(db, code)
     is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
     p = None if display else current_participant(s, request, response, voter_token, db)
-    qs = db.scalars(
-        select(m.Query)
-        .where(m.Query.session_id == s.id)
-        .options(selectinload(m.Query.votes), selectinload(m.Query.participant))
-        .order_by(m.Query.created_at.desc())
-    ).all()
-    if not is_mod:
-        qs = [q for q in qs if q.removed_at is None]
-    viewer_id = p.id if p else None
-    return [serialize_query(q, viewer_id, is_mod) for q in qs]
+    return serialize_session_queries(
+        db,
+        s,
+        viewer_participant_id=p.id if p else None,
+        is_mod=is_mod,
+    )
 
 
 @app.post("/api/sessions/{code}/queries")
@@ -1971,14 +2196,14 @@ def list_quiz_runs(
     s = get_session_by_code(db, code)
     is_mod = is_mod_authed(s, x_mod_key) or is_admin_owner(s, me)
     p = None if display else current_participant(s, request, response, voter_token, db)
-    rows = db.scalars(
-        select(m.QuizRun).where(m.QuizRun.session_id == s.id)
-        .order_by(m.QuizRun.created_at.desc())
-    ).all()
     # Non-mods see queued/live/closed (queued powers the projector "Next up"
     # lobby). The participant page itself ignores queued in its own render.
-    viewer_id = p.id if p else None
-    return [serialize_quiz_run(db, r, viewer_participant_id=viewer_id, is_mod=is_mod) for r in rows]
+    return serialize_session_quiz_runs(
+        db,
+        s,
+        viewer_participant_id=p.id if p else None,
+        is_mod=is_mod,
+    )
 
 
 @app.get("/api/sessions/{code}/available_quizzes")
@@ -1996,21 +2221,7 @@ def list_available_quizzes(
     """
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
-    question_count = (
-        select(func.count(m.Question.id))
-        .where(m.Question.quiz_id == m.Quiz.id)
-        .correlate(m.Quiz)
-        .scalar_subquery()
-    )
-    quizzes = db.execute(
-        select(m.Quiz, question_count.label("question_count"))
-        .where(m.Quiz.owner_user_id == s.owner_user_id, m.Quiz.status == "ready")
-        .order_by(m.Quiz.created_at.desc())
-    ).all()
-    return [
-        {"id": q.id, "title": q.title, "status": q.status, "question_count": count}
-        for q, count in quizzes
-    ]
+    return available_quiz_summaries(db, s)
 
 
 @app.post("/api/sessions/{code}/quiz_runs")

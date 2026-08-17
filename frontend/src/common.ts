@@ -74,6 +74,45 @@ export interface ApiOpts {
   body?: unknown;
 }
 
+type UsableRole = "landing" | "participant" | "moderator" | "projector" | "quizzes";
+let usableMarked = false;
+
+/** Mark and asynchronously report when this page becomes useful to a person.
+ * The payload is deliberately identifier-free: no URL, code, cookie, or IP. */
+export function markUsable(role: UsableRole): void {
+  if (usableMarked) return;
+  usableMarked = true;
+  performance.mark("prashna-usable");
+  const usableMs = performance.now();
+  const send = () => {
+    try {
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+      const paints = Object.fromEntries(
+        performance.getEntriesByType("paint").map((entry) => [entry.name, entry.startTime]),
+      );
+      const all = nav ? [nav, ...resources] : resources;
+      const appTimes = all.flatMap((entry) =>
+        entry.serverTiming.filter((timing) => timing.name === "app").map((timing) => timing.duration),
+      );
+      const payload = {
+        role,
+        usable_ms: usableMs,
+        dcl_ms: nav?.domContentLoadedEventEnd || null,
+        fcp_ms: paints["first-contentful-paint"] ?? null,
+        app_server_ms: appTimes.length ? Math.max(...appTimes) : null,
+        protocol: nav?.nextHopProtocol || resources.find((entry) => entry.nextHopProtocol)?.nextHopProtocol || "unknown",
+        navigation_type: nav?.type ?? "navigate",
+      };
+      navigator.sendBeacon("/api/diagnostics/performance",
+        new Blob([JSON.stringify(payload)], { type: "application/json" }),
+      );
+    } catch { /* Performance reporting must never affect the page. */ }
+  };
+  if ("requestIdleCallback" in window) window.requestIdleCallback(send, { timeout: 2000 });
+  else setTimeout(send, 0);
+}
+
 export async function api<T = unknown>(path: string, opts: ApiOpts = {}): Promise<T> {
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   let body = opts.body as BodyInit | undefined;

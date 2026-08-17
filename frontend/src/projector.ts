@@ -1,5 +1,5 @@
-import { $, api, el, openLiveSocket, pathCode, renderQR } from "./common";
-import type { Query, QuizRun, Session } from "./types";
+import { $, api, el, markUsable, openLiveSocket, pathCode, renderQR } from "./common";
+import type { DisplayBootstrap, Query, QuizRun } from "./types";
 
 const CODE = pathCode();
 $("#code").textContent = CODE;
@@ -9,12 +9,9 @@ let latestLoadSeq = 0;
 
 async function loadAll(): Promise<void> {
   const seq = ++latestLoadSeq;
-  const [s, qs, runs] = await Promise.all([
-    api<Session>(`/api/sessions/${CODE}`),
-    api<Query[]>(`/api/sessions/${CODE}/queries?display=true`),
-    api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs?display=true`),
-  ]);
+  const state = await api<DisplayBootstrap>(`/api/sessions/${CODE}/display-bootstrap`);
   if (seq !== latestLoadSeq) return;
+  const { session: s, queries: qs, quiz_runs: runs } = state;
   $("#title").textContent = s.title;
   const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
   const url = `${base}/s/${s.code}`;
@@ -135,5 +132,8 @@ function loadAllSoon(msg: { type: string }): void {
   reloadTimer = setTimeout(() => { reloadTimer = null; void loadAll(); }, 400);
 }
 
-void loadAll();
+(async function boot() {
+  await loadAll();
+  markUsable("projector");
+})().catch(() => { /* The role route will retain its loading state. */ });
 openLiveSocket(CODE, loadAllSoon);

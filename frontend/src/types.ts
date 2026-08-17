@@ -97,6 +97,26 @@ export interface AdminStatus {
   github_enabled: boolean;
 }
 
+export interface ParticipantBootstrap {
+  session: Session;
+  me: ParticipantProfile;
+  queries: Query[];
+  quiz_runs: QuizRun[];
+  feedback: Feedback | null;
+}
+
+export interface ModeratorBootstrap {
+  session: Session;
+  available_quizzes: QuizSummary[];
+  is_owner: boolean;
+}
+
+export interface DisplayBootstrap {
+  session: Session;
+  queries: Query[];
+  quiz_runs: QuizRun[];
+}
+
 // A session row from GET /api/sessions (admin list).
 export interface SessionRow extends Session {
   mod_key: string;

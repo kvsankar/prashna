@@ -13,14 +13,16 @@ from performance.measure import (
 
 def test_percentile_and_summary_are_deterministic():
     samples = [
-        {"ready_ms": 100, "transfer_bytes": 1000},
-        {"ready_ms": 200, "transfer_bytes": 2000},
-        {"ready_ms": 300, "transfer_bytes": 3000},
+        {"ready_ms": 100, "usable_ms": 40, "transfer_bytes": 1000},
+        {"ready_ms": 200, "usable_ms": 50, "transfer_bytes": 2000},
+        {"ready_ms": 300, "usable_ms": 90, "transfer_bytes": 3000},
     ]
     summary = summarize(samples)
     assert percentile([100, 200, 300], 0.95) == 290
     assert summary["ready_ms_median"] == 200
     assert summary["ready_ms_p95"] == 290
+    assert summary["usable_ms_median"] == 50
+    assert summary["usable_ms_p95"] == 86
     assert summary["transfer_bytes_median"] == 2000
     assert summary["app_server_ms_median"] is None
 
@@ -78,13 +80,28 @@ def test_measurement_failures_reject_error_pages_and_incomplete_samples():
         "routes": {
             "landing": {
                 "cold": {"samples": [{"status": 503, "quiet": True}]},
-                "warm": {"samples": [{"status": 200, "quiet": False}]},
+                "warm": {"samples": [{"status": 200, "quiet": False, "usable_ms": 10}]},
             }
         }
     }
     assert measurement_failures(report) == [
         "landing.cold[1] returned HTTP 503",
+        "landing.cold[1] did not reach the usable UI mark",
         "landing.warm[1] did not reach a quiet window",
+    ]
+
+
+def test_measurement_failures_rejects_missing_usable_mark():
+    report = {
+        "routes": {
+            "landing": {
+                "cold": {"samples": [{"status": 200, "quiet": True, "usable_ms": None}]},
+                "warm": {"samples": [{"status": 200, "quiet": True, "usable_ms": 25}]},
+            }
+        }
+    }
+    assert measurement_failures(report) == [
+        "landing.cold[1] did not reach the usable UI mark"
     ]
 
 

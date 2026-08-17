@@ -13,6 +13,7 @@ from urllib.parse import urljoin, urlparse
 
 NUMERIC_METRICS = (
     "ready_ms",
+    "usable_ms",
     "dcl_ms",
     "load_ms",
     "fcp_ms",
@@ -119,6 +120,8 @@ def measurement_failures(report: dict) -> list[str]:
                     failures.append(f"{route}.{phase}[{index}] returned HTTP {status}")
                 if not sample.get("quiet"):
                     failures.append(f"{route}.{phase}[{index}] did not reach a quiet window")
+                if sample.get("usable_ms") is None:
+                    failures.append(f"{route}.{phase}[{index}] did not reach the usable UI mark")
     return failures
 
 
@@ -150,6 +153,7 @@ def _capture(page, navigate, *, quiet_ms: int, timeout_ms: int) -> dict:
             "status": None,
             "final_path": urlparse(page.url).path,
             "ready_ms": round((time.perf_counter() - started) * 1000, 2),
+            "usable_ms": None,
             "quiet": False,
             "error": f"{type(exc).__name__}: {exc}",
             "dcl_ms": None,
@@ -169,11 +173,13 @@ def _capture(page, navigate, *, quiet_ms: int, timeout_ms: int) -> dict:
           const resources = performance.getEntriesByType('resource');
           const paints = Object.fromEntries(
             performance.getEntriesByType('paint').map(p => [p.name, p.startTime]));
+          const usable = performance.getEntriesByName('prashna-usable')[0];
           const all = [nav, ...resources].filter(Boolean);
           const app = all.flatMap(e => (e.serverTiming || []))
             .filter(t => t.name === 'app').map(t => t.duration);
           return {
             dcl_ms: nav ? nav.domContentLoadedEventEnd : null,
+            usable_ms: usable ? usable.startTime : null,
             load_ms: nav ? nav.loadEventEnd : null,
             fcp_ms: paints['first-contentful-paint'] ?? null,
             transfer_bytes: all.reduce((n, e) => n + (e.transferSize || 0), 0),

@@ -1,4 +1,4 @@
-import { $, api, el, errorToast, guardClick, statusLabel, toast } from "./common";
+import { $, api, el, errorToast, guardClick, markUsable, statusLabel, toast } from "./common";
 import type {
   EditorAnswer, EditorQuestion, QuizEditor, QuizRunResults, QuizRunRow, QuizSummary,
 } from "./types";
@@ -472,5 +472,6 @@ document.addEventListener("keydown", (e) => {
   if ($("#editor-card").style.display !== "none") closeEditor();
 });
 
-void loadQuizzes();
-void loadQSessions();
+Promise.all([loadQuizzes(), loadQSessions()])
+  .then(() => markUsable("quizzes"))
+  .catch((error: unknown) => errorToast((error as Error).message));
