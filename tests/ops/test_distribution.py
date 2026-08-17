@@ -18,6 +18,16 @@ from scripts.build_release_bundle import build_bundle
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yaml"
 WORKFLOW = ROOT / ".github" / "workflows" / "docker.yml"
+NODE24_ACTION_REFS = (
+    "actions/checkout@v7",
+    "actions/setup-node@v7",
+    "astral-sh/setup-uv@v10.0.1",
+    "docker/setup-qemu-action@v4",
+    "docker/setup-buildx-action@v4",
+    "docker/login-action@v4",
+    "docker/metadata-action@v6",
+    "docker/build-push-action@v7",
+)
 
 
 def _run(args: list[str], *, env: dict[str, str] | None = None):
@@ -180,10 +190,17 @@ def test_release_bundle_rejects_non_semver(tmp_path):
         build_bundle("latest", tmp_path)
 
 
+@pytest.mark.parametrize("action_ref", NODE24_ACTION_REFS)
+def test_workflow_uses_node24_action_releases(action_ref):
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert f"uses: {action_ref}" in workflow
+
+
 def test_release_workflow_contract():
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "docker/setup-qemu-action@v3" in workflow
+    assert "docker/setup-qemu-action@v4" in workflow
     assert "platforms: linux/amd64,linux/arm64" in workflow
     assert "PRASHNA_COMPOSE_SMOKE_IMAGE" in workflow
     assert "needs: build-and-push" in workflow
