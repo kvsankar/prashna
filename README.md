@@ -117,6 +117,24 @@ For the full data model, lifecycles, and authoritative behavior
 spec, see [`docs/specs.md`](docs/specs.md). For the frontend design
 system, see [`docs/UX.md`](docs/UX.md).
 
+## Documentation
+
+Tracked documentation is maintained as a **live** description of the current
+product and its operation:
+
+- `docs/specs.md` and `docs/UX.md` own detailed behavior and frontend rules.
+- `spec.md` and `design.md` are the system-level requirements and design views;
+  they summarize rather than duplicate the detailed use-case contract.
+- `performance/README.md`, `deploy/README.md`, and
+  `distribution/README.md` are the focused operator runbooks.
+- `docs/todo.md` contains only current engineering follow-ups. Product ideas
+  awaiting decisions remain in the deferred appendix of `docs/specs.md`.
+
+One-off reviews, assessments, completed plans, proposals, generated reports,
+and dated investigations are immutable local records, not live project
+documentation. Keep them outside Git tracking and add their exact paths to
+`.git/info/exclude`; do not keep revising or recommitting them.
+
 ## Live updates
 
 Every page opens a WebSocket to `/ws/sessions/<code>`. State-changing
@@ -127,7 +145,7 @@ backoff if the socket drops.
 
 ## Tests
 
-~350 acceptance tests against `docs/specs.md`:
+500+ tests against `docs/specs.md`:
 
 ```bash
 uv run pytest               # full suite (~2 min)
@@ -177,7 +195,8 @@ docs/
 tests/
   api/              pytest + httpx + FastAPI TestClient
   ui/               Playwright Python
-deploy/             Dockerfile, docker-compose.yml, nginx, setup.sh
+Dockerfile          production image build
+deploy/             Hetzner Compose, nginx, TLS and Cloudflare helpers
 uploads/            user-uploaded images (gitignored)
 compose.yaml        laptop/self-host distribution using the published image
 compose.env.example configuration template for the local Compose bundle
@@ -215,18 +234,20 @@ the repository workflow.
 ## Deploy
 
 There's a Dockerfile and a `deploy/` kit for a Hetzner VPS behind
-nginx + Caddy/Let's Encrypt. Images publish to
+nginx with Certbot/Let's Encrypt. Images publish to
 `ghcr.io/kvsankar/prashna` via the `.github/workflows/docker.yml`
 workflow on each push to `main` and version tags. See
 [`deploy/README.md`](deploy/README.md).
 
 ## Status
 
-Pre-launch. `init_db()` creates fresh schemas and runs a lightweight
-additive SQLite migration bridge for known post-deploy columns/indexes.
-Breaking schema changes still require an explicit release note or a real
-migration before user data matters. Heading to open-source release plus a
-hosted SaaS variant. See the
+Prashna has a live single-operator production deployment at
+`prashna.sankara.net` and a versioned multi-architecture container release.
+`init_db()` creates fresh schemas and runs the additive SQLite migration bridge
+for known post-deploy columns/indexes. Breaking schema
+changes still require an explicit release note or a real migration before
+they can safely reach persistent installations. Broader open-source
+distribution and a hosted SaaS variant remain future directions. See the
 **Deferred (decision needed)** appendix at the bottom of
 `docs/specs.md` for items that need product calls before they ship:
 SSO, multi-admin, reopen lifecycles, per-question timer,

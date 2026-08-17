@@ -1867,9 +1867,5 @@ use cases because they need a product call before they have shape.
   `quiz.status`, `quizrun.status`, `quiz_question.qtype`).
 - **Image-only answers** — render correctly today, but publish
   validation accepts them; results UI shows blank cells if no text.
-- **Reverse-proxy `secure` cookie flag** — currently derived from
-  `request.url.scheme`; behind TLS termination without
-  `ProxyHeadersMiddleware`, the flag is wrong.
-
 Each becomes its own UC when the product decision lands; the route /
 column / verb names can stay stable until then.

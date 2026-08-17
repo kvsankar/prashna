@@ -50,13 +50,5 @@ review_level:
     - "Build and release"
     - "Documentation"
     - "UI and accessibility"
-  reason: >
-    Brownfield baseline remediation touches authentication, operator secrets,
-    diagnostics, live reconnect behavior, browser workflows, CI, deployment
-    smoke checks, and user/operator documentation. Standard review keeps the
-    process proportionate while requiring explicit evidence for those risks.
-  stronger_review_if: >
-    Escalate before continuing if the work adds public bootstrap behavior,
-    destructive migrations, multi-worker deployment, external production
-    integrations, hosted telemetry, regulated data handling, or live production
-    deployment.
+  reason: "Brownfield baseline remediation touches authentication, operator secrets, diagnostics, live reconnect behavior, browser workflows, CI, deployment smoke checks, and user/operator documentation. Standard review keeps the process proportionate while requiring explicit evidence for those risks."
+  stronger_review_if: "Escalate before continuing if the work adds public bootstrap behavior, destructive migrations, multi-worker deployment, external production integrations, hosted telemetry, regulated data handling, or live production deployment."

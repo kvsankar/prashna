@@ -5,8 +5,9 @@ Guidance for Claude Code when working in this repository.
 ## Project
 
 **Prashna** — live Q&A + quiz tool for training sessions, lectures, and
-workshops. Heading toward open-source release **and** a hosted SaaS;
-not just a reference codebase. Keep code clear and small; resist
+workshops. It has a live single-operator production deployment and a packaged
+container release; broader open-source distribution and hosted SaaS remain
+future directions. Keep code clear and small; resist
 adding frameworks, abstractions, or features beyond what's actually
 needed. Bias toward additive, reversible changes — the app is used
 live with real audiences.
@@ -22,11 +23,34 @@ Authoritative docs in `docs/`:
 - **`docs/UX.md`** — Frontend design system. Compact-table, drill-down,
   card-head, CRUD verbs, status badges, etc. Read before touching
   any HTML/CSS.
+- **`performance/README.md`** — Current measurement, diagnosis, and release
+  verification runbook.
+- **`deploy/README.md`** and **`distribution/README.md`** — Production and
+  portable-container operations respectively.
+- **`docs/todo.md`** — Current engineering follow-ups only. Product decisions
+  that do not yet have accepted behavior stay in the deferred appendix of
+  `docs/specs.md`.
+
+`spec.md` and `design.md` are the system-level Sarathi requirements and design
+views. They summarize the system; they do not replace the detailed behavior
+contract in `docs/specs.md`, the UX rules in `docs/UX.md`, or their tests.
+
+### Documentation lifecycle
+
+- Version only live documentation that is expected to stay correct as the
+  product changes.
+- Treat reviews, assessments, completed plans, proposals, generated reports,
+  and dated investigations as immutable one-off records.
+- Preserve one-off records locally and add their exact paths to
+  `.git/info/exclude`; do not commit later revisions of them.
+- Consolidate live guidance into the smallest authoritative document for its
+  audience and replace repeated instructions with links.
 
 ## Stack
 
-- **Backend:** Python 3.12+, FastAPI, SQLAlchemy 2 (sync), SQLite.
-  Single-process. WebSockets for live broadcast.
+- **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2 (sync), SQLite. The
+  production image currently runs Python 3.12. Single-process. WebSockets for
+  live broadcast.
 - **Frontend:** TypeScript ES modules, built with **Vite** (multi-page,
   one entry per role). Plain HTML + CSS, no framework. FastAPI serves the
   Vite build output (`frontend/dist`) under `/static`. Dev uses the Vite
@@ -36,7 +60,7 @@ Authoritative docs in `docs/`:
   cookie for admin; `mod_key` URL fragment for delegate moderators;
   `voter_token` cookie for anonymous participants.
 - **Tests:** pytest + httpx (API) + Playwright Python (UI).
-  ~350 tests against `docs/specs.md`. Run with `uv run pytest`.
+  500+ tests against `docs/specs.md`. Run with `uv run pytest`.
 - **Tooling:** `uv` for dependency management.
 
 ## Layout
@@ -65,6 +89,9 @@ vite.config.ts, tsconfig.json, package.json   # frontend build config
 docs/
   specs.md       # use cases + AT bullets — authoritative
   UX.md          # frontend design system — authoritative
+  todo.md        # current engineering follow-ups
+performance/
+  README.md      # live performance runbook
 tests/
   conftest.py    # shared env setup
   api/           # pytest + httpx tests
@@ -114,7 +141,7 @@ Environment:
 Tests:
 
 ```bash
-uv run pytest               # full suite (~2 min, 350 tests)
+uv run pytest               # full suite (~2 min, 500+ tests)
 uv run pytest tests/api/    # API only (fast, ~1 min)
 uv run pytest tests/ui/     # UI only (Playwright, ~1 min)
 ```
@@ -264,6 +291,8 @@ disagree, decide which to change consciously.
 - The codebase is used live in sessions with real audiences.
   Sweeping refactors mid-event are a problem; prefer additive,
   reversible changes.
+- Use the live documentation and current repository state for product and
+  operational decisions; historical one-off records are context, not authority.
 
 ## Items deferred (need product decisions)
 

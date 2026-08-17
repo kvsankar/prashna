@@ -62,17 +62,13 @@ from source sets rather than invented as a new product.
   -  Use In This SRS: Observed behavior and externally visible constraints,
     filtered to requirements rather than design.
 - `docs/todo.md`
-  - Classification: open-decision ledger
-  -  Use In This SRS: Unresolved setup, upload, migration, cleanup, deployment,
-    and scale decisions.
-- Review reports in `docs/`
-  - Classification: historical review evidence
-  -  Use In This SRS: Closed findings, residual risks, known test gaps, and
-    design concerns.
-- `docs/UX-simplification.md`
-  - Classification: background proposal
-  -  Use In This SRS: Future UX ideas only; not current baseline requirements
-    until approved.
+  - Classification: current engineering follow-up ledger
+  -  Use In This SRS: Active cleanups and prerequisites for broader hosted
+    operation. Product ideas awaiting decisions remain in `docs/specs.md`.
+- One-off reviews, assessments, plans, proposals, and dated investigations
+  - Classification: immutable historical evidence, intentionally local-only
+  -  Use In This SRS: They informed the original baseline reconstruction but
+    are not governing sources and are not revised as the product changes.
 
 Current baseline and future deltas are separated below. Open-decision items are
 listed as non-goals or open questions unless current docs already define
@@ -874,12 +870,11 @@ accepted behavior.
   code are accepted as baseline evidence.
 -  Adapted source: Route and schema details from code are represented here as
   external behavior or constraints, not as internal design.
--  Background proposal: `docs/UX-simplification.md` is not current baseline
-  behavior.
--  Historical review evidence: review reports inform risk, closed fixes, and
-  test gaps.
--  Open-decision ledger: `docs/todo.md` is the current ledger for unresolved
-  product and operational decisions.
+-  Historical one-off evidence informed the baseline but is intentionally
+  local-only and does not govern current behavior.
+-  Engineering follow-up ledger: `docs/todo.md` contains active implementation
+  and operational follow-ups; product decisions stay in the deferred appendix
+  of `docs/specs.md`.
 
 ### Assumptions
 
@@ -906,15 +901,10 @@ accepted behavior.
   uploaded file URLs?
 - Should ended sessions or closed quiz runs gain reopen flows?
 - Should per-question timers or auto-advance become quiz-run features?
--  Should reverse-proxy secure cookie handling be hardened before wider
-  deployment?
 -  Should CHECK constraints, Alembic, or a richer migration workflow become
   release gates?
 -  Should multi-moderator audit columns become part of delegate moderator
   support?
--  Should the UX simplification proposal be split into child specs for copy,
-  mobile layout, landing signposting, moderator cockpit, projector clarity, and
-  quiz authoring?
 - When should the temporary legacy admin cookie parsing shim be removed?
 
 ## Traceability

@@ -6,20 +6,20 @@ approvals:
     artifact:
       kind: spec
       path: spec.md
-      sha256: "f408d80cd58e031d78559046cf1f9118fe9448a10f363f7197628fab50ba7290"
+      sha256: "fff3f6f47938e3e8910aaf1aa57ea579b36c34ece819328339c543d30ae9d121"
     status: approved
     approved_by: "user"
-    approved_at: "2026-07-19T19:19:17Z"
+    approved_at: "2026-08-17T14:19:47Z"
   - id: APR-DESIGN-PRODUCT
     gate: design.approved
     scope: product/system
     artifact:
       kind: design
       path: design.md
-      sha256: "a04c4634c4a8b3460236fa50e7581982005f38ac575f45dfefead0149a352fa2"
+      sha256: "1853dd95e1058154c971b4ebbe8e17d9e8f2e73d696eb058e0afffbeb1cd944f"
     status: approved
     approved_by: "user"
-    approved_at: "2026-07-19T19:19:17Z"
+    approved_at: "2026-08-17T14:19:47Z"
   - id: APR-PLAN-REMEDIATION
     gate: plan.approved
     scope: slice/change

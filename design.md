@@ -17,8 +17,8 @@ owns validation, authorization, state mutation, serialization, and safe error
 responses. The data and uploads boundaries persist state and files. Operations
 owns local commands, CI, Docker Compose deployment, health checks, and runbook
 evidence. Distributed live updates, Alembic, hosted telemetry, dashboards,
-alerts, multi-tenant administration, and production deployment remain outside
-this design until a later accepted delta requires them.
+alerts, and multi-tenant administration remain outside this design until a
+later accepted delta requires them.
 
 ## Overview
 
@@ -34,7 +34,7 @@ Work Scope: product/system.
 
 Design Depth: HLD.
 
-Ready To Implement: No.
+Ready To Implement: Yes; the described baseline is implemented.
 
 Review Level: Standard.
 
@@ -57,7 +57,8 @@ Build and release, Documentation, UI and accessibility.
 - Verification: pytest/httpx API tests, Playwright browser tests, Ruff, ESLint,
   Stylelint, TypeScript type checking, and GitHub Actions.
 - Deployment: Docker image published to GHCR, docker compose on the host, nginx
-  as TLS reverse proxy, and a health check against `/api/admin/status`.
+  as TLS reverse proxy behind Cloudflare, and a health check against
+  `/api/admin/status`.
 
 ## Drivers & Constraints
 

@@ -1,107 +1,129 @@
 # SDLC Work In Progress
 
-Last Updated: 2026-07-20T01:07:04Z
+## Product Snapshot
+
+Status Result: Ready
+
+Status Summary: The documentation set has been curated into live versioned
+guidance and immutable local-only records. The user approved the current system
+specification and design. No documentation work remains in this increment, and
+it does not alter application behavior.
+
+Goal: Keep Prashna's current behavior, UX, deployment, distribution, and
+performance operations documented without versioning one-off process history.
+
+Working Today: The single-process application, container distribution,
+Hetzner deployment, Cloudflare proxy, CI publication, and performance
+instrumentation are implemented and reflected in the live docs.
+
+Reusable Today: `docs/specs.md`, `docs/UX.md`, `spec.md`, `design.md`, and the
+focused operator runbooks remain the current maintained sources.
+
+Current Increment: Documentation lifecycle consolidation, complete and
+approved. One-off reviews, assessments, completed plans, proposals, generated
+reports, and dated investigations remain in the local checkout but leave Git
+tracking and are covered by `.git/info/exclude`.
+
+Remaining Shared Work: None for this documentation increment.
+
+Target-Owned Work: The GitHub OAuth first-run affordance and legacy admin-cookie
+shim cleanup remain in `docs/todo.md` as separate future changes.
+
+Deferred: Product ideas needing decisions remain in the deferred appendix of
+`docs/specs.md`; broader hosted operation still requires explicit bootstrap,
+migration, and shared WebSocket designs.
+
+Before Coding: None for the documentation increment. New behavior work needs
+its own accepted scope.
+
+Next Action: Begin the next separately scoped product or operations change;
+none is required for this documentation increment.
+
+## Process Snapshot
+
+Last Updated: 2026-08-17T14:19:47Z
 Updated By: agent
-Current Stage: code-create
-Current Gate: verification-passed
+Current Stage: code-review
+Current Gate: approved-for-next-stage
 Project Entry Mode: brownfield_baseline
-Work Scope: slice/change
+Work Scope: product/system
 Ready To Implement: Yes
-Review Level: Standard
-Extra Checks: Security, Privacy and compliance, Reliability and operations,
-Build and release, Documentation, UI and accessibility
-
-## Resume Summary
-
-Small follow-up slice after participant profile photographs:
-
-1. Participant profile updates now have an explicit `Submit profile` action.
-   Resubmission updates the same participant record, including a newly selected
-   optional photograph.
-2. Session feedback/rating is now disabled by default and opened or closed by
-   moderator control. Participant feedback submissions are rejected server-side
-   until rating is opened.
-
-`spec.md` and `design.md` were updated for the explicit profile submission and
-moderator-enabled feedback contracts. Because those approved artifacts changed,
-the approval ledger should be refreshed only after explicit human approval.
+Delivery Assurance Profile: Standard
+Approval Policy: Human checkpoints
+Work Outcome: Decision/evidence
+Extra Checks: Documentation, Reliability and operations, Build and release
 
 ## Current Artifacts
 
-- Process decision: `.sdlc/process-decisions.yaml`, unchanged.
-  Records brownfield entry plus Standard review level and extra checks.
-- Spec: `spec.md`, revised.
-  Participant identity/profile requirements now require explicit submission;
-  feedback submission now depends on moderator enablement. Draft check passed
-  7/7.
-- Design: `design.md`, revised.
-  Session data now includes the feedback-enabled flag, and participant room
-  behavior reflects explicit profile submission and moderator-enabled feedback.
-  Draft check passed 13/13.
-- Plan: `plan.md`, unchanged.
-  This was a small approved brownfield feature slice; no separate breakdown was
-  created.
-- Implementation: app, frontend source, and tests revised.
-  `frontend/dist/` is ignored by Git and is rebuilt by test fixtures.
-- Approval ledger: `.sdlc/approvals.yaml`, stale for `spec.md` and
-  `design.md` after this feature update.
+| Kind | Path | Status | Notes |
+| --- | --- | --- | --- |
+| Behavior contract | `docs/specs.md` | live | Detailed use cases and test contracts; documentation check passes. |
+| UX system | `docs/UX.md` | live | Governing frontend design rules; unchanged in this increment. |
+| System spec | `spec.md` | approved | Source hierarchy and current follow-up ownership clarified; structural check passes. |
+| System design | `design.md` | approved | Production posture corrected; structural check passes. |
+| Engineering follow-ups | `docs/todo.md` | live | Contains only current actionable and hosted-operation prerequisites. |
+| Operations | `deploy/README.md`, `distribution/README.md`, `performance/README.md` | live | Focused production, portable distribution, and performance runbooks. |
+| Historical records | local-only paths in `.git/info/exclude` | immutable | Preserved in the checkout, intentionally not versioned. |
 
 ## Decisions And Assumptions
 
-- Decision: profile text fields no longer autosave; the participant must click
-  `Submit profile`. Selecting a photo previews it locally and uploads it as
-  part of that same submit action.
-- Decision: clearing an already saved photograph remains an immediate explicit
-  action.
-- Decision: feedback is session-scoped and disabled by default. Moderators can
-  open or close rating from the lifecycle controls.
-- Decision: feedback POST and DELETE are rejected while feedback is closed,
-  even if a participant manually calls the API.
-- Assumption: existing feedback summaries remain visible to moderators after
-  rating is closed; closing prevents further participant mutation.
+- User decision: documentation consists of live maintained docs and immutable
+  one-off records; one-off records are local-only through `.git/info/exclude`.
+- Decision: `docs/specs.md` and `docs/UX.md` remain the detailed governing
+  behavior and UX sources. `spec.md` and `design.md` remain system-level views.
+- Decision: dated performance investigation is historical; current measurement
+  and diagnosis guidance is consolidated into `performance/README.md`.
+- Assumption: staged removal from Git plus ignored local preservation satisfies
+  the requirement not to version one-off records.
 
 ## Check And Review Evidence
 
-- 2026-07-20: `check_spec.py --spec spec.md --json` passed 7/7.
-- 2026-07-20: `check_design.py --design design.md --spec spec.md --json`
-  passed 13/13.
-- 2026-07-20: `npm run lint` passed TypeScript, ESLint, and Stylelint.
-- 2026-07-20: `uv run ruff check .` passed.
-- 2026-07-20: focused API tests passed for feedback enablement, session
-  payload shape, participant session lookup, diagnostics, and additive
-  migration.
-- 2026-07-20: affected UI tests passed for profile submit/resubmit behavior,
-  feedback submission/clear, moderator rating control, and mobile paths.
-- 2026-07-20: `uv run pytest tests/api -q` passed the full API suite.
+- 2026-08-17: dryscope scanned 30 documents and 371 sections at 0.90 and
+  0.80 similarity thresholds; it found no near-duplicate section pairs.
+- 2026-08-17: `check_spec.py spec.md --json` passed all structural gates.
+- 2026-08-17: `check_design.py design.md --spec spec.md --json` passed all
+  structural gates.
+- 2026-08-17: `uv run pytest tests/api/test_docs_contracts.py -q` passed.
+- 2026-08-17: staged and unstaged diff whitespace checks passed.
+- 2026-08-17: the user explicitly approved the revised documentation;
+  `.sdlc/approvals.yaml` records current hashes for `spec.md` and `design.md`.
 
 ## Results And Feedback
 
-Expected Result: participants have an obvious profile submit action, and the
-rating widget appears only after moderator enablement.
-Feedback From: local implementation checks and browser/API tests.
-Feedback Status: incorporated
-Current Work Group: profile-submit-feedback-toggle
-Current Work: ready for human review and approval refresh.
+Expected Result: A fresh checkout contains only documentation that is expected
+to remain current, while this checkout retains immutable one-off evidence
+without Git tracking noise.
+
+Feedback From: Explicit user documentation guidance plus repository source,
+tests, deployment files, release state, and dryscope analysis.
+
+Feedback Status: received
+
+Feedback Evidence: User instruction in the current task, explicit approval of
+the revised documentation, and the checked live documentation diff.
+
+Current Work Group: none
+
+Current Work: documentation-lifecycle-consolidation
+
 Parallel Limit: 1
-What Changed: profile save UX, participant photo save timing, feedback-enabled
-session flag, moderator toggle, backend feedback enforcement, migration
-coverage, and tests.
-Documents To Update: `spec.md`, `design.md`, `.sdlc/wip.md`, backend,
-frontend, and test files were updated.
-Stop Conditions: human rejection, failed refreshed checks, new privacy
-requirement, or request for a different feedback lifecycle policy.
+
+What Changed: One-off records were separated from the versioned live set;
+status, deployment, performance, and follow-up guidance were corrected and
+consolidated.
+
+Documents To Update: None known after this increment.
+
+Stop Conditions: Human rejection of the live/one-off classification, failed
+verification, or a request to preserve a specific one-off artifact in Git.
 
 ## Open Questions And Blockers
 
-- None.
-
-## Next Recommended Action
-
-Human review of the feature and refreshed approval for the changed
-requirements/design documents.
+- None for committing the documentation increment.
 
 ## Bootstrap Status
 
 Bootstrap File: CLAUDE.md
-Status: not-offered
-Notes: existing repository bootstrap remains unchanged.
+Status: injected
+Notes: The accepted documentation lifecycle and authority rules are now part of
+the repository guidance.

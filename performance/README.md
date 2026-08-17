@@ -1,9 +1,18 @@
 # Performance measurement
 
-`measure.py` records fresh-profile and repeat-load browser timings, the
-application-defined `prashna-usable` milestone, transfer sizes, protocols, the
-five slowest resources, and Prashna's `Server-Timing` application duration.
-Reports are JSON so runs can be compared in CI or kept as release evidence.
+Measure Prashna at three separate layers:
+
+1. `Server-Timing: app;dur=...` isolates FastAPI application time.
+2. Browser navigation and resource timing captures cold/repeat loads,
+   transfers, protocols, paint milestones, and the application-defined
+   `prashna-usable` milestone.
+3. Structured application logs identify slow or state-changing requests
+   without storing credentials, participant identity, session URLs, or Q&A
+   content.
+
+`measure.py` records the browser layer plus the server timing, five slowest
+resources, transfer sizes, protocol, navigation type, and Cloudflare colo.
+Reports are JSON so runs can be compared in CI or retained as release evidence.
 
 Build the frontend and install Chromium before measuring a local server:
 
@@ -60,3 +69,50 @@ uv run python performance/measure.py \
 For an admin page, pass both `--admin-username-env` and
 `--admin-password-env`. Never put credentials or moderator keys directly in a
 command, report, or committed file.
+
+## Interpret high variance
+
+Do not infer browser performance from application timing or one public request.
+When `Server-Timing` stays low but navigation varies, separate these fault
+domains:
+
+- client access network and ISP;
+- client-to-Cloudflare ingress routing;
+- Cloudflare edge and cache behavior;
+- Cloudflare-to-Hetzner origin routing; and
+- nginx, FastAPI, SQLite, and host capacity.
+
+Capture several successful and failed samples from the same machine and
+network. Record UTC time, client ISP/ASN, `CF-RAY`, `CF-Cache-Status`, negotiated
+protocol, cURL phase timings, and MTR/traceroute output. Compare against an
+unrelated control host during the same interval.
+
+For Cloudflare routing, compare `https://prashna.sankara.net/cdn-cgi/trace`
+with Cloudflare control endpoints from the same connection. Different `colo`
+values are possible because anycast selection is destination-prefix-specific;
+the value is not simply the geographically nearest data center. A different
+colo explains the path selection, but does not by itself prove the cause of
+latency variance. Correlate it with timestamped timings, Ray IDs, packet loss,
+and path traces.
+
+There is no zone setting that pins client ingress to a particular Cloudflare
+colo. Argo Smart Routing affects the edge-to-origin path, not client-to-edge
+selection. Keep the hostname proxied unless collected evidence shows the proxy
+itself is the regression. The nginx real-IP preparation and HTML-shell cache
+rule procedures are in [`deploy/README.md`](../deploy/README.md).
+
+## Release verification
+
+For a performance-sensitive release:
+
+1. Run lint and the full automated suite.
+2. Save a pre-release JSON report when practical.
+3. Deploy and verify the intended immutable image revision.
+4. Check container health, `/api/admin/status`, and a direct static page.
+5. Repeat the browser measurement from the same location and network.
+6. Confirm HTTP/2 or HTTP/3, immutable compressed assets, page-shell cache
+   behavior, API `no-store`, and `Server-Timing`.
+
+Five-run gates use browser and transfer medians plus application p95. Retain
+browser p95 for diagnosis, but use at least 20 samples before treating it as a
+meaningful tail percentile.

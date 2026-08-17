@@ -9,31 +9,37 @@ version-pinned copy with their own README and named-volume storage.
 
 ## One-time setup
 
-1. **DNS** — add an `A` record:
+1. **DNS** — create a proxied Cloudflare `A` record whose origin value is:
 
    ```
    prashna.sankara.net → <server-ip>
    ```
 
-   Wait for it to resolve before continuing (`dig +short prashna.sankara.net`).
+   With the orange cloud enabled, public DNS correctly returns Cloudflare
+   anycast addresses rather than `<server-ip>`. Verify the record and proxy
+   state in Cloudflare before continuing.
 
 2. **GitHub Actions** — the `Build & publish Docker image` workflow pushes to
    `ghcr.io/kvsankar/prashna`. No extra secrets needed; it uses the built-in
    `GITHUB_TOKEN` with `packages:write` permission. Trigger it once by pushing
    to `main` or running it manually so the image exists.
 
-3. **On the server**, log in to GHCR so the private image can be pulled:
+3. **On the server**, install nginx and Certbot if they are not already
+   present. `setup.sh` installs Docker when necessary, but it expects the nginx
+   and Certbot commands to exist before configuring TLS.
+
+4. **If the GHCR package is private**, log in on the server with a token that
+   has `read:packages`. A public package can be pulled anonymously:
 
    ```bash
-   # Create a PAT with `read:packages` scope:
-   # https://github.com/settings/tokens
-   echo <PAT> | docker login ghcr.io -u kvsankar --password-stdin
+   export GHCR_TOKEN=...  # GitHub token with read:packages
+   echo "$GHCR_TOKEN" | docker login ghcr.io -u kvsankar --password-stdin
    ```
 
-4. **Run the bootstrap**:
+5. **Run the bootstrap**:
 
    ```bash
-   git clone https://github.com/kvsankar/prashna.git ~/repos/prashna
+   git clone git@github.com:kvsankar/prashna.git ~/repos/prashna
    cd ~/repos/prashna
    ./deploy/setup.sh
    ```
@@ -46,7 +52,7 @@ version-pinned copy with their own README and named-volume storage.
 Either:
 
 ```bash
-cd /opt/prashna && docker compose pull && docker compose up -d
+cd /opt/prashna && docker compose pull && docker compose up -d --wait
 ```
 
 Or wire up the optional `deploy.yml` workflow (not included by default) that
