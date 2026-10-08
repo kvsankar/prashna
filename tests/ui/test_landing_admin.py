@@ -1,7 +1,8 @@
 """UI tests for the authed admin landing page.
 
-Covers UC-A-03..08 (session create, list, detail card, rename, base URL,
-delete with typed-title), and UC-A-25 (change password).
+Covers UC-A-03..08 (session create, list, the session page's owner-only
+settings: rename, base URL, share, delete with typed-title), and UC-A-25
+(change password).
 """
 from __future__ import annotations
 
@@ -94,44 +95,56 @@ def test_uc_a_04_list_shows_owned_sessions(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_a_04_session_query_redirects_to_session_page(base_url, admin_setup, page):
+    """UC-A-04: /?session=<code> (older bookmarks) redirects to /m/<code>."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A04q {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/?session={s['code']}")
+        page.wait_for_url(f"**/m/{s['code']}", timeout=5000)
+    finally:
+        c.close()
+
+
 # ---------- UC-A-05 ----------
 
 
-def test_uc_a_05_edit_title_updates_row(base_url, admin_setup, page):
-    """UC-A-05: editing #sd-session-title and blurring updates row title."""
+def _goto_session_page(page, base_url, s):
+    """Open the session page from the list, as an admin would."""
+    admin_login_via_ui(page, base_url)
+    page.locator("#session-rows tr").filter(has_text=s["title"]).click()
+    page.wait_for_url(f"**/m/{s['code']}")
+    page.wait_for_selector("#settings-card:visible", timeout=5000)
+
+
+def test_uc_a_05_edit_title_updates_header_and_list(base_url, admin_setup, page):
+    """UC-A-05: editing #set-title and blurring updates #title and the session list."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A05 {secrets.token_hex(3)}")
     new_title = s["title"] + " EDITED"
     try:
-        admin_login_via_ui(page, base_url)
-        row = page.locator("#session-rows tr").filter(has_text=s["title"])
-        row.click()
-        expect(page.locator("#session-detail-card")).to_be_visible()
-        expect(page.locator("#sd-session-title")).to_have_value(s["title"])
-        page.fill("#sd-session-title", new_title)
-        page.locator("#sd-session-title").blur()
-        # The row updates after refresh.
+        _goto_session_page(page, base_url, s)
+        expect(page.locator("#set-title")).to_have_value(s["title"])
+        page.fill("#set-title", new_title)
+        page.locator("#set-title").blur()
+        expect(page.locator("#title")).to_have_text(new_title, timeout=5000)
+        page.goto(base_url + "/")
         expect(page.locator("#session-rows tr").filter(has_text=new_title)).to_be_visible(timeout=5000)
     finally:
         c.close()
 
 
 def test_uc_a_05_edit_title_empty_reverts(base_url, admin_setup, page):
-    """UC-A-05: blank title — frontend skips PATCH (no API call); the no-op
-    path leaves the original title in place. Empty submission does not toast
-    an error in this implementation; verify the title doesn't change.
-    """
+    """UC-A-05: an empty title shows an error toast and reverts #set-title."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A05r {secrets.token_hex(3)}")
     try:
-        admin_login_via_ui(page, base_url)
-        row = page.locator("#session-rows tr").filter(has_text=s["title"])
-        row.click()
-        expect(page.locator("#sd-session-title")).to_have_value(s["title"])
-        page.fill("#sd-session-title", "   ")
-        page.locator("#sd-session-title").blur()
-        # No update should be visible — original title still in rows.
-        expect(page.locator("#session-rows tr").filter(has_text=s["title"])).to_be_visible()
+        _goto_session_page(page, base_url, s)
+        page.fill("#set-title", "   ")
+        page.locator("#set-title").blur()
+        expect(page.locator(".toast-error")).to_be_visible()
+        expect(page.locator("#set-title")).to_have_value(s["title"])
     finally:
         c.close()
 
@@ -140,21 +153,19 @@ def test_uc_a_05_edit_title_empty_reverts(base_url, admin_setup, page):
 
 
 def test_uc_a_06_base_url_save_and_clear(base_url, admin_setup, page):
-    """UC-A-06: typing into #sd-base-url and blurring updates #sd-url;
-    #sd-clear falls back to location.origin.
+    """UC-A-06: typing into #base-url and blurring updates #invite-url;
+    #base-url-clear falls back to location.origin.
     """
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A06 {secrets.token_hex(3)}")
     try:
-        admin_login_via_ui(page, base_url)
-        page.locator("#session-rows tr").filter(has_text=s["title"]).click()
-        expect(page.locator("#session-detail-card")).to_be_visible()
-        page.fill("#sd-base-url", "https://example.org")
-        page.locator("#sd-base-url").blur()
-        expect(page.locator("#sd-url")).to_contain_text("example.org", timeout=5000)
-        page.click("#sd-clear")
+        _goto_session_page(page, base_url, s)
+        page.fill("#base-url", "https://example.org")
+        page.locator("#base-url").blur()
+        expect(page.locator("#invite-url")).to_contain_text("example.org", timeout=5000)
+        page.click("#base-url-clear")
         # Fallback is location.origin = base_url (127.0.0.1 host).
-        expect(page.locator("#sd-url")).to_contain_text("127.0.0.1", timeout=5000)
+        expect(page.locator("#invite-url")).to_contain_text("127.0.0.1", timeout=5000)
     finally:
         c.close()
 
@@ -164,10 +175,9 @@ def test_uc_a_06_base_url_invalid_toasts(base_url, admin_setup, page):
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A06bad {secrets.token_hex(3)}")
     try:
-        admin_login_via_ui(page, base_url)
-        page.locator("#session-rows tr").filter(has_text=s["title"]).click()
-        page.fill("#sd-base-url", "ftp://example.org")
-        page.locator("#sd-base-url").blur()
+        _goto_session_page(page, base_url, s)
+        page.fill("#base-url", "ftp://example.org")
+        page.locator("#base-url").blur()
         expect(page.locator(".toast-error")).to_be_visible()
     finally:
         c.close()
@@ -238,66 +248,57 @@ def test_uc_a_07_delete_with_data_typed_title_flow(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_a_07_delete_from_session_page(base_url, admin_setup, page):
+    """UC-A-07: #set-delete on the session page runs the list's delete flow."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A07page {secrets.token_hex(3)}")
+    try:
+        _goto_session_page(page, base_url, s)
+        page.on("dialog", lambda d: d.accept())
+        page.click("#set-delete")
+        expect(page.locator("#sessions-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#session-rows tr").filter(has_text=s["title"])).to_have_count(0, timeout=5000)
+    finally:
+        c.close()
+
+
 # ---------- UC-A-08 ----------
 
 
-def test_uc_a_08_start_button_flips_status(base_url, admin_setup, page):
-    """UC-A-08: planning session detail shows Start; clicking flips badge to live."""
+def test_uc_a_08_row_opens_session_page_without_gate(base_url, admin_setup, page):
+    """UC-A-08: clicking a row opens /m/<code> with no key gate and the settings card."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A08 {secrets.token_hex(3)}")
     try:
-        admin_login_via_ui(page, base_url)
-        page.locator("#session-rows tr").filter(has_text=s["title"]).click()
-        expect(page.locator("#sd-status")).to_have_class("badge badge-planning")
-        page.locator("#sd-lifecycle-actions button", has_text="Start session").click()
-        expect(page.locator("#sd-status")).to_have_class("badge badge-live", timeout=5000)
-    finally:
-        c.close()
-
-
-def test_uc_a_08_end_button_flips_status(base_url, admin_setup, page):
-    """UC-A-08: live session detail shows End; clicking (confirm) flips badge to ended."""
-    c = api_login(base_url)
-    s = api_make_session(c, f"UI-A08end {secrets.token_hex(3)}")
-    api_start_session(c, s["code"])
-    try:
-        admin_login_via_ui(page, base_url)
-        page.locator("#session-rows tr").filter(has_text=s["title"]).click()
-        page.on("dialog", lambda d: d.accept())
-        page.locator("#sd-lifecycle-actions button", has_text="End session").click()
-        expect(page.locator("#sd-status")).to_have_class("badge badge-ended", timeout=5000)
-    finally:
-        c.close()
-
-
-def test_uc_a_08_open_mod_link_no_gate(base_url, admin_setup, page):
-    """UC-A-08: #sd-open-mod link → /m/<code> and loads moderator surface with no key gate."""
-    c = api_login(base_url)
-    s = api_make_session(c, f"UI-A08mod {secrets.token_hex(3)}")
-    try:
-        admin_login_via_ui(page, base_url)
-        page.locator("#session-rows tr").filter(has_text=s["title"]).click()
-        link = page.locator("#sd-open-mod")
-        href = link.get_attribute("href")
-        assert href == f"/m/{s['code']}"
-        page.goto(base_url + href)
-        # Admin cookie auths — no key gate.
-        page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
+        _goto_session_page(page, base_url, s)
+        expect(page.locator("#lifecycle-card")).to_be_visible()
         expect(page.locator("#modkey-card")).to_be_hidden()
+        expect(page.locator("#settings-card")).to_be_visible()
     finally:
         c.close()
 
 
 def test_uc_a_08_share_mod_copies_url(base_url, admin_setup, page):
-    """UC-A-08: #sd-share-mod copies the moderator URL with #k=<key> to clipboard."""
+    """UC-A-08: #set-share-mod copies the moderator URL with #k=<key> to clipboard."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A08share {secrets.token_hex(3)}")
     try:
-        admin_login_via_ui(page, base_url)
-        page.locator("#session-rows tr").filter(has_text=s["title"]).click()
-        page.click("#sd-share-mod")
+        _goto_session_page(page, base_url, s)
+        page.click("#set-share-mod")
         # Toast should confirm. Don't read clipboard (headless flakiness).
         expect(page.locator(".toast")).to_be_visible()
+    finally:
+        c.close()
+
+
+def test_uc_a_08_delegate_sees_no_settings(base_url, admin_setup, page):
+    """UC-A-08: a delegate (mod_key only) doesn't see #settings-card."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A08del {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
+        expect(page.locator("#settings-card")).to_be_hidden()
     finally:
         c.close()
 

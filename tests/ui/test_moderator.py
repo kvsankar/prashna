@@ -52,18 +52,14 @@ def test_uc_m_01_breadcrumbs_jump_within_page_and_back_to_session(
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
         crumbs = page.locator("#moderator-breadcrumbs")
-        expect(crumbs).to_contain_text(s["title"])
-        expect(page.locator("#moderator-session-link")).to_have_attribute(
-            "href", f"/?session={s['code']}"
-        )
+        expect(crumbs.locator('[aria-current="page"]')).to_have_text(s["title"])
 
         page.locator(".section-links a", has_text="Set up").click()
         expect(page.locator("#setup-section")).to_have_attribute("open", "")
         assert page.evaluate("location.hash") == "#setup-section"
 
-        page.locator("#moderator-session-link").click()
-        expect(page.locator("#session-detail-card")).to_be_visible(timeout=5000)
-        expect(page.locator("#sd-title")).to_contain_text(s["title"])
+        crumbs.locator("a", has_text="Sessions").click()
+        expect(page.locator("#sessions-card")).to_be_visible(timeout=5000)
     finally:
         c.close()
 
@@ -172,16 +168,15 @@ def test_uc_m_02_end_with_queued_quiz_explains_removal(base_url, admin_setup, pa
 # ---------- UC-M-03 ----------
 
 
-def test_uc_m_03_quiz_select_lists_ready_only(base_url, admin_setup, page):
-    """UC-M-03: #quiz-select lists only ready quizzes (drafts filtered)."""
+def test_uc_m_03_delegate_quiz_select_lists_ready_only(base_url, admin_setup, page):
+    """UC-M-03: for a delegate, #quiz-select lists only ready quizzes (drafts filtered)."""
     c = api_login(base_url)
     ready = api_make_quiz(c, f"UI-M03ready {secrets.token_hex(3)}", publish=True)
     draft = api_make_quiz(c, f"UI-M03draft {secrets.token_hex(3)}")
     s = api_make_session(c, f"UI-M03s {secrets.token_hex(3)}")
     try:
-        admin_login_via_ui(page, base_url)
-        page.goto(f"{base_url}/m/{s['code']}")
-        page.wait_for_selector("#quiz-select")
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        page.wait_for_selector("#quiz-select option[value]:not([value=''])", state="attached")
         opts = page.locator("#quiz-select option").all_text_contents()
         assert any(ready["title"] in o for o in opts)
         assert not any(draft["title"] in o for o in opts)
@@ -189,8 +184,25 @@ def test_uc_m_03_quiz_select_lists_ready_only(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_03_owner_quiz_select_includes_drafts(base_url, admin_setup, page):
+    """UC-M-03: the admin owner's #quiz-select also lists drafts, labelled as drafts."""
+    c = api_login(base_url)
+    ready = api_make_quiz(c, f"UI-M03or {secrets.token_hex(3)}", publish=True)
+    draft = api_make_quiz(c, f"UI-M03od {secrets.token_hex(3)}")
+    s = api_make_session(c, f"UI-M03os {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-select option[value]:not([value=''])", state="attached")
+        opts = page.locator("#quiz-select option").all_text_contents()
+        assert any(ready["title"] in o and "draft" not in o for o in opts)
+        assert any(draft["title"] in o and "draft" in o for o in opts)
+    finally:
+        c.close()
+
+
 def test_uc_m_03_add_quiz_queues_run(base_url, admin_setup, page):
-    """UC-M-03: selecting + Add to session appends a queued row to #quiz-runs."""
+    """UC-M-03: selecting + clicking #add-quiz-btn appends a queued row to #quiz-runs."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-M03q {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-M03qs {secrets.token_hex(3)}")
@@ -202,6 +214,44 @@ def test_uc_m_03_add_quiz_queues_run(base_url, admin_setup, page):
         page.click("#add-quiz-btn")
         expect(page.locator("#quiz-runs .badge-queued")).to_be_visible(timeout=5000)
         expect(page.locator("#quiz-runs")).to_contain_text(quiz["title"])
+    finally:
+        c.close()
+
+
+def test_uc_m_03_add_quiz_visible_when_live(base_url, admin_setup, page):
+    """UC-M-03: on a live session the composer is visible without opening Set up."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M03live {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quizzes-card:visible", timeout=5000)
+        expect(page.locator("#setup-section")).not_to_have_attribute("open", "")
+        expect(page.locator("#add-quiz-btn")).to_be_visible()
+    finally:
+        c.close()
+
+
+def test_uc_m_03_add_draft_publishes_and_queues(base_url, admin_setup, page):
+    """UC-M-03: adding a valid draft publishes it and queues a run in one step."""
+    c = api_login(base_url)
+    draft = api_make_quiz(
+        c,
+        f"UI-M03pd {secrets.token_hex(3)}",
+        questions=[{"text": "2+2?", "qtype": "single",
+                    "answers": [{"text": "4", "is_correct": True}, {"text": "5", "is_correct": False}]}],
+    )
+    s = api_make_session(c, f"UI-M03pds {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-select option[value]:not([value=''])", state="attached")
+        page.locator("#quiz-select").select_option(value=str(draft["id"]))
+        page.click("#add-quiz-btn")
+        expect(page.locator("#quiz-runs .badge-queued")).to_be_visible(timeout=5000)
+        expect(page.locator(".toast").last).to_contain_text("Published")
+        assert c.get(f"/api/quizzes/{draft['id']}").json()["status"] == "ready"
     finally:
         c.close()
 

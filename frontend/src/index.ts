@@ -1,7 +1,12 @@
-import { $, api, el, errorToast, escapeHtml, guardClick, markUsable, renderQR, statusLabel, toast } from "./common";
-import type { AdminStatus, FeedbackSummary, SessionRow } from "./types";
+import { $, api, el, errorToast, escapeHtml, guardClick, markUsable, statusLabel, toast } from "./common";
+import type { AdminStatus, SessionRow } from "./types";
 
-let requestedSessionCode = new URLSearchParams(location.search).get("session")?.toUpperCase() ?? null;
+// `?session=<code>` is an older link to a session; the session page is now
+// `/m/<code>` (UC-A-04). `?delete=<code>` comes from the session page's
+// Delete button and runs the delete flow below (UC-A-07).
+const pageParams = new URLSearchParams(location.search);
+const requestedSessionCode = pageParams.get("session")?.toUpperCase() ?? null;
+let requestedDeleteCode = pageParams.get("delete")?.toUpperCase() ?? null;
 
 // ----- bad code banner from /s/BOGUS redirect -----
 const bad = new URLSearchParams(location.search).get("bad_code");
@@ -27,7 +32,6 @@ const cards: Record<string, HTMLElement> = {
   login: $("#login-card"),
   sessions: $("#sessions-card"),
   library: $("#library-card"),
-  sessionDetail: $("#session-detail-card"),
   confirmDelete: $("#confirm-delete-card"),
   changePw: $("#change-pw-card"),
 };
@@ -70,6 +74,10 @@ async function refresh(): Promise<void> {
   });
   meta.appendChild(logoutBtn);
   setHeaderMeta(meta);
+  if (requestedSessionCode) {
+    location.replace(`/m/${encodeURIComponent(requestedSessionCode)}`);
+    return;
+  }
   show("sessions", "library");
   void loadSessions();
 }
@@ -136,9 +144,11 @@ async function loadSessions(): Promise<void> {
     tbody.innerHTML = "";
     for (const s of rows) {
       const when = new Date(s.created_at).toLocaleString();
-      const tr = el("tr", { class: "rowable" + (currentDetail === s.code ? " selected" : "") });
-      tr.addEventListener("click", () => void openSessionDetail(s));
-      tr.appendChild(el("td", {}, s.title));
+      // A session has its own page, so the row navigates there (UX.md §5).
+      const sessionUrl = `/m/${s.code}`;
+      const tr = el("tr", { class: "rowable" });
+      tr.addEventListener("click", () => { location.href = sessionUrl; });
+      tr.appendChild(el("td", {}, el("a", { href: sessionUrl }, s.title)));
       tr.appendChild(el("td", {}, el("code", { class: "small" }, s.code)));
       tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + s.status }, statusLabel(s.status))));
       tr.appendChild(el("td", { class: "num muted" }, String(s.query_count)));
@@ -147,7 +157,6 @@ async function loadSessions(): Promise<void> {
 
       const actions = el("td", { class: "actions" });
       actions.addEventListener("click", (e) => e.stopPropagation());
-      actions.appendChild(el("a", { class: "small", href: `/m/${s.code}` }, "Moderate"));
       actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
       actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
       const delBtn = el("button", { class: "danger ghost xsmall" }, "Delete");
@@ -156,173 +165,16 @@ async function loadSessions(): Promise<void> {
       tr.appendChild(actions);
       tbody.appendChild(tr);
     }
-    if (requestedSessionCode && currentDetail !== requestedSessionCode) {
-      const requested = rows.find((row) => row.code === requestedSessionCode);
-      requestedSessionCode = null;
-      if (requested) {
-        history.replaceState({}, "", "/");
-        void openSessionDetail(requested);
-      }
+    if (requestedDeleteCode) {
+      const requested = rows.find((row) => row.code === requestedDeleteCode);
+      requestedDeleteCode = null;
+      history.replaceState({}, "", "/");
+      if (requested) startDeleteFlow(requested);
     }
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="error-banner">${escapeHtml((e as Error).message)}</td></tr>`;
   }
 }
-
-// ----- session detail / settings drill-down -----
-let currentDetail: string | null = null;
-let currentDetailData: SessionRow | null = null;
-
-function participantUrlFor(s: SessionRow): string {
-  const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
-  return `${base}/s/${s.code}`;
-}
-
-async function paintDetail(s: SessionRow): Promise<void> {
-  currentDetailData = s;
-  $("#sd-title").textContent = `Session: ${s.title}`;
-  $<HTMLInputElement>("#sd-session-title").value = s.title;
-  $<HTMLInputElement>("#sd-base-url").value = s.participant_base_url || "";
-  $("#sd-status").textContent = statusLabel(s.status);
-  $("#sd-status").className = "badge badge-" + s.status;
-  renderLifecycleActions(s);
-  $<HTMLAnchorElement>("#sd-open-mod").href = `/m/${s.code}`;
-  const url = participantUrlFor(s);
-  $("#sd-url").textContent = url;
-  try { await renderQR($("#sd-qr"), url, { cellSize: 4, margin: 2 }); }
-  catch { $("#sd-qr").textContent = "QR unavailable"; }
-  void loadDetailFeedback(s.code);
-}
-
-async function loadDetailFeedback(code: string): Promise<void> {
-  const root = $("#sd-feedback");
-  root.innerHTML = "";
-  let sum: FeedbackSummary;
-  try { sum = await api<FeedbackSummary>(`/api/sessions/${code}/feedback/summary`); }
-  catch { return; }
-  root.appendChild(el("div", { class: "card-head" }, el("h2", {}, "Feedback")));
-  if (!sum.count) {
-    root.appendChild(el("div", { class: "muted small" }, "No feedback yet."));
-    return;
-  }
-  root.appendChild(el("div", {},
-    el("span", { class: "fb-avg" }, `★ ${sum.average}`),
-    el("span", { class: "small muted" }, ` · ${sum.count} response(s)`),
-  ));
-  for (const it of sum.items) {
-    const stars = "★".repeat(it.rating) + "☆".repeat(5 - it.rating);
-    root.appendChild(el("div", { class: "fb-item" },
-      el("div", {},
-        el("span", { class: "fb-stars-static" }, stars),
-        it.author_name ? el("span", { class: "small muted" }, "  — " + it.author_name) : null,
-      ),
-      it.went_well ? el("div", { class: "small" }, el("strong", {}, "Went well: "), it.went_well) : null,
-      it.to_improve ? el("div", { class: "small" }, el("strong", {}, "Improve: "), it.to_improve) : null,
-    ));
-  }
-}
-
-function renderLifecycleActions(s: SessionRow): void {
-  const hint = $("#sd-lifecycle-hint");
-  const actions = $("#sd-lifecycle-actions");
-  actions.innerHTML = "";
-  if (s.status === "planning") {
-    hint.textContent = "Not yet started.";
-    const btn = el("button", { class: "primary xsmall" }, "Start session");
-    btn.addEventListener("click", () => void transitionSession("start"));
-    actions.appendChild(btn);
-  } else if (s.status === "live") {
-    hint.textContent = "Live now.";
-    const btn = el("button", { class: "danger ghost xsmall" }, "End session");
-    btn.addEventListener("click", () => {
-      if (!confirm("End the session? Participants can no longer ask or vote.")) return;
-      void transitionSession("end");
-    });
-    actions.appendChild(btn);
-  } else {
-    hint.textContent = "Ended — read-only.";
-  }
-}
-
-async function transitionSession(action: string): Promise<void> {
-  if (!currentDetailData) return;
-  try {
-    await api(`/api/sessions/${currentDetailData.code}/${action}`, { method: "POST" });
-    toast(`Session ${action === "start" ? "started" : "ended"}`);
-    await refreshDetail();
-  } catch (e) { errorToast((e as Error).message); }
-}
-
-$("#sd-share-mod").addEventListener("click", async () => {
-  if (!currentDetailData) return;
-  const url = `${location.origin}/m/${currentDetailData.code}#k=${currentDetailData.mod_key}`;
-  try {
-    await navigator.clipboard.writeText(url);
-    toast("Moderator URL copied — share with delegates only.");
-  } catch {
-    errorToast("Couldn't copy — load over HTTPS for clipboard access.");
-  }
-});
-
-async function openSessionDetail(s: SessionRow): Promise<void> {
-  currentDetail = s.code;
-  $("#session-detail-card").style.display = "";
-  await paintDetail(s);
-  void loadSessions();
-  $("#session-detail-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-function closeSessionDetail(): void {
-  currentDetail = null;
-  currentDetailData = null;
-  $("#session-detail-card").style.display = "none";
-  void loadSessions();
-}
-$("#sd-close").addEventListener("click", closeSessionDetail);
-
-async function refreshDetail(): Promise<void> {
-  const fresh = await api<SessionRow[]>("/api/sessions");
-  const found = fresh.find((x) => x.code === currentDetailData?.code);
-  if (found) await paintDetail(found);
-  void loadSessions();
-}
-
-async function saveBaseUrl(): Promise<void> {
-  if (!currentDetailData) return;
-  try {
-    await api(`/api/sessions/${currentDetailData.code}/participant_base_url`, {
-      method: "POST", body: { url: $<HTMLInputElement>("#sd-base-url").value },
-    });
-    toast("Base URL saved");
-    await refreshDetail();
-  } catch (e) { errorToast((e as Error).message); }
-}
-$("#sd-base-url").addEventListener("change", () => void saveBaseUrl());
-$("#sd-clear").addEventListener("click", async () => {
-  $<HTMLInputElement>("#sd-base-url").value = "";
-  await saveBaseUrl();
-});
-
-async function saveTitle(): Promise<void> {
-  if (!currentDetailData) return;
-  const newTitle = $<HTMLInputElement>("#sd-session-title").value.trim();
-  if (!newTitle || newTitle === currentDetailData.title) return;
-  try {
-    await api(`/api/sessions/${currentDetailData.code}`, { method: "PATCH", body: { title: newTitle } });
-    toast("Title saved");
-    await refreshDetail();
-  } catch (e) {
-    $<HTMLInputElement>("#sd-session-title").value = currentDetailData.title;
-    errorToast((e as Error).message);
-  }
-}
-$("#sd-session-title").addEventListener("change", () => void saveTitle());
-
-$("#sd-copy").addEventListener("click", async () => {
-  const url = $("#sd-url").textContent ?? "";
-  try { await navigator.clipboard.writeText(url); toast("URL copied"); }
-  catch { errorToast("Couldn't copy — select the URL above to copy manually."); }
-});
 
 // ----- session delete flow -----
 function hideConfirmCard(): void {
@@ -410,8 +262,7 @@ $("#cp-new2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if ($("#change-pw-card").style.display !== "none") { closeChangePassword(); return; }
-  if ($("#confirm-delete-card").style.display !== "none") { hideConfirmCard(); return; }
-  if ($("#session-detail-card").style.display !== "none") closeSessionDetail();
+  if ($("#confirm-delete-card").style.display !== "none") hideConfirmCard();
 });
 
 markUsable("landing");

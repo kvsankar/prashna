@@ -242,7 +242,7 @@ quizzes, quiz_runs, uploads, admin) rather than by HTTP method.
   `frontend/src/types.ts`. `npm run typecheck` + `npm run lint` must pass
   (also enforced by pre-commit + CI).
 - Mutating buttons go through `guardClick` (see UX.md §10).
-- Selectors should be stable IDs (`#new-session-title`, `#sd-base-url`)
+- Selectors should be stable IDs (`#new-session-title`, `#base-url`)
   or documented classes (`.badge-live`, `.option`, `.question`).
 - Toast for transient errors, banner for sticky ones, redirect for
   auth expiry. Never `alert()`/`prompt()` in new code.
@@ -251,8 +251,9 @@ quizzes, quiz_runs, uploads, admin) rather than by HTTP method.
 
 - The moderator URL contains a secret in the fragment (`#k=...`).
   Don't log full URLs server-side and don't print `mod_key` to
-  stdout outside the creation response. The landing page's
-  "Share moderator URL" button is the only path that exposes it
+  stdout outside the creation response. The "Share moderator URL"
+  button in the session page's Session settings card (owner-only) is the
+  only path that exposes it
   (clipboard copy on demand, not baked into the DOM).
 - Image uploads write to `uploads/` and are served via
   `StaticFiles` with strict CSP / nosniff / CORP headers

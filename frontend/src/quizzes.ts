@@ -1,6 +1,6 @@
-import { $, api, el, errorToast, guardClick, markUsable, statusLabel, toast } from "./common";
+import { $, api, bindMenuDismiss, el, errorToast, guardClick, markUsable, statusLabel, toast } from "./common";
 import type {
-  EditorAnswer, EditorQuestion, QuizEditor, QuizRunResults, QuizRunRow, QuizSummary,
+  EditorAnswer, EditorQuestion, QuizEditor, QuizRun, QuizRunResults, QuizRunRow, QuizSummary, SessionRow,
 } from "./types";
 
 let editing: QuizEditor | null = null;
@@ -33,18 +33,95 @@ async function loadQuizzes(): Promise<void> {
     tr.appendChild(el("td", { class: "num muted" }, String(q.question_count)));
     const actions = el("td", { class: "actions" });
     const toggleBtn = isReady
-      ? el("button", { class: "ghost xsmall", onclick: (ev: Event) => { ev.stopPropagation(); void unpublishQuiz(q.id); } }, "Unpublish")
-      : el("button", { class: "primary xsmall", onclick: (ev: Event) => { ev.stopPropagation(); void publishQuiz(q.id); } }, "Publish");
+      ? el("button", { class: "ghost xsmall", onclick: () => void unpublishQuiz(q.id) }, "Unpublish")
+      : el("button", { class: "primary xsmall", onclick: () => void publishQuiz(q.id) }, "Publish");
     actions.appendChild(toggleBtn);
-    actions.appendChild(guardClick(
-      el("button", { class: "ghost xsmall", title: "Make an editable copy of this quiz" }, "Duplicate") as HTMLButtonElement,
-      (ev) => { ev.stopPropagation(); return duplicateQuiz(q.id); }));
-    actions.appendChild(guardClick(
-      el("button", { class: "danger ghost xsmall" }, "Delete") as HTMLButtonElement,
-      (ev) => { ev.stopPropagation(); return removeQuiz(q.id); }));
+    actions.appendChild(addToSessionMenu(q));
+    actions.appendChild(rowMoreMenu(q));
     tr.appendChild(actions);
-    tr.addEventListener("click", () => void openQuizDetail(q.id));
+    // Clicks on the row's controls (buttons, menus) don't open the editor.
+    // Not stopPropagation: the document-level menu dismiss must still see them.
+    tr.addEventListener("click", (ev) => {
+      if ((ev.target as Element).closest("button, a, details")) return;
+      void openQuizDetail(q.id);
+    });
     tbody.appendChild(tr);
+  }
+}
+
+function rowMoreMenu(q: QuizSummary): HTMLElement {
+  const panel = el("div", { class: "menu-panel" },
+    guardClick(
+      el("button", { class: "ghost small", title: "Make an editable copy of this quiz" }, "Duplicate") as HTMLButtonElement,
+      () => duplicateQuiz(q.id)),
+    el("div", { class: "menu-sep" }),
+    guardClick(
+      el("button", { class: "danger ghost small" }, "Delete") as HTMLButtonElement,
+      () => removeQuiz(q.id)),
+  );
+  return el("details", { class: "menu row-more" },
+    el("summary", { "aria-label": "More actions", title: "More actions" }, "⋯"),
+    panel);
+}
+
+// Sessions that can still take a quiz: live first, then not started; the
+// API already orders newest first within each group (UC-A-29).
+async function openSessions(): Promise<SessionRow[]> {
+  const rows = await api<SessionRow[]>("/api/sessions");
+  return [
+    ...rows.filter((r) => r.status === "live"),
+    ...rows.filter((r) => r.status === "planning"),
+  ];
+}
+
+function addToSessionMenu(q: QuizSummary): HTMLElement {
+  const panel = el("div", { class: "menu-panel session-picker" });
+  const details = el("details", { class: "menu add-to-session" },
+    el("summary", { title: "Queue this quiz in a session" }, "Add to session ▾"),
+    panel) as HTMLDetailsElement;
+  // Load on open so the list is current without a request per row.
+  details.addEventListener("toggle", async () => {
+    if (!details.open) return;
+    panel.replaceChildren(el("div", { class: "muted small" }, "Loading…"));
+    try {
+      const sessions = await openSessions();
+      panel.replaceChildren();
+      if (!sessions.length) {
+        panel.appendChild(el("div", { class: "muted small" },
+          "No open sessions. ", el("a", { href: "/" }, "Create one →")));
+        return;
+      }
+      for (const s of sessions) {
+        panel.appendChild(guardClick(
+          el("button", { class: "ghost small" },
+            el("span", { class: "badge badge-" + s.status }, statusLabel(s.status)),
+            " " + s.title + " ",
+            el("code", { class: "small" }, s.code)) as HTMLButtonElement,
+          () => addQuizToSession(q, s, details)));
+      }
+    } catch (e) {
+      details.open = false;
+      errorToast((e as Error).message);
+    }
+  });
+  return details;
+}
+
+async function addQuizToSession(q: QuizSummary, s: SessionRow, menu: HTMLDetailsElement): Promise<void> {
+  const isDraft = q.status !== "ready";
+  try {
+    // A draft is published and queued in one step; the server runs the
+    // publish checks and nothing changes if they fail (UC-M-03).
+    await api<QuizRun>(`/api/sessions/${s.code}/quiz_runs`, {
+      method: "POST", body: { quiz_id: q.id, publish: isDraft },
+    });
+    menu.open = false;
+    toast(isDraft ? `Published and added to "${s.title}"` : `Added to "${s.title}"`);
+    void loadQuizzes();
+    void loadQSessions();
+  } catch (e) {
+    menu.open = false;
+    errorToast((e as Error).message);
   }
 }
 
@@ -138,7 +215,7 @@ function renderQSessions(): void {
   if (!quizRunRows.length) {
     flat.style.display = "";
     grouped.style.display = "none";
-    tbody.innerHTML = `<tr><td colspan="7" class="muted small">No quiz runs yet. Open a session as moderator and click <strong>Add to session</strong> to queue one.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="muted small">No quiz runs yet. Use <strong>Add to session</strong> on a quiz above, or <strong>+ Add quiz</strong> on a session page.</td></tr>`;
     return;
   }
 
@@ -289,15 +366,19 @@ function renderEditor(): void {
   body.appendChild(el("div", { class: "row gap field-row" },
     el("label", { class: "small muted" }, "Title"), titleInp));
 
-  for (const it of quiz.questions) body.appendChild(renderQuestion(it));
+  const list = el("div", { id: "editor-questions" });
+  quiz.questions.forEach((qq, idx) => list.appendChild(renderQuestion(qq, idx)));
+  body.appendChild(list);
 
   body.appendChild(el("div", { class: "row gap", style: "margin-top: 10px;" },
     guardClick(el("button", { class: "primary small" }, "+ Add question") as HTMLButtonElement, addQuestion)));
 }
 
-function renderQuestion(qq: EditorQuestion): HTMLElement {
+function renderQuestion(qq: EditorQuestion, idx: number): HTMLElement {
   const quizId = editing!.id;
-  const wrap = el("div", { class: "editor-q compact" });
+  const ids = editing!.questions.map((q) => q.id);
+  const wrap = el("div", { class: "editor-q compact", "data-id": qq.id });
+  const saveOrder = (order: number[]) => saveQuestionOrder(quizId, order);
 
   const textInp = el("textarea", { rows: 2 }, qq.text) as HTMLTextAreaElement;
   textInp.addEventListener("change", () => void patchQuestion(qq.id, { text: textInp.value }));
@@ -321,8 +402,11 @@ function renderQuestion(qq: EditorQuestion): HTMLElement {
     title: "Poll — collect responses with no correct answer",
   }, pollBox, "Poll");
 
+  // Number by position so deletes leave no gaps (UC-A-28).
   const head = el("div", { class: "row gap question-head" },
-    el("strong", {}, `Q${qq.order_index + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
+    dragHandle(wrap, "question", saveOrder),
+    el("strong", {}, `Q${idx + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
+    ...moveButtons(ids, idx, "question", saveOrder),
     guardClick(el("button", { class: "danger ghost xsmall" }, "Delete") as HTMLButtonElement, async () => {
       if (!confirm("Delete this question?")) return;
       await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" });
@@ -349,7 +433,7 @@ function renderQuestion(qq: EditorQuestion): HTMLElement {
   wrap.appendChild(imgRow);
 
   const opts = el("div", { class: "options" });
-  for (const op of qq.answers) opts.appendChild(renderAnswer(qq, op));
+  qq.answers.forEach((op, aIdx) => opts.appendChild(renderAnswer(qq, op, aIdx)));
   wrap.appendChild(opts);
   wrap.appendChild(guardClick(
     el("button", { class: "ghost xsmall", style: "margin-top: 4px;" }, "+ Answer") as HTMLButtonElement,
@@ -360,9 +444,12 @@ function renderQuestion(qq: EditorQuestion): HTMLElement {
   return wrap;
 }
 
-function renderAnswer(qq: EditorQuestion, op: EditorAnswer): HTMLElement {
+function renderAnswer(qq: EditorQuestion, op: EditorAnswer, idx: number): HTMLElement {
   const quizId = editing!.id;
-  const row = el("div", { class: "editor-opt" });
+  const ids = qq.answers.map((a) => a.id);
+  const saveOrder = (order: number[]) => saveAnswerOrder(quizId, qq.id, order);
+  const row = el("div", { class: "editor-opt", "data-id": op.id });
+  row.appendChild(dragHandle(row, "answer", saveOrder));
   const txt = el("input", { type: "text", value: op.text, class: "inline" }) as HTMLInputElement;
   txt.addEventListener("change", () => void patchAnswer(op.id, { text: txt.value }));
   if (qq.graded) {
@@ -390,6 +477,7 @@ function renderAnswer(qq: EditorQuestion, op: EditorAnswer): HTMLElement {
       onclick: async () => { await patchAnswer(op.id, { image_url: null }); void openQuizDetail(quizId); },
     }, "Clear"));
   }
+  for (const btn of moveButtons(ids, idx, "answer", saveOrder)) row.appendChild(btn);
   row.appendChild(guardClick(
     el("button", { class: "danger ghost xsmall", "aria-label": "Delete answer" }, "✕") as HTMLButtonElement,
     async () => {
@@ -397,6 +485,87 @@ function renderAnswer(qq: EditorQuestion, op: EditorAnswer): HTMLElement {
       void openQuizDetail(quizId);
     }));
   return row;
+}
+
+// ---------- reorder (UC-A-28, UX.md §7 Reorder) ----------
+
+type SaveOrder = (ids: number[]) => Promise<void>;
+
+async function saveQuestionOrder(quizId: number, ids: number[]): Promise<void> {
+  try {
+    await api(`/api/quizzes/${quizId}/question_order`, { method: "PUT", body: { question_ids: ids } });
+  } catch (e) { errorToast((e as Error).message); }
+  void openQuizDetail(quizId);
+}
+
+async function saveAnswerOrder(quizId: number, questionId: number, ids: number[]): Promise<void> {
+  try {
+    await api(`/api/quiz_questions/${questionId}/answer_order`, { method: "PUT", body: { answer_ids: ids } });
+  } catch (e) { errorToast((e as Error).message); }
+  void openQuizDetail(quizId);
+}
+
+function moveButtons(ids: number[], idx: number, noun: string, save: SaveOrder): HTMLButtonElement[] {
+  const swapped = (from: number, to: number): number[] => {
+    const next = [...ids];
+    [next[from], next[to]] = [next[to], next[from]];
+    return next;
+  };
+  const make = (label: string, glyph: string, target: number): HTMLButtonElement => {
+    const btn = el("button", {
+      class: "ghost xsmall move-btn", "aria-label": `Move ${noun} ${label}`, title: `Move ${noun} ${label}`,
+    }, glyph) as HTMLButtonElement;
+    if (target < 0 || target >= ids.length) {
+      btn.disabled = true;
+      return btn;
+    }
+    return guardClick(btn, () => save(swapped(idx, target)));
+  };
+  return [make("up", "↑", idx - 1), make("down", "↓", idx + 1)];
+}
+
+/** A handle that drags `item` among its siblings with pointer events (works
+ *  with mouse and touch), then saves the new order of the siblings' ids. */
+function dragHandle(item: HTMLElement, noun: string, save: SaveOrder): HTMLElement {
+  const handle = el("button", {
+    class: "ghost xsmall drag-handle", type: "button",
+    "aria-label": `Drag to reorder ${noun}`, title: "Drag to reorder",
+  }, "⠿");
+  handle.addEventListener("pointerdown", (down: PointerEvent) => {
+    const list = item.parentElement;
+    if (down.button !== 0 || !list) return;
+    down.preventDefault();
+    // Listen on the document, not with pointer capture on the handle:
+    // moving `item` in the DOM detaches the handle and drops capture.
+    const order = () => [...list.children].map((c) => Number((c as HTMLElement).dataset.id));
+    const before = order().join();
+    item.classList.add("dragging");
+    const move = (ev: PointerEvent): void => {
+      if (ev.pointerId !== down.pointerId) return;
+      const edge = 60;
+      if (ev.clientY < edge) window.scrollBy(0, -16);
+      else if (ev.clientY > window.innerHeight - edge) window.scrollBy(0, 16);
+      const next = [...list.children].find((c) => {
+        if (c === item) return false;
+        const r = c.getBoundingClientRect();
+        return ev.clientY < r.top + r.height / 2;
+      });
+      if (next) { if (next !== item.nextElementSibling) list.insertBefore(item, next); }
+      else if (list.lastElementChild !== item) list.appendChild(item);
+    };
+    const end = (ev: PointerEvent): void => {
+      if (ev.pointerId !== down.pointerId) return;
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", end);
+      document.removeEventListener("pointercancel", end);
+      item.classList.remove("dragging");
+      if (order().join() !== before) void save(order());
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", end);
+    document.addEventListener("pointercancel", end);
+  });
+  return handle;
 }
 
 async function patchQuestion(id: number, body: Record<string, unknown>): Promise<void> {
@@ -477,9 +646,12 @@ function renderResults(r: QuizRunResults): void {
   }
 }
 
-// Escape closes whichever drill-down is open (results first, then editor).
+bindMenuDismiss();
+
+// Escape closes whichever drill-down is open (results first, then editor),
+// unless it just closed an open menu.
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
+  if (e.key !== "Escape" || e.defaultPrevented) return;
   if ($("#results-card").style.display !== "none") { closeResults(); return; }
   if ($("#editor-card").style.display !== "none") closeEditor();
 });

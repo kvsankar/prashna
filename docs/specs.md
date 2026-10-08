@@ -180,14 +180,16 @@ setup form for the first visitor to claim admin.
 - On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
 - Most-recently-created session appears at the top.
 - Authenticated admin chrome shows `#admin-page-nav` with an Admin breadcrumb and links to Sessions and Quiz library.
-- Opening `/?session=<owned-code>` opens `#session-detail-card` for that session, enabling moderator breadcrumbs to navigate one level up.
+- Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL; the Actions column keeps Participant, Projector, and Delete.
+- Opening `/?session=<owned-code>` as an authenticated admin redirects to `/m/<code>` (older bookmarks keep working).
 
 ### UC-A-05: Edit session title
 
-- **Given** the admin opens a session's detail card
-- **When** they change the Title input and blur
-- **Then** `PATCH /api/sessions/{code}` updates the title; the row in
-  the list reflects the change
+- **Given** the admin owner opens the session page `/m/<code>`
+- **When** they change the Title input in the Session settings card and
+  blur
+- **Then** `PATCH /api/sessions/{code}` updates the title; the page
+  header and the session list reflect the change
 - **And** an empty new title returns `400` and the input reverts to
   the old value
 
@@ -200,13 +202,14 @@ setup form for the first visitor to claim admin.
 - After success, a WebSocket `{type: "session_state"}` is broadcast on `session:{code}`.
 
 **Tests (UI)**
-- On `/` (authed), opening a session detail card shows `#sd-session-title` populated with current title.
-- Editing `#sd-session-title` and blurring updates the row title in `#session-rows`.
-- Blurring with an empty value shows error toast and reverts `#sd-session-title` to the prior title.
+- On `/m/<code>` as the admin owner, `#settings-card` shows `#set-title` populated with the current title.
+- Editing `#set-title` and blurring updates `#title` in the page header; the row title in `#session-rows` on `/` shows the new title.
+- Blurring with an empty value shows error toast and reverts `#set-title` to the prior title.
 
 ### UC-A-06: Set per-session participant base URL
 
-- **Given** the detail card is open
+- **Given** the admin owner is on the session page `/m/<code>` (the Base
+  URL field in the Invite card is shown only to the owner)
 - **When** the admin types a URL into the Base URL input and blurs
 - **Then** `POST /api/sessions/{code}/participant_base_url` saves the
   value (with trailing slash stripped); the QR and copy-URL widgets
@@ -226,13 +229,15 @@ setup form for the first visitor to claim admin.
 - After success, broadcasts `{type: "session_state"}`.
 
 **Tests (UI)**
-- On `/` (authed) detail card, typing into `#sd-base-url` and blurring updates `#sd-url` text and re-renders `#sd-qr`.
-- Clicking `#sd-clear` clears `#sd-base-url`, and the page falls back to `location.origin` for the QR/URL widgets.
+- On `/m/<code>` as the admin owner, typing into `#base-url` and blurring updates `#invite-url` text and re-renders `#invite-qr`.
+- Clicking `#base-url-clear` clears `#base-url`, and the page falls back to `location.origin` for the QR/URL widgets.
 - Entering an invalid URL (no `http(s)://`) shows an error toast.
 
 ### UC-A-07: Delete a session
 
-- **Given** the admin clicks Delete on a session row
+- **Given** the admin clicks Delete on a session row, or **Delete
+  session…** in the session page's Session settings card (which opens
+  `/?delete=<code>` and runs the same flow on the list)
 - **When** the session is `live` → the action is refused with
   "End the session before deleting it" (toast)
 - **And** the session has 0 queries and 0 quiz runs → a native
@@ -260,22 +265,27 @@ setup form for the first visitor to claim admin.
 - `#cd-go` is disabled until `#cd-confirm` exactly matches `session.title`.
 - Typing the exact title enables `#cd-go`; clicking it removes the row.
 - `#cd-cancel` closes the confirm card without deleting.
+- On `/m/<code>` as the admin owner, clicking `#set-delete` on an empty `planning` session opens `/?delete=<code>`, fires the native `confirm()`, and, once accepted, the row is gone from `#session-rows`.
 
-### UC-A-08: Inline session moderation from the landing page
+### UC-A-08: The admin session page
 
-Because Admin ⊇ Moderator, the admin doesn't need to switch contexts
-to do basic moderation on their own sessions.
+Because Admin ⊇ Moderator, the admin and delegate moderators share one
+session page, `/m/<code>`. The admin owner sees every moderator facility
+(lifecycle, invite, quiz runs, questions, profiles, feedback) plus the
+owner-only controls; a delegate sees the same page without them.
 
-- **Given** the admin opens a session detail card on `/`
-- **Then** they see the session's status badge, a Start or End button
-  appropriate to status, an "Open moderator →" link to the full
-  moderator surface, and a "Share moderator URL" copy button for
-  delegation
-- **And** clicking Start or End calls the lifecycle endpoint with
-  cookie auth (no mod_key)
-- **And** the per-row "Moderate" link navigates to `/m/<code>` and
-  loads the full moderator surface without a key gate (admin owners
-  authenticate via cookie)
+- **Given** the admin clicks a session row on `/`
+- **Then** `/m/<code>` loads the full moderator surface without a key
+  gate (admin owners authenticate via cookie)
+- **And** the owner sees a **Session settings** card (`#settings-card`)
+  inside Set up, with the Title input (UC-A-05), a "Share moderator
+  URL" copy button for delegation, and **Delete session…** (UC-A-07)
+- **And** the owner sees the Base URL field in the Invite card (UC-A-06)
+- **And** a delegate (mod_key, no admin cookie) sees neither the
+  Session settings card nor the Base URL field
+- **And** "Share moderator URL" fetches the key on click from
+  `GET /api/sessions` (owner-only) and copies `<origin>/m/<code>#k=<mod_key>`;
+  the key is never rendered into the DOM
 
 **Tests (API)**
 - `POST /api/sessions/{code}/start` with admin cookie on a `planning` session → `200 {status: "live"}`; sets `started_at`. Auth: mod-key OR admin cookie.
@@ -283,15 +293,14 @@ to do basic moderation on their own sessions.
 - `POST /api/sessions/{code}/start` on an `ended` session → `400 "Session has ended"`.
 
 **Tests (UI)**
-- On `/` (authed), opening a session detail card shows `#sd-status` badge matching session status.
-- For a `planning` session, `#sd-lifecycle-actions` contains a Start button; clicking it flips `#sd-status` to `.badge-live`.
-- For a `live` session, `#sd-lifecycle-actions` contains an End button; clicking it (after native confirm) flips `#sd-status` to `.badge-ended`.
-- `#sd-open-mod` link href is `/m/<code>`; navigating there loads the moderator surface with no `#modkey-card` gate (admin cookie present).
-- Clicking `#sd-share-mod` copies the moderator URL (with `#k=<mod_key>` fragment) to clipboard and toasts confirmation.
+- On `/` (authed), clicking a row in `#session-rows` navigates to `/m/<code>`; the moderator surface loads with no `#modkey-card` gate, and `#settings-card` is visible.
+- Clicking `#set-share-mod` copies the moderator URL (with `#k=<mod_key>` fragment) to clipboard and toasts confirmation.
+- Opening `/m/<code>#k=<mod_key>` as a delegate (no admin cookie) hides `#settings-card`.
+- Start and End on the session page are covered by UC-M-02.
 
 ---
 
-**Quiz authoring** (UC-A-09 through UC-A-22, and UC-A-27). Each operation gets its
+**Quiz authoring** (UC-A-09 through UC-A-22, and UC-A-27 through UC-A-29). Each operation gets its
 own use case so tests and PRs can cite one ID per behavior.
 
 ### UC-A-09: Create a quiz template
@@ -370,7 +379,7 @@ own use case so tests and PRs can cite one ID per behavior.
 
 ### UC-A-13: Delete a quiz template
 
-- **Given** the admin clicks Delete on a quiz row
+- **Given** the admin clicks Delete in a quiz row's ⋯ menu
 - **When** no QuizVersion of this quiz has been used in any run
 - **Then** `DELETE /api/quizzes/{id}` cascades to items, options, and
   versions
@@ -384,12 +393,12 @@ own use case so tests and PRs can cite one ID per behavior.
 - `DELETE /api/quizzes/{id}` for a non-owner quiz → `404`.
 
 **Tests (UI)**
-- On `/quizzes`, clicking Delete on a row in `#quiz-rows` (after native confirm) removes the row.
+- On `/quizzes`, opening a row's ⋯ menu (`details.menu`) in `#quiz-rows` and clicking Delete (after native confirm) removes the row.
 - Clicking Delete on a quiz that has been run shows an error toast and the row stays.
 
 ### UC-A-27: Duplicate a quiz template
 
-- **Given** the admin clicks **Duplicate** on a quiz row
+- **Given** the admin clicks **Duplicate** in a quiz row's ⋯ menu
 - **When** `POST /api/quizzes/{id}/duplicate` is called
 - **Then** a new Quiz is created with `owner_user_id = me.id`, title
   `"<source title> (copy)"`, status = `draft`, and `last_edited_at = now`
@@ -414,7 +423,7 @@ own use case so tests and PRs can cite one ID per behavior.
 - `POST /api/quizzes/{id}/duplicate` with no auth → `401`.
 
 **Tests (UI)**
-- On `/quizzes`, clicking Duplicate on a row in `#quiz-rows` adds a `"<title> (copy)"` row with a Draft badge and opens `#editor-card` on the copy.
+- On `/quizzes`, opening a row's ⋯ menu in `#quiz-rows` and clicking Duplicate adds a `"<title> (copy)"` row with a Draft badge and opens `#editor-card` on the copy.
 
 ### UC-A-14: Add a quiz question
 
@@ -522,6 +531,42 @@ own use case so tests and PRs can cite one ID per behavior.
 **Tests (UI)**
 - In `#editor-body`, clicking ✕ on an answer removes its row.
 
+### UC-A-28: Reorder questions and answers
+
+- **Given** the quiz editor is open
+- **When** the admin drags a question by its handle (`.drag-handle`) to a
+  new position, or clicks its **Move up** / **Move down** button
+- **Then** `PUT /api/quizzes/{id}/question_order` saves the full new
+  order in one request; every question's `order_index` is renumbered
+  `0..n-1` and the parent's `last_edited_at` advances
+- **And** answers within a question reorder the same way, saved by
+  `PUT /api/quiz_questions/{id}/answer_order`
+- **And** the body must list every id of the quiz's questions (or the
+  question's answers) exactly once; anything else returns `400` and
+  changes nothing
+- **And** the editor labels questions by position (`Q1`, `Q2`, …), so
+  numbering has no gaps after deletes
+- **And** reordering is an ordinary edit: past runs keep their frozen
+  QuizVersion; the next Launch captures the new order
+- **And** drag uses pointer events, so it works with a mouse and on
+  touch screens; Move up / Move down cover keyboard use
+
+**Tests (API)**
+- `PUT /api/quizzes/{id}/question_order` with `{"question_ids": [<ids in new order>]}` → `200 {ok: true}`; `GET /api/quizzes/{id}` returns questions in that order with `order_index` `0..n-1`; `last_edited_at` advances. Auth: admin cookie.
+- A list that omits an id, repeats an id, or contains another quiz's question id → `400 "question_ids must list every question in this quiz exactly once"`; order unchanged.
+- A non-list `question_ids` → same `400`.
+- For a non-owner quiz → `404`; with no auth → `401`.
+- `PUT /api/quiz_questions/{qid}/answer_order` with `{"answer_ids": [...]}` → `200 {ok: true}`; answers come back in that order with `order_index` `0..n-1`; parent `last_edited_at` advances.
+- A bad `answer_ids` list → `400 "answer_ids must list every answer of this question exactly once"`.
+- `answer_order` for a non-owner question → `404`.
+- A run launched before a reorder keeps its question order; a run launched after uses the new order.
+
+**Tests (UI)**
+- In `#editor-body`, clicking a question's "Move question down" button moves it below the next question; the order persists after reopening the quiz.
+- Dragging a question's `.drag-handle` above the previous question reorders the questions; the order persists after reopening.
+- "Move question up" is disabled on the first question and "Move question down" on the last.
+- Clicking an answer's "Move answer up" button moves it above the previous answer; the order persists after reopening.
+
 ### UC-A-20: Upload an image
 
 Used by question and answer editors to set `image_url`.
@@ -596,6 +641,26 @@ Used by question and answer editors to set `image_url`.
 ---
 
 **Reports**
+
+### UC-A-29: Add a quiz to a session from the library
+
+- **Given** the admin is on `/quizzes`
+- **When** they open a quiz row's **Add to session** menu
+- **Then** the menu lists the admin's sessions that have not ended:
+  `live` first, then `planning`, newest first within each group
+- **When** they click a session
+- **Then** the quiz is queued in that session
+  (`POST /api/sessions/{code}/quiz_runs`, UC-M-03) and a toast names the
+  session
+- **And** for a draft quiz the request sends `publish: true`, so a valid
+  draft is published and queued in one step; an invalid draft shows the
+  publish validation message and nothing is queued
+- **And** with no open sessions, the menu says so and links to `/`
+
+**Tests (UI)**
+- On `/quizzes`, opening a ready quiz row's Add to session menu lists a `planning` session and a `live` session (live first) but not an `ended` one; clicking the planning session toasts its title, and `GET /api/sessions/{code}/quiz_runs` returns one queued run.
+- Doing the same for a valid draft quiz flips the row's badge to Ready and queues a run.
+- Doing the same for an invalid draft (no questions) shows an error toast; the badge stays Draft and no run is queued.
 
 ### UC-A-23: Global quiz-runs report
 
@@ -741,8 +806,9 @@ the UI shows no button.
 - With no auth and no mod_key → `403 "Not authorized — moderator key or admin login required"`.
 - With wrong mod_key and no admin cookie → `403`.
 - `GET /api/sessions/{code}/moderator-bootstrap` with mod-key or owner
-  auth returns the session, ready quiz summaries, and `is_owner` in one
-  response; unauthenticated and wrong-key calls return `403`.
+  auth returns the session, the quiz summaries the caller may add
+  (UC-M-03), and `is_owner` in one response; unauthenticated and
+  wrong-key calls return `403`.
 - `GET /m/<code>` for an unknown code → `303` redirect to `/?bad_code=<code>`.
 
 **Tests (UI)**
@@ -750,7 +816,7 @@ the UI shows no button.
 - Opening `/m/<code>#k=<mod_key>` as a delegate stores the key in `localStorage` under the session code and strips `#k=` from the address bar.
 - Opening `/m/<code>` with neither cookie nor stored key renders `#modkey-card`; submitting `#modkey-input` via `#modkey-submit` boots the surface.
 - Opening `/m/<code>` with a wrong stored key renders `#modkey-card` with toast "Couldn't load — re-enter the moderator key".
-- `#moderator-breadcrumbs` shows Sessions → session title → Moderator. Its session link targets `/?session=<code>`, and the adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
+- `#moderator-breadcrumbs` shows Sessions → session title. The Sessions link targets `/`; the session title is the current page. The adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
 
 ### UC-M-02: Session lifecycle: Start → End
 
@@ -787,15 +853,23 @@ the UI shows no button.
 
 ### UC-M-03: Queue a quiz onto the session
 
-- **Given** the moderator picks a Ready quiz from the dropdown (drafts
-  are filtered out) and clicks Add to session
+- **Given** the moderator picks a quiz in the **+ Add quiz** composer
+  (`#quiz-select` + `#add-quiz-btn`) in the Quiz card header and clicks
+  Add
 - **When** the Quiz has unsaved edits since the latest version
 - **Then** `_ensure_current_version` deep-copies the quiz tree into a
   new immutable `QuizVersion(version_no = latest+1)`; the new QuizRun
   points to it
 - **And** when the Quiz has not changed since the latest version, the
   new QuizRun reuses that version
-- **And** queueing a Draft quiz returns `400`
+- **And** the picker lists Ready quizzes to everyone; the admin owner
+  also sees Draft quizzes, labelled as drafts. Adding a draft sends
+  `publish: true`: the server runs the publish validation (UC-A-21),
+  marks the quiz `ready`, and queues it in one step. If validation
+  fails, nothing is published or queued
+- **And** queueing a Draft quiz without `publish: true` returns `400`
+- **And** `publish: true` from a delegate (mod_key, no admin cookie) on
+  a draft returns `403`; on a Ready quiz the flag is ignored
 - **And** queueing on an ended session returns `400`
 
 **Tests (API)**
@@ -803,21 +877,28 @@ the UI shows no button.
 - Two consecutive queues on an unedited quiz → both runs point to the same `version_no`.
 - After PATCHing the quiz (edit between queues), next queue creates a new `version_no = prev+1` and the new run points to it.
 - `POST /api/sessions/{code}/quiz_runs` with a `draft` quiz_id → `400 "Quiz is still a draft — publish it first"`.
+- With `{"quiz_id": <valid draft>, "publish": true}` and the admin owner cookie → `200`; the quiz is now `ready` and the run is queued.
+- With `{"quiz_id": <invalid draft>, "publish": true}` → `400` with the publish validation message (e.g. `"Quiz needs at least one question"`); the quiz stays `draft` and no run exists.
+- With `{"quiz_id": <draft>, "publish": true}` and only a valid `X-Mod-Key` → `403 "Only the admin can publish a draft quiz"`; the quiz stays `draft`.
+- With `{"quiz_id": <ready_id>, "publish": true}` and only a valid `X-Mod-Key` → `200` (nothing to publish).
 - `POST /api/sessions/{code}/quiz_runs` with an unknown quiz_id → `404 "quiz not found"`.
 - Quiz owned by another admin → `404 "quiz not found"`.
 - `POST /api/sessions/{code}/quiz_runs` on an `ended` session → `400 "Session has ended"`.
 - With no auth → `403`.
 - Success broadcasts `{type: "quiz_run_new"}`.
+- `GET /api/sessions/{code}/available_quizzes` (and the bootstrap's `available_quizzes`) returns Ready quizzes for a delegate, and Ready plus Draft quizzes (with `status`) for the admin owner.
 
-The "Add a quiz" composer (`#quiz-select` + `#add-quiz-btn`) is a
-**creational** control and lives in the collapsible **Set up** section
-(`#setup-section`, see UX.md §4), which is open by default while the
-session is `planning` and collapses once it goes `live`. The staged runs
-themselves render in the **operational** Quiz card (`#quiz-runs`).
+The **+ Add quiz** composer is an operational control during a session,
+so it lives in the Quiz card header (`#quizzes-card` card-tools) and
+stays visible whether the session is `planning` or `live`. The staged
+runs render below it in `#quiz-runs`.
 
 **Tests (UI)**
-- On `/m/<code>` (session `planning`, so Set up is open), `#quiz-select` lists only ready quizzes (drafts filtered).
+- On `/m/<code>` as a delegate (mod_key only), `#quiz-select` lists only ready quizzes (drafts filtered).
+- On `/m/<code>` as the admin owner, `#quiz-select` lists ready quizzes and draft quizzes, with drafts labelled "draft".
 - Selecting a quiz and clicking `#add-quiz-btn` appends a queued row to `#quiz-runs` with `.badge-queued`.
+- On a `live` session, `#add-quiz-btn` is visible without opening Set up.
+- Selecting a valid draft and clicking `#add-quiz-btn` queues it and toasts that it was published.
 
 ### UC-M-04: Start a queued quiz run
 

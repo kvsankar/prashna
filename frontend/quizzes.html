@@ -33,14 +33,14 @@
           <button class="primary small" id="create-quiz">+ New</button>
         </div>
       </div>
-      <div class="table-scroll">
-        <table class="ctable" id="quiz-table">
-          <thead><tr>
-            <th>Title</th><th>Status</th><th class="num">Questions</th><th class="actions">Actions</th>
-          </tr></thead>
-          <tbody id="quiz-rows"><tr><td colspan="4" class="muted small">Loading…</td></tr></tbody>
-        </table>
-      </div>
+      <!-- No .table-scroll wrapper: it would clip the row menus. Row actions
+           wrap on narrow screens instead (app.css). -->
+      <table class="ctable" id="quiz-table">
+        <thead><tr>
+          <th>Title</th><th>Status</th><th class="num">Questions</th><th class="actions">Actions</th>
+        </tr></thead>
+        <tbody id="quiz-rows"><tr><td colspan="4" class="muted small">Loading…</td></tr></tbody>
+      </table>
     </section>
 
     <section class="card compact" id="quiz-runs-card">

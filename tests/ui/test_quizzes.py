@@ -1,6 +1,6 @@
 """UI tests for /quizzes — quiz library, editor, publish, runs report.
 
-Covers UC-A-09..22, UC-A-23, UC-A-24, UC-A-27.
+Covers UC-A-09..22, UC-A-23, UC-A-24, UC-A-27, UC-A-28, UC-A-29.
 """
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ from playwright.sync_api import expect
 
 from ._helpers import (
     admin_login_via_ui,
+    api_end_session,
     api_login,
     api_make_quiz,
     api_make_session,
     api_queue_quiz_run,
+    api_start_session,
 )
 
 
@@ -21,6 +23,24 @@ def _goto_quizzes(page, base_url):
     admin_login_via_ui(page, base_url)
     page.goto(base_url + "/quizzes")
     page.wait_for_selector("#quiz-rows")
+
+
+def _open_row_more(row):
+    """Open a quiz row's ⋯ menu (Duplicate, Delete)."""
+    row.locator("details.row-more > summary").click()
+
+
+def _valid_questions(*texts: str) -> list[dict]:
+    return [
+        {"text": t, "qtype": "single",
+         "answers": [{"text": t + "-right", "is_correct": True}, {"text": t + "-wrong"}]}
+        for t in texts
+    ]
+
+
+def _question_texts(page) -> list[str]:
+    return page.locator("#editor-body .editor-q textarea").evaluate_all(
+        "els => els.map(e => e.value)")
 
 
 # ---------- UC-A-09 ----------
@@ -131,13 +151,14 @@ def test_uc_a_12_rename_quiz_updates_row(base_url, admin_setup, page):
 
 
 def test_uc_a_13_delete_unused_quiz_removes_row(base_url, admin_setup, page):
-    """UC-A-13: clicking Delete on an unused quiz (after confirm) removes the row."""
+    """UC-A-13: Delete in the row's ⋯ menu (after confirm) removes the row."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-Q13 {secrets.token_hex(3)}")
     try:
         _goto_quizzes(page, base_url)
         page.on("dialog", lambda d: d.accept())
         row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        _open_row_more(row)
         row.locator("button.danger").click()
         expect(page.locator("#quiz-rows tr").filter(has_text=quiz["title"])).to_have_count(0, timeout=5000)
     finally:
@@ -154,6 +175,7 @@ def test_uc_a_13_delete_used_quiz_toasts_error(base_url, admin_setup, page):
         _goto_quizzes(page, base_url)
         page.on("dialog", lambda d: d.accept())
         row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        _open_row_more(row)
         row.locator("button.danger").click()
         expect(page.locator(".toast-error")).to_be_visible()
         expect(row).to_be_visible()
@@ -172,6 +194,7 @@ def test_uc_a_27_duplicate_adds_draft_row_and_opens_editor(base_url, admin_setup
     try:
         _goto_quizzes(page, base_url)
         row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        _open_row_more(row)
         row.get_by_role("button", name="Duplicate").click()
         copy_row = page.locator("#quiz-rows tr").filter(has_text=copy_title)
         expect(copy_row).to_be_visible()
@@ -370,6 +393,90 @@ def test_uc_a_19_delete_answer_removes_row(base_url, admin_setup, page):
         c.close()
 
 
+# ---------- UC-A-28 ----------
+
+
+def _open_editor(page, base_url, title):
+    _goto_quizzes(page, base_url)
+    page.locator("#quiz-rows tr").filter(has_text=title).click()
+    expect(page.locator("#editor-card")).to_be_visible()
+
+
+def test_uc_a_28_move_question_down_persists(base_url, admin_setup, page):
+    """UC-A-28: Move question down swaps it with the next one; the order persists."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q28 {secrets.token_hex(3)}", questions=_valid_questions("A", "B", "C"))
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        page.locator("#editor-body .editor-q").first.get_by_role("button", name="Move question down").click()
+        expect(page.locator("#editor-body .editor-q textarea").first).to_have_value("B", timeout=5000)
+        assert _question_texts(page) == ["B", "A", "C"]
+        page.reload()
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).click()
+        expect(page.locator("#editor-body .editor-q textarea").first).to_have_value("B")
+        assert _question_texts(page) == ["B", "A", "C"]
+    finally:
+        c.close()
+
+
+def test_uc_a_28_drag_question_persists(base_url, admin_setup, page):
+    """UC-A-28: dragging a question's handle above the previous one reorders and persists."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q28d {secrets.token_hex(3)}", questions=_valid_questions("A", "B", "C"))
+    try:
+        # Mouse coordinates must be inside the viewport: make all three
+        # questions visible at once.
+        page.set_viewport_size({"width": 1280, "height": 1600})
+        _open_editor(page, base_url, quiz["title"])
+        questions = page.locator("#editor-body .editor-q")
+        expect(questions).to_have_count(3)
+        questions.nth(0).scroll_into_view_if_needed()
+        handle = questions.nth(2).locator(".question-head .drag-handle").bounding_box()
+        target = questions.nth(0).bounding_box()
+        page.mouse.move(handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(target["x"] + 20, target["y"] + 5, steps=12)
+        page.mouse.up()
+        expect(page.locator("#editor-body .editor-q textarea").first).to_have_value("C", timeout=5000)
+        page.reload()
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).click()
+        expect(page.locator("#editor-body .editor-q textarea").first).to_have_value("C")
+        assert _question_texts(page) == ["C", "A", "B"]
+    finally:
+        c.close()
+
+
+def test_uc_a_28_move_buttons_disabled_at_ends(base_url, admin_setup, page):
+    """UC-A-28: Move up is disabled on the first question, Move down on the last."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q28e {secrets.token_hex(3)}", questions=_valid_questions("A", "B"))
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        questions = page.locator("#editor-body .editor-q")
+        expect(questions.first.get_by_role("button", name="Move question up")).to_be_disabled()
+        expect(questions.last.get_by_role("button", name="Move question down")).to_be_disabled()
+        expect(questions.first.get_by_role("button", name="Move question down")).to_be_enabled()
+    finally:
+        c.close()
+
+
+def test_uc_a_28_move_answer_up_persists(base_url, admin_setup, page):
+    """UC-A-28: Move answer up swaps it with the previous answer; the order persists."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q28a {secrets.token_hex(3)}", questions=_valid_questions("A"))
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        answers = page.locator("#editor-body .editor-opt")
+        expect(answers.first.locator("input[type='text']")).to_have_value("A-right")
+        answers.nth(1).get_by_role("button", name="Move answer up").click()
+        expect(answers.first.locator("input[type='text']")).to_have_value("A-wrong", timeout=5000)
+        page.reload()
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).click()
+        expect(page.locator("#editor-body .editor-opt").first.locator("input[type='text']")).to_have_value("A-wrong")
+    finally:
+        c.close()
+
+
 # ---------- UC-A-20 (image upload) ----------
 
 
@@ -459,6 +566,75 @@ def test_uc_a_22_unpublish_flips_badge_to_draft(base_url, admin_setup, page):
         expect(row.locator(".badge-ready")).to_be_visible()
         row.locator("button", has_text="Unpublish").click()
         expect(row.locator(".badge-draft")).to_be_visible(timeout=5000)
+    finally:
+        c.close()
+
+
+# ---------- UC-A-29 ----------
+
+
+def _open_add_menu(row):
+    row.locator("details.add-to-session > summary").click()
+
+
+def test_uc_a_29_add_ready_quiz_to_session(base_url, admin_setup, page):
+    """UC-A-29: the menu lists open sessions (live first, no ended); clicking one queues the quiz."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q29 {secrets.token_hex(3)}", publish=True)
+    planning = api_make_session(c, f"UI-Q29plan {secrets.token_hex(3)}")
+    live = api_make_session(c, f"UI-Q29live {secrets.token_hex(3)}")
+    api_start_session(c, live["code"])
+    ended = api_make_session(c, f"UI-Q29end {secrets.token_hex(3)}")
+    api_end_session(c, ended["code"])
+    try:
+        _goto_quizzes(page, base_url)
+        row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        _open_add_menu(row)
+        items = row.locator("details.add-to-session .menu-panel button")
+        expect(items.filter(has_text=planning["title"])).to_be_visible()
+        texts = items.all_text_contents()
+        assert not any(ended["title"] in t for t in texts)
+        live_pos = next(i for i, t in enumerate(texts) if live["title"] in t)
+        plan_pos = next(i for i, t in enumerate(texts) if planning["title"] in t)
+        assert live_pos < plan_pos
+        items.filter(has_text=planning["title"]).click()
+        expect(page.locator(".toast").last).to_contain_text(planning["title"])
+        runs = c.get(f"/api/sessions/{planning['code']}/quiz_runs").json()
+        assert [r["status"] for r in runs] == ["queued"]
+    finally:
+        c.close()
+
+
+def test_uc_a_29_add_valid_draft_publishes(base_url, admin_setup, page):
+    """UC-A-29: adding a valid draft flips its badge to Ready and queues a run."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q29d {secrets.token_hex(3)}", questions=_valid_questions("A"))
+    s = api_make_session(c, f"UI-Q29ds {secrets.token_hex(3)}")
+    try:
+        _goto_quizzes(page, base_url)
+        row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        expect(row.locator(".badge-draft")).to_be_visible()
+        _open_add_menu(row)
+        row.locator("details.add-to-session .menu-panel button").filter(has_text=s["title"]).click()
+        expect(row.locator(".badge-ready")).to_be_visible(timeout=5000)
+        assert len(c.get(f"/api/sessions/{s['code']}/quiz_runs").json()) == 1
+    finally:
+        c.close()
+
+
+def test_uc_a_29_add_invalid_draft_toasts(base_url, admin_setup, page):
+    """UC-A-29: adding an invalid draft shows an error; it stays Draft and nothing is queued."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q29i {secrets.token_hex(3)}")
+    s = api_make_session(c, f"UI-Q29is {secrets.token_hex(3)}")
+    try:
+        _goto_quizzes(page, base_url)
+        row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        _open_add_menu(row)
+        row.locator("details.add-to-session .menu-panel button").filter(has_text=s["title"]).click()
+        expect(page.locator(".toast-error")).to_be_visible(timeout=5000)
+        expect(row.locator(".badge-draft")).to_be_visible()
+        assert c.get(f"/api/sessions/{s['code']}/quiz_runs").json() == []
     finally:
         c.close()
 

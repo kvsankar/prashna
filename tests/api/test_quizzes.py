@@ -1,4 +1,4 @@
-"""UC-A-09 through UC-A-22 and UC-A-27: quiz CRUD, items, answers, publish, uploads, duplicate."""
+"""UC-A-09 through UC-A-22, UC-A-27, UC-A-28: quiz CRUD, items, answers, publish, uploads, duplicate, reorder."""
 from __future__ import annotations
 
 import re
@@ -619,6 +619,135 @@ def test_uc_a_19_non_owner_404(admin_client, make_quiz):
         db.commit()
     r = admin_client.request("DELETE", f"/api/quiz_answers/{aid}")
     assert r.status_code == 404
+
+
+# ---------- UC-A-28: Reorder questions and answers ----------
+
+def _three_question_quiz(admin_client) -> tuple[int, list[int]]:
+    qid = admin_client.post("/api/quizzes", json={"title": "Order"}).json()["id"]
+    ids = []
+    for text in ("A?", "B?", "C?"):
+        q = admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": text}).json()["id"]
+        admin_client.post(f"/api/quiz_questions/{q}/answers", json={"text": "x", "is_correct": True})
+        admin_client.post(f"/api/quiz_questions/{q}/answers", json={"text": "y"})
+        ids.append(q)
+    return qid, ids
+
+
+def _question_texts(admin_client, quiz_id: int) -> list[str]:
+    return [q["text"] for q in admin_client.get(f"/api/quizzes/{quiz_id}").json()["questions"]]
+
+
+def _last_edited(quiz_id: int):
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        return db.get(m.Quiz, quiz_id).last_edited_at
+
+
+def test_uc_a_28_question_order(admin_client):
+    """UC-A-28: PUT question_order saves the new order, renumbers 0..n-1, bumps last_edited_at."""
+    qid, (a, b, c) = _three_question_quiz(admin_client)
+    before = _last_edited(qid)
+    r = admin_client.put(f"/api/quizzes/{qid}/question_order", json={"question_ids": [c, a, b]})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True}
+    qs = admin_client.get(f"/api/quizzes/{qid}").json()["questions"]
+    assert [q["text"] for q in qs] == ["C?", "A?", "B?"]
+    assert [q["order_index"] for q in qs] == [0, 1, 2]
+    assert _last_edited(qid) > before
+
+
+def test_uc_a_28_question_order_bad_lists_400(admin_client):
+    """UC-A-28: missing, repeated, foreign, or non-list ids → 400; order unchanged."""
+    qid, (a, b, c) = _three_question_quiz(admin_client)
+    _, (foreign, *_rest) = _three_question_quiz(admin_client)
+    msg = {"detail": "question_ids must list every question in this quiz exactly once"}
+    for bad in ([a, b], [a, b, b], [a, b, foreign], "abc", None):
+        r = admin_client.put(f"/api/quizzes/{qid}/question_order", json={"question_ids": bad})
+        assert r.status_code == 400, bad
+        assert r.json() == msg
+    assert _question_texts(admin_client, qid) == ["A?", "B?", "C?"]
+
+
+def test_uc_a_28_question_order_non_owner_404(admin_client):
+    """UC-A-28: non-owner quiz → 404."""
+    qid, ids = _three_question_quiz(admin_client)
+    from app import auth
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        other = m.User(username="other_ord", password_hash=auth.hash_password("longenough"))
+        db.add(other); db.commit(); db.refresh(other)
+        db.get(m.Quiz, qid).owner_user_id = other.id
+        db.commit()
+    r = admin_client.put(f"/api/quizzes/{qid}/question_order", json={"question_ids": ids})
+    assert r.status_code == 404
+
+
+def test_uc_a_28_question_order_no_auth_401(client):
+    """UC-A-28: no auth → 401."""
+    r = client.put("/api/quizzes/1/question_order", json={"question_ids": []})
+    assert r.status_code == 401
+
+
+def test_uc_a_28_answer_order(admin_client):
+    """UC-A-28: PUT answer_order saves the new answer order and bumps last_edited_at."""
+    qid = admin_client.post("/api/quizzes", json={"title": "Ans"}).json()["id"]
+    q = admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": "Pick"}).json()["id"]
+    ids = [admin_client.post(f"/api/quiz_questions/{q}/answers", json={"text": t}).json()["id"]
+           for t in ("one", "two", "three")]
+    before = _last_edited(qid)
+    r = admin_client.put(f"/api/quiz_questions/{q}/answer_order",
+                         json={"answer_ids": [ids[2], ids[0], ids[1]]})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True}
+    answers = admin_client.get(f"/api/quizzes/{qid}").json()["questions"][0]["answers"]
+    assert [a["text"] for a in answers] == ["three", "one", "two"]
+    assert [a["order_index"] for a in answers] == [0, 1, 2]
+    assert _last_edited(qid) > before
+
+
+def test_uc_a_28_answer_order_bad_list_400(admin_client):
+    """UC-A-28: a bad answer_ids list → 400."""
+    qid = admin_client.post("/api/quizzes", json={"title": "Ans"}).json()["id"]
+    q = admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": "Pick"}).json()["id"]
+    a = admin_client.post(f"/api/quiz_questions/{q}/answers", json={"text": "one"}).json()["id"]
+    admin_client.post(f"/api/quiz_questions/{q}/answers", json={"text": "two"})
+    r = admin_client.put(f"/api/quiz_questions/{q}/answer_order", json={"answer_ids": [a]})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "answer_ids must list every answer of this question exactly once"}
+
+
+def test_uc_a_28_answer_order_non_owner_404(admin_client, make_quiz):
+    """UC-A-28: answer_order for a non-owner question → 404."""
+    quiz = make_quiz()
+    from app import auth
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        other = m.User(username="other_aord", password_hash=auth.hash_password("longenough"))
+        db.add(other); db.commit(); db.refresh(other)
+        db.get(m.Quiz, quiz["id"]).owner_user_id = other.id
+        db.commit()
+    r = admin_client.put(f"/api/quiz_questions/{quiz['question_id']}/answer_order",
+                         json={"answer_ids": []})
+    assert r.status_code == 404
+
+
+def test_uc_a_28_reorder_keeps_past_runs(admin_client, make_session):
+    """UC-A-28: a run launched before a reorder keeps its order; a later run uses the new one."""
+    qid, (a, b, c) = _three_question_quiz(admin_client)
+    assert admin_client.post(f"/api/quizzes/{qid}/publish").status_code == 200
+    s = make_session()
+    first = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": qid}).json()
+    admin_client.put(f"/api/quizzes/{qid}/question_order", json={"question_ids": [c, b, a]})
+    second = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": qid}).json()
+
+    def run_texts(run_id):
+        return [q["text"] for q in admin_client.get(f"/api/quiz_runs/{run_id}/results").json()["questions"]]
+    assert run_texts(first["id"]) == ["A?", "B?", "C?"]
+    assert run_texts(second["id"]) == ["C?", "B?", "A?"]
 
 
 # ---------- UC-A-20: Upload image ----------

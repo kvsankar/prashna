@@ -68,12 +68,11 @@ the read density.
   hierarchy and provides an up link; its `nav.section-links` jumps to
   the important sections of long pages. The bar is sticky on desktop
   and wraps into two rows on narrow screens.
-- Moderator navigation is the most complete example: **Sessions →
-  session → Moderator** plus Lifecycle, Set up, Quiz, Questions,
-  Profiles, and Feedback section links. The session crumb uses
-  `/?session=<CODE>` so an authenticated owner returns directly to the
-  corresponding admin detail card. A section link that targets a
-  collapsed `<details>` opens it before scrolling.
+- The session page (`/m/<code>`, shared by the admin owner and
+  delegate moderators) is the most complete example: **Sessions →
+  session** plus Lifecycle, Set up, Quiz, Questions, Profiles, and
+  Feedback section links. A section link that targets a collapsed
+  `<details>` opens it before scrolling.
 - The participant surface uses the same pattern with read-appropriate
   section links. The projector remains the exception: as a public
   presentation surface it has no interactive chrome.
@@ -124,8 +123,10 @@ operational surface stays uncluttered.
 - Default open/closed by lifecycle: open while still being prepared
   (`planning`), collapsed once `live`. Set `.open` **once on load** — not
   on every refresh, or you'll fight the user's manual toggle.
-- First use: the moderator page — Invite + Add-a-quiz live in "Set up";
-  the live Quiz + Q&A panels stay operational below.
+- First use: the session page — Invite and, for the admin owner, Session
+  settings live in "Set up"; the live Quiz + Q&A panels stay operational
+  below. Adding a quiz is operational (presenters add one mid-session), so
+  its **+ Add quiz** composer sits in the Quiz card header, not in Set up.
 
 ### Overflow menu (`<details class="menu">`)
 
@@ -166,6 +167,10 @@ disclosure (not a custom popover) for keyboard/no-JS robustness.
   **Remove from session**; live rows say **Delete run (discard results)**.
   An ended session never offers Start for a legacy queued row, but keeps
   **Remove from session** available so the orphan can be cleaned up.
+- The quiz library row keeps Publish/Unpublish and **Add to session**
+  inline; Duplicate and Delete live in its ⋯ menu. **Add to session** is
+  itself a `<details class="menu">` whose panel lists the open sessions
+  as verb buttons — a menu, not a modal, because it is one click deep.
 
 ---
 
@@ -212,7 +217,10 @@ the data remains comparable; the selection is reflected in the
 
 **Row interaction:** the whole row is clickable to drill in (`class=
 "rowable"`). Buttons inside the row use `event.stopPropagation()`. A
-selected drill-in row gets `class="rowable selected"`.
+selected drill-in row gets `class="rowable selected"`. When the thing a
+row names has its own page (a session and its session page), the row
+navigates there instead of opening a detail card, and its title cell is
+a real link so it also works from the keyboard.
 
 **Empty state:** a `<tr><td colspan>` with muted small text *plus* a
 hint about how to create (e.g., "No quizzes yet. Add one using the
@@ -285,9 +293,28 @@ itself with `tr.expanded > td.detail-cell` content. Reserved for
 - **Pessimistic refresh** for structural changes (adding a question,
   reordering) — re-fetch and re-render the detail.
 
+### Reorder
+
+- Each item in an ordered list carries a **drag handle** (`⠿`,
+  `.drag-handle`, `aria-label="Drag to reorder"`) plus **Move up** /
+  **Move down** icon buttons (`↑` / `↓` with `aria-label`s naming the
+  item, e.g. "Move question up"). Disable Move up on the first item and
+  Move down on the last.
+- Drag uses pointer events with `touch-action: none` on the handle, so it
+  works with a mouse and on touch screens. The browser's HTML5
+  drag-and-drop is not used; it doesn't fire on touch devices.
+- While dragging, the item follows the pointer by moving in the DOM
+  (`.dragging` style); the page auto-scrolls near the viewport edges.
+- On drop, send the **whole new order** in one request (`PUT …/…_order`
+  with every id) and re-render from the response — never one PATCH per
+  moved item, which leaves duplicate positions when a request fails.
+- First use: questions and answers in the quiz editor.
+
 ### Delete
 
-- A **`danger ghost xsmall`** button in the row's actions column.
+- A **`danger ghost xsmall`** button in the row's actions column, or in
+  the row's ⋯ menu below a `.menu-sep` when the row has more actions than
+  fit inline.
 - Confirms with native `confirm("Delete this ___?")` for now. Replace
   with a modal once we have a modal pattern.
 - On success: remove the row immediately, close the detail pane if it

@@ -82,47 +82,6 @@
       </div>
     </section>
 
-    <section class="card compact" id="session-detail-card" style="display:none;">
-      <div class="card-head">
-        <h2 id="sd-title">Session settings</h2>
-        <button class="ghost small" id="sd-close">Close</button>
-      </div>
-      <div class="field row gap">
-        <label class="small muted" for="sd-session-title" style="min-width: 110px;">Title</label>
-        <input id="sd-session-title" class="inline" style="flex:1;" maxlength="200">
-      </div>
-      <div class="field row gap" id="sd-lifecycle">
-        <label class="small muted" style="min-width: 110px;">Lifecycle</label>
-        <span id="sd-status" class="badge"></span>
-        <span id="sd-lifecycle-hint" class="small muted"></span>
-        <div class="spacer"></div>
-        <span id="sd-lifecycle-actions"></span>
-      </div>
-      <div class="field row gap">
-        <label class="small muted" style="min-width: 110px;">Moderator</label>
-        <a id="sd-open-mod" class="small" href="#">Open moderator →</a>
-        <button id="sd-share-mod" class="ghost xsmall">Share moderator URL</button>
-        <span class="small muted">(use this to delegate moderation to someone without an admin account)</span>
-      </div>
-      <p class="muted small" style="margin: 12px 0 8px;">
-        Participants join at the URL shown below. Override the base URL if this server is reached via a different public address (LAN IP, reverse proxy, tunnel, vanity domain). Leave blank to use whatever address you're currently browsing from.
-      </p>
-      <div class="field row gap">
-        <label class="small muted" for="sd-base-url" style="min-width: 110px;">Base URL</label>
-        <input id="sd-base-url" class="inline" style="flex:1;" placeholder="e.g. https://prashna.sankara.net">
-        <button id="sd-clear" class="ghost small">Use default</button>
-      </div>
-      <div class="row gap" style="align-items: flex-start; margin-top: 12px;">
-        <div id="sd-qr" style="width: 180px; min-width: 180px;"></div>
-        <div style="flex:1;">
-          <div class="small muted" style="margin-bottom: 4px;">Participant URL</div>
-          <code id="sd-url" class="small" style="display:block; padding: 8px; background: var(--panel-2); border-radius: 6px; word-break: break-all;"></code>
-          <button id="sd-copy" class="ghost small" style="margin-top: 8px;">Copy URL</button>
-        </div>
-      </div>
-      <div id="sd-feedback" style="margin-top: 16px;"></div>
-    </section>
-
     <section class="card compact" id="confirm-delete-card" style="display:none;">
       <div class="card-head">
         <h2>Delete session?</h2>

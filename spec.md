@@ -209,7 +209,7 @@ accepted behavior.
     1. Admin enters a session title.
     2. System creates a planning session with a unique code.
     3. System lists owned sessions with status and counts.
-    4. Admin opens session details.
+    4. Admin opens the session page, which also holds every moderator control.
     5. Admin updates title or participant base URL when needed.
     6. Admin starts the session when ready.
     7. System allows live participation surfaces to reflect the live state.
@@ -254,6 +254,9 @@ accepted behavior.
     9. System makes the ready quiz available for session runs.
   -  Alternate flows: Admin edits an existing ready quiz. Admin unpublishes a
     quiz. Admin duplicates a template into a new draft and edits the copy.
+    Admin reorders questions and answers by dragging or with move buttons.
+    Admin adds a quiz to an open session from the library, publishing a
+    valid draft in the same step.
     Admin deletes an unused or allowed template. Admin creates a
     poll-style question without a correct answer when the baseline supports that
     mode.

@@ -1,5 +1,5 @@
 import {
-  $, api, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
+  $, api, bindMenuDismiss, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
   markUsable, openLiveSocket, pathCode, renderQR, setModKey, statusLabel, toast,
 } from "./common";
 import type {
@@ -11,11 +11,11 @@ import type {
   QuizRun,
   QuizSummary,
   Session,
+  SessionRow,
 } from "./types";
 
 const CODE = pathCode();
-$("#moderator-breadcrumb-code").textContent = CODE;
-$<HTMLAnchorElement>("#moderator-session-link").href = `/?session=${encodeURIComponent(CODE)}`;
+$("#session-crumb").textContent = "Session " + CODE;
 
 // Pick up mod_key from URL hash on first visit.
 if (location.hash.includes("k=")) {
@@ -41,6 +41,8 @@ function showWorkSurfaces(visible: boolean): void {
   for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "profiles-card", "feedback-card"]) {
     $("#" + id).style.display = visible ? "" : "none";
   }
+  // Owner-only controls (UC-A-08); delegates never see them.
+  $("#settings-card").style.display = visible && isOwner ? "" : "none";
 }
 function showKeyGate(): void {
   $("#modkey-code").textContent = CODE;
@@ -59,16 +61,7 @@ async function trySubmitKey(): Promise<void> {
 $("#modkey-submit").addEventListener("click", () => void trySubmitKey());
 $("#modkey-input").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void trySubmitKey(); });
 
-// Close any open ⋯ run-action menu on outside-click or Esc.
-document.addEventListener("click", (e) => {
-  for (const d of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) {
-    if (!d.contains(e.target as Node)) d.open = false;
-  }
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  for (const d of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) d.open = false;
-});
+bindMenuDismiss();
 
 async function loadSession(): Promise<void> {
   const seq = ++latestSessionSeq;
@@ -82,9 +75,9 @@ function applySession(loaded: Session, seq = latestSessionSeq): void {
   document.title = `Mod — ${sessionState.title}`;
   $("#title").textContent = sessionState.title;
   $("#code").textContent = "Code " + CODE;
-  const sessionLink = $<HTMLAnchorElement>("#moderator-session-link");
-  sessionLink.textContent = sessionState.title;
-  sessionLink.href = `/?session=${encodeURIComponent(CODE)}`;
+  $("#session-crumb").textContent = sessionState.title;
+  const titleInp = $<HTMLInputElement>("#set-title");
+  if (document.activeElement !== titleInp) titleInp.value = sessionState.title;
   $<HTMLAnchorElement>("#participant-link").href = `/s/${CODE}`;
   $<HTMLAnchorElement>("#projector-link").href = `/p/${CODE}`;
   renderLifecycle();
@@ -121,6 +114,37 @@ $("#invite-copy").addEventListener("click", async () => {
   const url = $("#invite-url").textContent ?? "";
   try { await navigator.clipboard.writeText(url); toast("URL copied"); }
   catch { errorToast("Couldn't copy — load over HTTPS for clipboard access."); }
+});
+
+// ----- owner-only Session settings (UC-A-05, UC-A-07, UC-A-08) -----
+async function saveTitle(): Promise<void> {
+  const input = $<HTMLInputElement>("#set-title");
+  if (!sessionState || input.value === sessionState.title) return;
+  try {
+    await api(`/api/sessions/${CODE}`, { method: "PATCH", body: { title: input.value } });
+    await loadSession();
+    toast("Title saved");
+  } catch (e) {
+    input.value = sessionState.title;
+    errorToast((e as Error).message);
+  }
+}
+$("#set-title").addEventListener("change", () => void saveTitle());
+$("#set-share-mod").addEventListener("click", async () => {
+  // Fetch the key on demand so it never sits in the DOM (CLAUDE.md).
+  try {
+    const rows = await api<SessionRow[]>("/api/sessions");
+    const row = rows.find((r) => r.code === CODE);
+    if (!row) throw new Error("Session not found");
+    await navigator.clipboard.writeText(`${location.origin}/m/${CODE}#k=${row.mod_key}`);
+    toast("Moderator URL copied — share with delegates only.");
+  } catch {
+    errorToast("Couldn't copy — load over HTTPS for clipboard access.");
+  }
+});
+// Deletion stays one flow on the session list (typed-title confirm).
+$("#set-delete").addEventListener("click", () => {
+  location.href = `/?delete=${encodeURIComponent(CODE)}`;
 });
 
 function renderLifecycle(): void {
@@ -259,12 +283,22 @@ function renderQuery(q: Query): HTMLElement {
 function applyQuizzes(rows: QuizSummary[]): void {
   quizzes = rows;
   const sel = $<HTMLSelectElement>("#quiz-select");
+  const previous = sel.value;
   sel.innerHTML = "";
   if (!quizzes.length) {
     sel.appendChild(el("option", { value: "" }, "No ready quizzes — publish one in the library"));
-  } else {
-    for (const q of quizzes) sel.appendChild(el("option", { value: q.id }, `${q.title} (${q.question_count} questions)`));
+    return;
   }
+  for (const q of quizzes) {
+    const label = `${q.title} (${q.question_count} questions)`
+      + (q.status === "draft" ? " (draft)" : "");
+    sel.appendChild(el("option", { value: q.id }, label));
+  }
+  if (quizzes.some((q) => String(q.id) === previous)) sel.value = previous;
+}
+
+async function loadAvailableQuizzes(): Promise<void> {
+  applyQuizzes(await api<QuizSummary[]>(`/api/sessions/${CODE}/available_quizzes`, { headers: modHeaders() }));
 }
 
 async function loadQuizRuns(): Promise<void> {
@@ -279,7 +313,7 @@ function renderQuizRuns(): void {
   const root = $("#quiz-runs");
   root.innerHTML = "";
   if (!quizRuns.length) {
-    root.appendChild(el("div", { class: "muted small" }, "No quizzes added yet — open Set up above and Add a quiz."));
+    root.appendChild(el("div", { class: "muted small" }, "No quizzes added yet — pick one above and click + Add quiz."));
     return;
   }
   for (const r of quizRuns) root.appendChild(renderQuizRun(r));
@@ -413,12 +447,16 @@ async function del(id: number, status: string): Promise<void> {
 guardClick($<HTMLButtonElement>("#add-quiz-btn"), async () => {
   const quizId = parseInt($<HTMLSelectElement>("#quiz-select").value, 10);
   if (!quizId) { errorToast("Pick a quiz first."); return; }
+  // A draft is published and queued in one step (UC-M-03); the server
+  // runs the publish checks and refuses delegates.
+  const isDraft = quizzes.find((q) => q.id === quizId)?.status === "draft";
   try {
     const r = await api<QuizRun>(`/api/sessions/${CODE}/quiz_runs`, {
-      method: "POST", headers: modHeaders(), body: { quiz_id: quizId },
+      method: "POST", headers: modHeaders(), body: { quiz_id: quizId, publish: isDraft },
     });
     await loadQuizRuns();
-    toast(`Queued v${r.version_no}`);
+    if (isDraft) void loadAvailableQuizzes();
+    toast(isDraft ? `Published and queued v${r.version_no}` : `Queued v${r.version_no}`);
   } catch (e) { errorToast((e as Error).message); }
 });
 

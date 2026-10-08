@@ -250,6 +250,86 @@ def test_uc_m_03_no_auth_403(client, admin_client, make_quiz, make_session):
     assert r.status_code == 403
 
 
+def _valid_draft(admin_client, title: str = "Draft") -> int:
+    """A draft quiz that would pass publish validation."""
+    qid = admin_client.post("/api/quizzes", json={"title": title}).json()["id"]
+    question = admin_client.post(f"/api/quizzes/{qid}/questions",
+                                 json={"text": "2+2?", "qtype": "single"}).json()["id"]
+    admin_client.post(f"/api/quiz_questions/{question}/answers", json={"text": "3"})
+    admin_client.post(f"/api/quiz_questions/{question}/answers",
+                      json={"text": "4", "is_correct": True})
+    return qid
+
+
+def _run_count(admin_client, code: str) -> int:
+    return len(admin_client.get(f"/api/sessions/{code}/quiz_runs").json())
+
+
+def test_uc_m_03_publish_and_add_valid_draft(admin_client, make_session):
+    """UC-M-03: publish=true on a valid draft publishes it and queues a run."""
+    qid = _valid_draft(admin_client)
+    s = make_session()
+    r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                          json={"quiz_id": qid, "publish": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "queued"
+    assert admin_client.get(f"/api/quizzes/{qid}").json()["status"] == "ready"
+    assert _run_count(admin_client, s["code"]) == 1
+
+
+def test_uc_m_03_publish_and_add_invalid_draft_400(admin_client, make_session):
+    """UC-M-03: publish=true on an invalid draft → publish validation 400; nothing changes."""
+    qid = admin_client.post("/api/quizzes", json={"title": "Empty"}).json()["id"]
+    s = make_session()
+    r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                          json={"quiz_id": qid, "publish": True})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Quiz needs at least one question"}
+    assert admin_client.get(f"/api/quizzes/{qid}").json()["status"] == "draft"
+    assert _run_count(admin_client, s["code"]) == 0
+
+
+def test_uc_m_03_publish_and_add_delegate_403(admin_client, make_session, mod_headers):
+    """UC-M-03: a delegate can't publish a draft via publish=true."""
+    qid = _valid_draft(admin_client)
+    s = make_session()
+    admin_client.cookies.clear()
+    r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                          json={"quiz_id": qid, "publish": True},
+                          headers=mod_headers(s["mod_key"]))
+    assert r.status_code == 403
+    assert r.json() == {"detail": "Only the admin can publish a draft quiz"}
+    runs = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs",
+                            headers=mod_headers(s["mod_key"])).json()
+    assert runs == []
+
+
+def test_uc_m_03_publish_flag_ignored_for_ready_quiz(admin_client, make_quiz, make_session, mod_headers):
+    """UC-M-03: publish=true on a ready quiz is a no-op, so delegates may send it."""
+    q = make_quiz()
+    s = make_session()
+    admin_client.cookies.clear()
+    r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                          json={"quiz_id": q["id"], "publish": True},
+                          headers=mod_headers(s["mod_key"]))
+    assert r.status_code == 200, r.text
+
+
+def test_uc_m_03_available_quizzes_drafts_for_owner_only(admin_client, make_quiz, make_session, mod_headers):
+    """UC-M-03: the owner's picker includes drafts; a delegate's doesn't."""
+    ready = make_quiz("Ready one")
+    draft = admin_client.post("/api/quizzes", json={"title": "Draft one"}).json()
+    s = make_session()
+    path = f"/api/sessions/{s['code']}/available_quizzes"
+    owner = {q["id"]: q["status"] for q in admin_client.get(path).json()}
+    assert owner == {ready["id"]: "ready", draft["id"]: "draft"}
+    boot = admin_client.get(f"/api/sessions/{s['code']}/moderator-bootstrap").json()
+    assert {q["id"] for q in boot["available_quizzes"]} == {ready["id"], draft["id"]}
+    admin_client.cookies.clear()
+    delegate = admin_client.get(path, headers=mod_headers(s["mod_key"])).json()
+    assert [q["id"] for q in delegate] == [ready["id"]]
+
+
 # ---------- UC-M-04: Start a queued quiz run ----------
 
 def _queue_run(admin_client, make_quiz, make_session):

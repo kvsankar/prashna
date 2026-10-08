@@ -595,7 +595,12 @@ def serialize_session_quiz_runs(
     ]
 
 
-def available_quiz_summaries(db: DbSession, session: m.Session) -> list[dict]:
+def available_quiz_summaries(
+    db: DbSession, session: m.Session, include_drafts: bool = False
+) -> list[dict]:
+    """Quizzes that can be queued in this session. Drafts are included only
+    for the admin owner, who can publish them on add (UC-M-03)."""
+    statuses = ("ready", "draft") if include_drafts else ("ready",)
     question_count = (
         select(func.count(m.Question.id))
         .where(m.Question.quiz_id == m.Quiz.id)
@@ -606,7 +611,7 @@ def available_quiz_summaries(db: DbSession, session: m.Session) -> list[dict]:
         select(m.Quiz, question_count.label("question_count"))
         .where(
             m.Quiz.owner_user_id == session.owner_user_id,
-            m.Quiz.status == "ready",
+            m.Quiz.status.in_(statuses),
         )
         .order_by(m.Quiz.created_at.desc())
     ).all()
@@ -1130,7 +1135,9 @@ def moderator_bootstrap(
     require_mod_or_owner(session, x_mod_key, me)
     return {
         "session": serialize_session(session),
-        "available_quizzes": available_quiz_summaries(db, session),
+        "available_quizzes": available_quiz_summaries(
+            db, session, include_drafts=is_admin_owner(session, me)
+        ),
         "is_owner": is_admin_owner(session, me),
     }
 
@@ -1962,6 +1969,56 @@ def _owned_quiz_question_or_404(db: DbSession, question_id: int, user: m.User) -
     return qq
 
 
+def _apply_order(items: list, ids: object, message: str) -> None:
+    """Renumber `items` 0..n-1 in the order given by `ids`, which must list
+    every item's id exactly once; otherwise 400 and nothing changes."""
+    by_id = {item.id: item for item in items}
+    if (
+        not isinstance(ids, list)
+        or len(ids) != len(by_id)
+        or set(ids) != set(by_id)
+    ):
+        raise HTTPException(400, message)
+    for position, item_id in enumerate(ids):
+        by_id[item_id].order_index = position
+
+
+@app.put("/api/quizzes/{quiz_id}/question_order")
+def reorder_quiz_questions(
+    quiz_id: int,
+    payload: dict,
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    quiz = _owned_quiz_or_404(db, quiz_id, me)
+    _apply_order(
+        quiz.questions,
+        payload.get("question_ids"),
+        "question_ids must list every question in this quiz exactly once",
+    )
+    _mark_quiz_edited(quiz)
+    db.commit()
+    return {"ok": True}
+
+
+@app.put("/api/quiz_questions/{question_id}/answer_order")
+def reorder_quiz_answers(
+    question_id: int,
+    payload: dict,
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    qq = _owned_quiz_question_or_404(db, question_id, me)
+    _apply_order(
+        qq.answers,
+        payload.get("answer_ids"),
+        "answer_ids must list every answer of this question exactly once",
+    )
+    _mark_quiz_edited(qq.quiz)
+    db.commit()
+    return {"ok": True}
+
+
 @app.patch("/api/quiz_questions/{question_id}")
 def update_quiz_question(
     question_id: int,
@@ -2257,15 +2314,16 @@ def list_available_quizzes(
     db: DbSession = Depends(get_db),
     me: m.User | None = Depends(auth.optional_admin),
 ):
-    """Ready quizzes the session-owner can launch in this session.
+    """Quizzes the session-owner can launch in this session.
 
-    Same shape as `/api/quizzes?ready_only=true`, but gated on mod-or-owner
-    auth so a delegate (mod-key holder, no admin account) can populate the
-    Launch dropdown. Filters by `owner_user_id = session.owner_user_id`.
+    Same shape as `/api/quizzes`, but gated on mod-or-owner auth so a
+    delegate (mod-key holder, no admin account) can populate the Add quiz
+    picker. Filters by `owner_user_id = session.owner_user_id`. Delegates
+    get Ready quizzes only; the admin owner also gets drafts (UC-M-03).
     """
     s = get_session_by_code(db, code)
     require_mod_or_owner(s, x_mod_key, me)
-    return available_quiz_summaries(db, s)
+    return available_quiz_summaries(db, s, include_drafts=is_admin_owner(s, me))
 
 
 @app.post("/api/sessions/{code}/quiz_runs")
@@ -2285,7 +2343,14 @@ async def create_quiz_run(
     if not quiz or quiz.owner_user_id != s.owner_user_id:
         raise HTTPException(404, "quiz not found")
     if quiz.status != "ready":
-        raise HTTPException(400, "Quiz is still a draft — publish it first")
+        if not payload.get("publish"):
+            raise HTTPException(400, "Quiz is still a draft — publish it first")
+        # Publishing is an authoring action: only the admin owner, never a
+        # delegate holding just the mod_key.
+        if not is_admin_owner(s, me):
+            raise HTTPException(403, "Only the admin can publish a draft quiz")
+        _validate_quiz_publishable(quiz)
+        quiz.status = "ready"
     version = _ensure_current_version(db, quiz)
     run = m.QuizRun(session_id=s.id, quiz_version_id=version.id, status="queued")
     db.add(run)

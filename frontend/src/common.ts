@@ -303,3 +303,22 @@ export function guardClick<B extends HTMLButtonElement>(button: B, handler: (ev:
   });
   return button;
 }
+
+/** Close open `details.menu` disclosures on outside click and Esc (UX.md
+ *  §4). Native `<details>` only toggles on its own summary. Bind once per
+ *  page; an Esc that closed a menu is marked `defaultPrevented` so page-level
+ *  Esc handlers can leave their drill-downs open. */
+export function bindMenuDismiss(): void {
+  document.addEventListener("click", (e) => {
+    for (const d of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) {
+      if (!d.contains(e.target as Node)) d.open = false;
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    for (const d of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) {
+      d.open = false;
+      e.preventDefault();
+    }
+  });
+}
