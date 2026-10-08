@@ -38,6 +38,57 @@ export function setVisible(node: HTMLElement, visible: boolean): void {
   node.hidden = !visible;
 }
 
+/** What an answer option can show. Surfaces differ only in which fields
+ *  they pass (UC-X-14, UX.md "Answer options"). */
+export interface AnswerOptionView {
+  text: string;
+  imageUrl?: string | null;
+  /** Share of respondents, 0..1. Omit to hide the bar and the count. */
+  share?: number;
+  count?: number;
+  /** Revealed correct answer: "✓ Correct" in text, not only colour. */
+  correct?: boolean;
+  /** Revealed, and the viewer picked this wrong answer. */
+  wrong?: boolean;
+  /** Pickable options (participant) are buttons. */
+  onPick?: () => void;
+  disabled?: boolean;
+  selected?: boolean;
+  /** Shown beside a selected option, e.g. "Selected" or "Your answer". */
+  chosenLabel?: string;
+}
+
+/** The one renderer for answer options on the participant page, the
+ *  session page, and the projector. */
+export function answerOption(v: AnswerOptionView): HTMLElement {
+  const pickable = v.onPick !== undefined;
+  const cls = ["option",
+    v.selected ? "selected" : "",
+    !pickable || v.disabled ? "disabled" : "",
+    v.correct ? "correct" : "",
+    v.wrong ? "wrong" : ""].filter(Boolean).join(" ");
+  const node = pickable
+    ? el("button", {
+      type: "button", class: cls, disabled: Boolean(v.disabled),
+      "aria-pressed": String(Boolean(v.selected)), onclick: v.onPick,
+    })
+    : el("div", { class: cls });
+  if (v.share !== undefined) {
+    const bar = el("div", { class: "bar" });
+    bar.style.setProperty("--share", String(v.share));
+    node.appendChild(bar);
+  }
+  if (pickable) node.appendChild(el("span", { class: "opt-mark", "aria-hidden": "true" }, v.selected ? "✓" : ""));
+  if (v.imageUrl) node.appendChild(el("img", { class: "opt-img", src: v.imageUrl, alt: "" }));
+  node.appendChild(el("div", { class: "opt-text" }, v.text));
+  if (v.selected && v.chosenLabel) node.appendChild(el("span", { class: "opt-chosen" }, v.chosenLabel));
+  if (v.correct) node.appendChild(el("span", { class: "opt-correct" }, "✓ Correct"));
+  if (v.share !== undefined) {
+    node.appendChild(el("div", { class: "opt-pct" }, `${v.count ?? 0} (${Math.round(v.share * 100)}%)`));
+  }
+  return node;
+}
+
 /** Create an element. `class`/`html` are special; `on*` attach listeners;
  *  false/null attrs are skipped; `true` becomes a bare attribute. */
 export function el(tag: string, attrs: Attrs = {}, ...children: (Child | Child[])[]): HTMLElement {

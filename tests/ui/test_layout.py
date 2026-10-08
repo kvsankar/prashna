@@ -1,7 +1,10 @@
 """UC-X-12 and UC-X-13: phone-width layout and the button size scale."""
 from __future__ import annotations
 
+import re
 import secrets
+
+from playwright.sync_api import expect
 
 from ._helpers import (
     admin_login_via_ui,
@@ -148,3 +151,37 @@ def test_uc_x_13_landing_actions_share_one_size(base_url, admin_setup, page):
     page.goto(base_url + "/")
     page.wait_for_selector("#login-card:visible")
     _assert_same_scale(page.evaluate(SIZES_JS, ["#join-btn", "#li-btn"]))
+
+
+# ---------- UC-X-14 ----------
+
+
+
+def test_uc_x_14_revealed_answers_match_on_every_surface(base_url, admin_setup, browser):
+    """UC-X-14: after reveal, participant, session page, and projector agree."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-X14 {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-X14s {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/reveal", json={"reveal": True}).raise_for_status()
+    pages = []
+    try:
+        for url, login in ((f"/s/{s['code']}", False), (f"/m/{s['code']}", True), (f"/p/{s['code']}", False)):
+            ctx = browser.new_context()
+            page = ctx.new_page()
+            pages.append(ctx)
+            if login:
+                admin_login_via_ui(page, base_url)
+            page.goto(base_url + url)
+            options = page.locator(".option")
+            expect(options.first).to_be_visible(timeout=5000)
+            correct = page.locator(".option.correct")
+            expect(correct).to_have_count(1)
+            expect(correct.locator(".opt-correct")).to_have_text("✓ Correct")
+            for pct in page.locator(".opt-pct").all_inner_texts():
+                assert re.fullmatch(r"\d+ \(\d+%\)", pct), (url, pct)
+    finally:
+        for ctx in pages:
+            ctx.close()
+        c.close()

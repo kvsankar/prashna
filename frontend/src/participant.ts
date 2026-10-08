@@ -1,4 +1,4 @@
-import { $, api, el, errorToast, guardClick, markUsable, type LiveMessage, openLiveSocket, pathCode, renderQR, setVisible, toast } from "./common";
+import { $, answerOption, api, el, errorToast, guardClick, markUsable, type LiveMessage, openLiveSocket, pathCode, renderQR, setVisible, toast } from "./common";
 import type { Feedback, ParticipantBootstrap, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
@@ -332,35 +332,25 @@ function renderQuiz(): void {
   const locked = showCorrect;
   for (const a of q.answers) {
     const selected = pendingSelection.has(a.id);
-    const pct = totals ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
-    const onPick = () => {
-      if (locked) return;
-      if (q.qtype === "single") pendingSelection = new Set([a.id]);
-      else if (pendingSelection.has(a.id)) pendingSelection.delete(a.id);
-      else pendingSelection.add(a.id);
-      renderQuiz();
-    };
-    const aDiv = el("button", {
-      type: "button",
+    body.appendChild(answerOption({
+      text: a.text,
+      imageUrl: a.image_url,
+      share: totals ? (totals[a.id] || 0) / respondents : undefined,
+      count: totals ? totals[a.id] || 0 : undefined,
+      correct: showCorrect && a.is_correct === true,
+      wrong: showCorrect && selected && a.is_correct === false,
+      selected,
+      // The choice is marked with a tick and words, not only a tint (UC-P-08).
+      chosenLabel: locked ? "Your answer" : "Selected",
       disabled: locked,
-      "aria-pressed": String(selected),
-      class: "option" + (selected ? " selected" : "") + (locked ? " disabled" : "") +
-             (showCorrect && a.is_correct === true ? " correct" : "") +
-             (showCorrect && selected && a.is_correct === false ? " wrong" : ""),
-      onclick: onPick,
-    });
-    if (totals) {
-      const bar = el("div", { class: "bar" });
-      bar.style.setProperty("--share", String((totals[a.id] || 0) / respondents));
-      aDiv.appendChild(bar);
-    }
-    // Mark the choice with a tick and words, not only a border tint (UC-P-08).
-    aDiv.appendChild(el("span", { class: "opt-mark", "aria-hidden": "true" }, selected ? "✓" : ""));
-    if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
-    aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
-    if (selected) aDiv.appendChild(el("span", { class: "opt-chosen" }, locked ? "Your answer" : "Selected"));
-    if (totals) aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
-    body.appendChild(aDiv);
+      onPick: () => {
+        if (locked) return;
+        if (q.qtype === "single") pendingSelection = new Set([a.id]);
+        else if (pendingSelection.has(a.id)) pendingSelection.delete(a.id);
+        else pendingSelection.add(a.id);
+        renderQuiz();
+      },
+    }));
   }
   if (activeQuiz.results) {
     body.appendChild(el("div", { class: "small muted mt-2" },

@@ -118,6 +118,15 @@ A **card** is the single layout unit. Pages are sequences of cards.
 - Cards stack vertically. No horizontal card grids except in galleries
   (none today).
 
+### Answer options
+
+Answer options are one component: `answerOption()` in `common.ts`
+(UC-X-14). Pass what the surface needs — `onPick` (participant only, makes
+it a button), `share`/`count` (result bar and "n (p%)"), `correct`/`wrong`
+(after reveal), `selected` + `chosenLabel`. Don't build `.option` markup
+by hand. A correct answer always says "✓ Correct" in text, so correctness
+never depends on colour alone.
+
 ### Rows wrap by default
 
 `.row`, `.card-head`, `card-tools`, `header.top`, and `.page-nav` wrap

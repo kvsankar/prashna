@@ -1,4 +1,4 @@
-import { $, api, el, markUsable, openLiveSocket, pathCode, renderQR, setVisible } from "./common";
+import { $, answerOption, api, el, markUsable, openLiveSocket, pathCode, renderQR, setVisible } from "./common";
 import type { DisplayBootstrap, Query, QuizRun } from "./types";
 
 const CODE = pathCode();
@@ -106,19 +106,13 @@ function renderQuiz(run: QuizRun): void {
   const hideAnswerDetails = showCounts && !showCorrect && run.status === "live";
   const answers = hideAnswerDetails ? jumbledAnswers(q.answers, `${run.id}:${q.id}`) : q.answers;
   for (const [idx, a] of answers.entries()) {
-    const aDiv = el("div", { class: "option disabled" + (showCorrect && a.is_correct ? " correct" : "") });
-    if (showCounts) {
-      const bar = el("div", { class: "bar" });
-      bar.style.setProperty("--share", String(respondents ? (totals[a.id] || 0) / respondents : 0));
-      aDiv.appendChild(bar);
-    }
-    if (!hideAnswerDetails && a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
-    aDiv.appendChild(el("div", { class: "opt-text" }, hideAnswerDetails ? placeholderOptionLabel(idx) : a.text));
-    if (showCounts) {
-      const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
-      aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
-    }
-    body.appendChild(aDiv);
+    body.appendChild(answerOption({
+      text: hideAnswerDetails ? placeholderOptionLabel(idx) : a.text,
+      imageUrl: hideAnswerDetails ? null : a.image_url,
+      share: showCounts ? (respondents ? (totals[a.id] || 0) / respondents : 0) : undefined,
+      count: showCounts ? totals[a.id] || 0 : undefined,
+      correct: showCorrect && Boolean(a.is_correct),
+    }));
   }
   if (showCounts) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
 }

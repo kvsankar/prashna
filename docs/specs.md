@@ -2020,6 +2020,26 @@ same kind of action.
 - At 1280×800 on `/s/<code>` with rating open, `.profile-cta`, `#fb-submit`, and `#ask-btn` have the same height (within 1 px), at most 36 px, and a 14 px font.
 - At 1280×800 on `/` signed out, `#join-btn` and `#li-btn` have that same height and font size.
 
+### UC-X-14: One answer-option component
+
+The participant page, the session page, and the projector draw answer
+options with one shared renderer (`answerOption()` in `common.ts`), so
+a fix or style change reaches all three. Surfaces differ only in what
+they pass: whether the viewer can pick, whether counts show, and whether
+correctness is revealed.
+
+- **Given** a revealed question on all three surfaces
+- **Then** the correct answer shows "✓ Correct" as text (not only a green
+  border), and counts read "<n> (<p>%)" with a proportional bar
+- **And** only the participant page's options are buttons; a chosen
+  answer there shows a ✓ and "Selected" / "Your answer" (UC-P-08)
+
+**Tests (UI)**
+- After reveal, `/s/<code>` (participant), `/m/<code>` (session page), and `/p/<code>` (projector) each show exactly one `.option.correct` containing `.opt-correct` with text "✓ Correct", and every `.opt-pct` matches `^\d+ \(\d+%\)$`.
+
+**Tests (static)**
+- `frontend/src/participant.ts`, `moderator.ts`, and `projector.ts` don't build `.option` elements themselves; they call `answerOption()`.
+
 ---
 
 ## Deferred (decision needed)

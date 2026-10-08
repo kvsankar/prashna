@@ -1,5 +1,5 @@
 import {
-  $, api, bindMenuDismiss, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
+  $, answerOption, api, bindMenuDismiss, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
   markUsable, openLiveSocket, pathCode, renderQR, setModKey, setVisible, statusLabel, toast,
 } from "./common";
 import type {
@@ -378,15 +378,14 @@ function renderQuizRun(r: QuizRun): HTMLElement {
     detail.appendChild(el("div", {}, el("strong", {}, cur.text)));
     if (cur.image_url) detail.appendChild(el("img", { class: "q-image", src: cur.image_url }));
     for (const a of cur.answers) {
-      const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
-      const aDiv = el("div", { class: "option disabled" + (a.is_correct ? " correct" : "") });
-      const bar = el("div", { class: "bar" });
-      bar.style.setProperty("--share", String(respondents ? (totals[a.id] || 0) / respondents : 0));
-      aDiv.appendChild(bar);
-      if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
-      aDiv.appendChild(el("div", { class: "opt-text" }, a.text + (a.is_correct ? "  ✓" : "")));
-      aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
-      detail.appendChild(aDiv);
+      // The moderator always sees which answer is correct.
+      detail.appendChild(answerOption({
+        text: a.text,
+        imageUrl: a.image_url,
+        share: respondents ? (totals[a.id] || 0) / respondents : 0,
+        count: totals[a.id] || 0,
+        correct: Boolean(a.is_correct),
+      }));
     }
     detail.appendChild(el("div", { class: "small muted" }, `${respondents} respondent(s)`));
   }

@@ -132,3 +132,12 @@ def test_flex_containers_declare_wrapping():
         and not re.search(r"flex-direction:\s*column", decls)
     ]
     assert offenders == []
+
+
+def test_answer_options_come_from_one_renderer():
+    """UC-X-14: surfaces call answerOption() instead of building .option markup."""
+    for rel in ("participant.ts", "moderator.ts", "projector.ts"):
+        src = (ROOT / "frontend/src" / rel).read_text()
+        assert not re.search(r'class:\s*"option\b', src), rel
+        assert '"opt-text"' not in src, rel
+    assert "export function answerOption(" in (ROOT / "frontend/src/common.ts").read_text()

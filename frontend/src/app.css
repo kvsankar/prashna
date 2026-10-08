@@ -218,6 +218,7 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 }
 .option .opt-text { flex: 1; position: relative; z-index: 1; }
 .option .opt-mark { width: 1em; position: relative; z-index: 1; color: var(--accent-2); font-weight: 700; }
+.option .opt-correct { position: relative; z-index: 1; font-size: var(--text-sm); font-weight: 600; color: var(--good); white-space: nowrap; }
 .option .opt-chosen { position: relative; z-index: 1; font-size: var(--text-sm); font-weight: 600; color: var(--accent-2); white-space: nowrap; }
 .option .opt-pct { position: relative; z-index: 1; font-weight: 600; color: var(--accent-2); }
 .option img.opt-img { max-height: 80px; max-width: 120px; border-radius: 4px; position: relative; z-index: 1; }
@@ -228,6 +229,7 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 .proj .code-display { font-size: var(--text-3xl); color: var(--muted); margin-bottom: 24px; }
 .proj .question { font-size: var(--text-xl); padding: 16px; }
 .proj .option { font-size: var(--text-2xl); padding: 20px; }
+.proj .option .opt-correct { font-size: var(--text-xl); }
 .proj .q-image { max-height: 360px; }
 /* The question as written: no inherited h2 uppercase/muted styling, so long
    questions stay readable from the back of the room (UC-D-06). */
