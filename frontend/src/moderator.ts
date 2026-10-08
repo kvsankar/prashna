@@ -299,8 +299,11 @@ function applyQuizzes(rows: QuizSummary[]): void {
   // wrong quiz (UC-M-03).
   sel.appendChild(el("option", { value: "" }, "Choose a quiz…"));
   for (const q of quizzes) {
+    // Membership comes from the server (UC-M-03 in_session), the same
+    // source as the quiz library's Add to session menu.
     const label = `${q.title} (${q.question_count} questions)`
-      + (q.status === "draft" ? " (draft)" : "");
+      + (q.status === "draft" ? " (draft)" : "")
+      + (q.in_session ? ` — already added · ${statusLabel(q.in_session.run_status)}` : "");
     sel.appendChild(el("option", { value: q.id }, label));
   }
   if (quizzes.some((q) => String(q.id) === previous)) sel.value = previous;
@@ -473,13 +476,16 @@ guardClick($<HTMLButtonElement>("#add-quiz-btn"), async () => {
   if (!quizId) { errorToast("Pick a quiz first."); return; }
   // A draft is published and queued in one step (UC-M-03); the server
   // runs the publish checks and refuses delegates.
-  const isDraft = quizzes.find((q) => q.id === quizId)?.status === "draft";
+  const quiz = quizzes.find((q) => q.id === quizId);
+  const isDraft = quiz?.status === "draft";
+  // Repeating a quiz in a session is allowed but usually a mistake.
+  if (quiz?.in_session && !confirm(`"${quiz.title}" is already in this session. Add it again?`)) return;
   try {
     const r = await api<QuizRun>(`/api/sessions/${CODE}/quiz_runs`, {
       method: "POST", headers: modHeaders(), body: { quiz_id: quizId, publish: isDraft },
     });
     await loadQuizRuns();
-    if (isDraft) void loadAvailableQuizzes();
+    void loadAvailableQuizzes();
     toast(isDraft ? `Published and queued v${r.version_no}` : `Queued v${r.version_no}`);
   } catch (e) { errorToast((e as Error).message); }
 });
@@ -590,6 +596,9 @@ function refreshSoon(msg: LiveMessage): void {
     if (["session_state", "feedback_state"].some((type) => types.has(type))) void loadSession();
     if (["query_new", "query_vote", "query_responded", "query_removed", "query_deleted"].some((type) => types.has(type))) void loadQueries();
     if (["quiz_run_new", "quiz_run_update", "quiz_run_deleted", "quiz_submission"].some((type) => types.has(type))) void loadQuizRuns();
+    // The picker's "already added" labels follow runs being added, started,
+    // closed, or removed.
+    if (["quiz_run_new", "quiz_run_update", "quiz_run_deleted"].some((type) => types.has(type))) void loadAvailableQuizzes();
     if (["feedback", "feedback_state"].some((type) => types.has(type))) void loadFeedback();
     if (types.has("participant")) { void loadPresence(); void loadProfiles(); }
   }, 400);

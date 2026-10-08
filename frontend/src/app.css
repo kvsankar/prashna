@@ -359,6 +359,7 @@ button.xsmall { font-size: var(--text-xs); padding: calc((var(--control-h-xs) - 
 details.menu.row-more > summary { font-size: var(--text-base); }
 details.menu > .menu-panel.session-picker { min-width: 260px; max-width: 360px; white-space: normal; }
 details.menu > .menu-panel.session-picker button { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; font-size: var(--text-sm); color: var(--muted); }
 #quiz-select { max-width: 320px; }
 .thumb { max-height: 60px; max-width: 100px; border-radius: 4px; }
 .thumb-sm { max-height: 32px; max-width: 60px; border-radius: 4px; }

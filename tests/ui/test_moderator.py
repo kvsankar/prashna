@@ -289,6 +289,29 @@ def test_uc_m_03_ended_session_hides_composer(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_03_picker_marks_quiz_already_in_session(base_url, admin_setup, page):
+    """UC-M-03: a quiz already in this session is labelled; re-adding asks first."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M03dup {secrets.token_hex(3)}", publish=True)
+    fresh = api_make_quiz(c, f"UI-M03fresh {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M03dups {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz["id"])
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-select option[value]:not([value=''])", state="attached")
+        option = page.locator(f"#quiz-select option[value='{quiz['id']}']")
+        expect(option).to_contain_text("already added · Queued")
+        expect(page.locator(f"#quiz-select option[value='{fresh['id']}']")).not_to_contain_text("already added")
+        page.locator("#quiz-select").select_option(value=str(quiz["id"]))
+        page.once("dialog", lambda d: d.dismiss())
+        page.click("#add-quiz-btn")
+        page.wait_for_timeout(500)
+        assert len(c.get(f"/api/sessions/{s['code']}/quiz_runs").json()) == 1
+    finally:
+        c.close()
+
+
 # ---------- UC-M-04 ----------
 
 

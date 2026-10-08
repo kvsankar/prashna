@@ -330,6 +330,27 @@ def test_uc_m_03_available_quizzes_drafts_for_owner_only(admin_client, make_quiz
     assert [q["id"] for q in delegate] == [ready["id"]]
 
 
+def test_uc_m_03_available_quizzes_report_in_session(admin_client, make_quiz, make_session):
+    """UC-M-03: in_session is null until queued, then reports the run state here."""
+    q = make_quiz("membership")
+    s = make_session()
+    other = make_session("other")
+    path = f"/api/sessions/{s['code']}/available_quizzes"
+
+    def entry():
+        return next(x for x in admin_client.get(path).json() if x["id"] == q["id"])
+
+    assert entry()["in_session"] is None
+    admin_client.post(f"/api/sessions/{other['code']}/quiz_runs", json={"quiz_id": q["id"]})
+    assert entry()["in_session"] is None  # a run elsewhere doesn't count here
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]}).json()
+    assert entry()["in_session"] == {"run_status": "queued", "run_count": 1}
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
+    assert entry()["in_session"] == {"run_status": "live", "run_count": 1}
+    boot = admin_client.get(f"/api/sessions/{s['code']}/moderator-bootstrap").json()
+    assert next(x for x in boot["available_quizzes"] if x["id"] == q["id"])["in_session"]["run_status"] == "live"
+
+
 # ---------- UC-M-04: Start a queued quiz run ----------
 
 def _queue_run(admin_client, make_quiz, make_session):

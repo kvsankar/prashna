@@ -674,6 +674,35 @@ def test_uc_a_29_add_invalid_draft_toasts(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_a_29_menu_shows_sessions_already_holding_the_quiz(base_url, admin_setup, page):
+    """UC-A-29: a session that already has this quiz says so; re-adding asks first."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q29dup {secrets.token_hex(3)}", publish=True)
+    holding = api_make_session(c, f"UI-Q29hold {secrets.token_hex(3)}")
+    other = api_make_session(c, f"UI-Q29other {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, holding["code"], quiz["id"])
+    try:
+        _goto_quizzes(page, base_url)
+        row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        _open_add_menu(row)
+        items = row.locator("details.add-to-session .menu-panel button")
+        expect(items.filter(has_text=holding["title"])).to_contain_text("Already added · Queued")
+        expect(items.filter(has_text=other["title"])).not_to_contain_text("Already added")
+
+        page.once("dialog", lambda d: d.dismiss())
+        items.filter(has_text=holding["title"]).click()
+        page.wait_for_timeout(500)
+        assert len(c.get(f"/api/sessions/{holding['code']}/quiz_runs").json()) == 1
+
+        _open_add_menu(row)
+        page.once("dialog", lambda d: d.accept())
+        row.locator("details.add-to-session .menu-panel button").filter(has_text=holding["title"]).click()
+        expect(page.locator(".toast").last).to_contain_text(holding["title"])
+        assert len(c.get(f"/api/sessions/{holding['code']}/quiz_runs").json()) == 2
+    finally:
+        c.close()
+
+
 # ---------- UC-A-23 ----------
 
 

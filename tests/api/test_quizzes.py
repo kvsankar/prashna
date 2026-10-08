@@ -55,6 +55,26 @@ def test_uc_a_10_aggregate_question_count(admin_client, make_quiz):
     assert row["question_count"] == 2
 
 
+def test_uc_a_10_sessions_holding_each_quiz(admin_client, make_quiz, make_session):
+    """UC-A-10: each quiz lists the sessions holding its runs, with the most relevant state."""
+    used = make_quiz("used")
+    unused = make_quiz("unused")
+    s1 = make_session("first")
+    s2 = make_session("second")
+    admin_client.post(f"/api/sessions/{s1['code']}/quiz_runs", json={"quiz_id": used["id"]})
+    live = admin_client.post(f"/api/sessions/{s1['code']}/quiz_runs", json={"quiz_id": used["id"]}).json()
+    admin_client.post(f"/api/sessions/{s1['code']}/quiz_runs/{live['id']}/start")
+    admin_client.post(f"/api/sessions/{s2['code']}/quiz_runs", json={"quiz_id": used["id"]})
+    rows = {r["id"]: r for r in admin_client.get("/api/quizzes").json()}
+    assert rows[unused["id"]]["sessions"] == []
+    by_code = {x["code"]: x for x in rows[used["id"]]["sessions"]}
+    # Starting a run also starts a planning session (UC-M-04), so s1 is live.
+    assert by_code[s1["code"]] == {"code": s1["code"], "title": "first", "session_status": "live",
+                                   "run_status": "live", "run_count": 2}
+    assert by_code[s2["code"]]["run_status"] == "queued"
+    assert by_code[s2["code"]]["run_count"] == 1
+
+
 def test_uc_a_10_other_admins_quiz_excluded(admin_client, make_quiz):
     """UC-A-10: another admin's quiz not in response."""
     make_quiz("mine")

@@ -72,6 +72,7 @@ def test_moderator_bootstrap_accepts_owner_or_delegate(
             "title": "Bootstrap quiz",
             "status": "ready",
             "question_count": 1,
+            "in_session": None,
         }
     ]
 

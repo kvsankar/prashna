@@ -329,7 +329,8 @@ own use case so tests and PRs can cite one ID per behavior.
   table uses the full list
 
 **Tests (API)**
-- `GET /api/quizzes` → `200 [{id, title, status, question_count}, ...]` ordered `created_at desc`. Auth: admin cookie.
+- `GET /api/quizzes` → `200 [{id, title, status, question_count, sessions}, ...]` ordered `created_at desc`. Auth: admin cookie.
+- `sessions` lists each session that holds a run of the quiz: `{code, title, session_status, run_status, run_count}`, where `run_status` is the most relevant state of its runs there (`live` over `queued` over `closed`). A quiz never run has `sessions: []`. The same server function produces `in_session` for UC-M-03, so the library and the session page always agree.
 - A quiz owned by another admin is not in the response.
 - `GET /api/quizzes?ready_only=true` returns only quizzes with `status: "ready"`.
 - `GET /api/quizzes` with no auth → `401`.
@@ -665,11 +666,17 @@ Used by question and answer editors to set `image_url`.
   draft is published and queued in one step; an invalid draft shows the
   publish validation message and nothing is queued
 - **And** with no open sessions, the menu says so and links to `/`
+- **And** a session that already holds a run of this quiz (from the
+  quiz's `sessions`, UC-A-10) says so on its menu item ("Already added ·
+  Queued", "· Live", or "· Closed", the shared status labels). Clicking it asks for confirmation
+  before adding another run (repeating a quiz is allowed but usually a
+  mistake); declining adds nothing
 
 **Tests (UI)**
 - On `/quizzes`, opening a ready quiz row's Add to session menu lists a `planning` session and a `live` session (live first) but not an `ended` one; clicking the planning session toasts its title, and `GET /api/sessions/{code}/quiz_runs` returns one queued run.
 - Doing the same for a valid draft quiz flips the row's badge to Ready and queues a run.
 - Doing the same for an invalid draft (no questions) shows an error toast; the badge stays Draft and no run is queued.
+- For a quiz already queued in a session, that session's menu item reads "Already added · Queued"; other sessions' items don't say "Already added". Clicking it and dismissing the confirmation queues nothing; accepting it queues a second run.
 
 ### UC-A-23: Global quiz-runs report
 
@@ -898,6 +905,7 @@ the UI shows no button.
 - With no auth → `403`.
 - Success broadcasts `{type: "quiz_run_new"}`.
 - `GET /api/sessions/{code}/available_quizzes` (and the bootstrap's `available_quizzes`) returns Ready quizzes for a delegate, and Ready plus Draft quizzes (with `status`) for the admin owner.
+- Each entry has `in_session`: `null` when the quiz has no run in this session, otherwise `{run_status, run_count}` (same rules as UC-A-10's `sessions`). After queueing, it reports `{run_status: "queued", run_count: 1}`; after Start, `run_status: "live"`.
 
 The **+ Add quiz** composer is an operational control during a session,
 so it lives in the Quiz card header (`#quizzes-card` card-tools) and
@@ -915,6 +923,7 @@ it in `#quiz-runs`.
 - Selecting a valid draft and clicking `#add-quiz-btn` queues it and toasts that it was published.
 - `#quiz-select` starts on the placeholder (value `""`); clicking `#add-quiz-btn` without choosing toasts "Pick a quiz first." and queues nothing.
 - On an `ended` session, `#quiz-composer` is hidden.
+- A quiz already in this session is labelled in `#quiz-select` ("already added · Queued"); adding it asks for confirmation, and dismissing queues nothing. The picker refreshes when runs are added or removed.
 
 ### UC-M-04: Start a queued quiz run
 
@@ -926,6 +935,8 @@ it in `#quiz-runs`.
 - **And** if another QuizRun is already `live` in the same Session,
   the start returns `409 Another quiz is already live — close it
   first` (enforced by the `uq_session_live_run` partial unique index)
+- **And** a `planning` session becomes `live` (with `started_at` set)
+  when one of its runs starts
 
 **Tests (API)**
 - `POST /api/sessions/{code}/quiz_runs/{id}/start` on a `queued` run → `200 {ok: true}`; sets `status: "live"`, `current_question_idx: 0`, `reveal_current: false`, `started_at`. Auth: mod-key OR admin cookie.

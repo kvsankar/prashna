@@ -84,7 +84,10 @@ function addToSessionMenu(q: QuizSummary): HTMLElement {
     if (!details.open) return;
     panel.replaceChildren(el("div", { class: "muted small" }, "Loading…"));
     try {
-      const sessions = await openSessions();
+      // Fresh quiz list too: the server's `sessions` says where this quiz
+      // already is (UC-A-10), the same source the session page uses.
+      const [sessions, quizzes] = await Promise.all([openSessions(), api<QuizSummary[]>("/api/quizzes")]);
+      const held = new Map((quizzes.find((x) => x.id === q.id)?.sessions ?? []).map((u) => [u.code, u.run_status]));
       panel.replaceChildren();
       if (!sessions.length) {
         panel.appendChild(el("div", { class: "muted small" },
@@ -92,12 +95,15 @@ function addToSessionMenu(q: QuizSummary): HTMLElement {
         return;
       }
       for (const s of sessions) {
+        const already = held.get(s.code);
         panel.appendChild(guardClick(
           el("button", { class: "ghost small" },
             el("span", { class: "badge badge-" + s.status }, statusLabel(s.status)),
             " " + s.title + " ",
-            el("code", { class: "small" }, s.code)) as HTMLButtonElement,
-          () => addQuizToSession(q, s, details)));
+            el("code", { class: "small" }, s.code),
+            already ? el("span", { class: "already-added" }, `Already added · ${statusLabel(already)}`) : null,
+          ) as HTMLButtonElement,
+          () => addQuizToSession(q, s, details, Boolean(already))));
       }
     } catch (e) {
       details.open = false;
@@ -107,7 +113,14 @@ function addToSessionMenu(q: QuizSummary): HTMLElement {
   return details;
 }
 
-async function addQuizToSession(q: QuizSummary, s: SessionRow, menu: HTMLDetailsElement): Promise<void> {
+async function addQuizToSession(
+  q: QuizSummary, s: SessionRow, menu: HTMLDetailsElement, alreadyAdded: boolean,
+): Promise<void> {
+  // Repeating a quiz in a session is allowed but usually a mistake (UC-A-29).
+  if (alreadyAdded && !confirm(`"${q.title}" is already in "${s.title}". Add it again?`)) {
+    menu.open = false;
+    return;
+  }
   const isDraft = q.status !== "ready";
   try {
     // A draft is published and queued in one step; the server runs the

@@ -126,11 +126,23 @@ export interface SessionRow extends Session {
 }
 
 // --- quiz authoring (/quizzes) ---
+/** Where a quiz's runs are (UC-A-10); `run_status` is the most relevant
+ *  state there: live over queued over closed. */
+export interface QuizSessionUse {
+  code: string;
+  title: string;
+  session_status: string;
+  run_status: string;
+  run_count: number;
+}
+
 export interface QuizSummary {
   id: number;
   title: string;
   status: string; // draft | ready
   question_count: number;
+  sessions?: QuizSessionUse[]; // GET /api/quizzes
+  in_session?: { run_status: string; run_count: number } | null; // available_quizzes
 }
 
 export interface EditorAnswer {

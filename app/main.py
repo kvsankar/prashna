@@ -595,6 +595,40 @@ def serialize_session_quiz_runs(
     ]
 
 
+RUN_STATUS_RANK = {"live": 0, "queued": 1, "closed": 2}
+
+
+def quiz_session_usage(
+    db: DbSession, owner_user_id: int, session_id: int | None = None
+) -> dict[int, dict[str, dict]]:
+    """quiz_id -> session code -> where that quiz's runs are.
+
+    The one source for "is this quiz already in that session" (UC-A-10
+    `sessions`, UC-M-03 `in_session`). Each entry carries the most relevant
+    run state there (live over queued over closed) and the run count.
+    """
+    stmt = (
+        select(m.QuizVersion.quiz_id, m.Session.code, m.Session.title, m.Session.status, m.QuizRun.status)
+        .join(m.QuizVersion, m.QuizRun.quiz_version_id == m.QuizVersion.id)
+        .join(m.Session, m.QuizRun.session_id == m.Session.id)
+        .join(m.Quiz, m.QuizVersion.quiz_id == m.Quiz.id)
+        .where(m.Quiz.owner_user_id == owner_user_id)
+        .order_by(m.QuizRun.id)
+    )
+    if session_id is not None:
+        stmt = stmt.where(m.QuizRun.session_id == session_id)
+    usage: dict[int, dict[str, dict]] = {}
+    for quiz_id, code, title, session_status, run_status in db.execute(stmt):
+        entry = usage.setdefault(quiz_id, {}).setdefault(code, {
+            "code": code, "title": title, "session_status": session_status,
+            "run_status": run_status, "run_count": 0,
+        })
+        entry["run_count"] += 1
+        if RUN_STATUS_RANK.get(run_status, 9) < RUN_STATUS_RANK.get(entry["run_status"], 9):
+            entry["run_status"] = run_status
+    return usage
+
+
 def available_quiz_summaries(
     db: DbSession, session: m.Session, include_drafts: bool = False
 ) -> list[dict]:
@@ -615,12 +649,19 @@ def available_quiz_summaries(
         )
         .order_by(m.Quiz.created_at.desc())
     ).all()
+    usage = quiz_session_usage(db, session.owner_user_id, session_id=session.id)
+
+    def in_session(quiz_id: int) -> dict | None:
+        here = usage.get(quiz_id, {}).get(session.code)
+        return {"run_status": here["run_status"], "run_count": here["run_count"]} if here else None
+
     return [
         {
             "id": quiz.id,
             "title": quiz.title,
             "status": quiz.status,
             "question_count": count,
+            "in_session": in_session(quiz.id),
         }
         for quiz, count in quizzes
     ]
@@ -1787,8 +1828,12 @@ def list_quizzes(
     if ready_only:
         stmt = stmt.where(m.Quiz.status == "ready")
     quizzes = db.execute(stmt).all()
+    usage = quiz_session_usage(db, me.id)
     return [
-        {"id": q.id, "title": q.title, "status": q.status, "question_count": count}
+        {
+            "id": q.id, "title": q.title, "status": q.status, "question_count": count,
+            "sessions": list(usage.get(q.id, {}).values()),
+        }
         for q, count in quizzes
     ]
 
