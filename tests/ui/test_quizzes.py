@@ -1,6 +1,6 @@
 """UI tests for /quizzes — quiz library, editor, publish, runs report.
 
-Covers UC-A-09..22, UC-A-23, UC-A-24.
+Covers UC-A-09..22, UC-A-23, UC-A-24, UC-A-27.
 """
 from __future__ import annotations
 
@@ -157,6 +157,27 @@ def test_uc_a_13_delete_used_quiz_toasts_error(base_url, admin_setup, page):
         row.locator("button.danger").click()
         expect(page.locator(".toast-error")).to_be_visible()
         expect(row).to_be_visible()
+    finally:
+        c.close()
+
+
+# ---------- UC-A-27 ----------
+
+
+def test_uc_a_27_duplicate_adds_draft_row_and_opens_editor(base_url, admin_setup, page):
+    """UC-A-27: Duplicate adds a '<title> (copy)' Draft row and opens the editor on the copy."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q27 {secrets.token_hex(3)}", publish=True)
+    copy_title = quiz["title"] + " (copy)"
+    try:
+        _goto_quizzes(page, base_url)
+        row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        row.get_by_role("button", name="Duplicate").click()
+        copy_row = page.locator("#quiz-rows tr").filter(has_text=copy_title)
+        expect(copy_row).to_be_visible()
+        expect(copy_row.locator(".badge-draft")).to_be_visible()
+        expect(page.locator("#editor-card")).to_be_visible()
+        expect(page.locator("#editor-title")).to_contain_text(copy_title)
     finally:
         c.close()
 

@@ -37,6 +37,9 @@ async function loadQuizzes(): Promise<void> {
       : el("button", { class: "primary xsmall", onclick: (ev: Event) => { ev.stopPropagation(); void publishQuiz(q.id); } }, "Publish");
     actions.appendChild(toggleBtn);
     actions.appendChild(guardClick(
+      el("button", { class: "ghost xsmall", title: "Make an editable copy of this quiz" }, "Duplicate") as HTMLButtonElement,
+      (ev) => { ev.stopPropagation(); return duplicateQuiz(q.id); }));
+    actions.appendChild(guardClick(
       el("button", { class: "danger ghost xsmall" }, "Delete") as HTMLButtonElement,
       (ev) => { ev.stopPropagation(); return removeQuiz(q.id); }));
     tr.appendChild(actions);
@@ -222,6 +225,15 @@ async function removeQuiz(id: number): Promise<void> {
     if (editingId === id) closeEditor();
     void loadQuizzes();
     toast("Quiz deleted");
+  } catch (e) { errorToast((e as Error).message); }
+}
+
+async function duplicateQuiz(id: number): Promise<void> {
+  try {
+    const q = await api<QuizSummary>(`/api/quizzes/${id}/duplicate`, { method: "POST" });
+    await loadQuizzes();
+    void openQuizDetail(q.id);
+    toast("Quiz duplicated");
   } catch (e) { errorToast((e as Error).message); }
 }
 

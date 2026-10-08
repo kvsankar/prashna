@@ -291,7 +291,7 @@ to do basic moderation on their own sessions.
 
 ---
 
-**Quiz authoring** (UC-A-09 through UC-A-22). Each operation gets its
+**Quiz authoring** (UC-A-09 through UC-A-22, and UC-A-27). Each operation gets its
 own use case so tests and PRs can cite one ID per behavior.
 
 ### UC-A-09: Create a quiz template
@@ -386,6 +386,35 @@ own use case so tests and PRs can cite one ID per behavior.
 **Tests (UI)**
 - On `/quizzes`, clicking Delete on a row in `#quiz-rows` (after native confirm) removes the row.
 - Clicking Delete on a quiz that has been run shows an error toast and the row stays.
+
+### UC-A-27: Duplicate a quiz template
+
+- **Given** the admin clicks **Duplicate** on a quiz row
+- **When** `POST /api/quizzes/{id}/duplicate` is called
+- **Then** a new Quiz is created with `owner_user_id = me.id`, title
+  `"<source title> (copy)"`, status = `draft`, and `last_edited_at = now`
+- **And** every Question (text, image, `qtype`, `graded`, order) and
+  every Answer (text, image, correctness, order) is copied into the new
+  quiz; image files are shared by URL, not re-uploaded
+- **And** the copy has no QuizVersions and no runs; the source quiz,
+  its versions, and its runs are unchanged
+- **And** the copy opens in the editor, where it is edited like any
+  other quiz (UC-A-12 … UC-A-19) without affecting the source
+- **And** a source title too long for the 200-character column is
+  truncated so that the `" (copy)"` suffix still fits
+
+**Tests (API)**
+- `POST /api/quizzes/{id}/duplicate` → `200 {id, title: "<title> (copy)", status: "draft"}` with a new `id`. Auth: admin cookie.
+- `GET /api/quizzes/{new_id}?include_correct=true` returns the same questions and answers as the source (text, `image_url`, `qtype`, `graded`, `order_index`, `is_correct`), with new ids.
+- Duplicating a `ready` quiz leaves the source `ready` and returns the copy as `draft`.
+- Editing a question or answer of the copy does not change the source.
+- Duplicating a quiz that has been used in a run succeeds; the copy has no runs and can be deleted (UC-A-13).
+- A source title of 200 characters yields a copy title of at most 200 characters ending in `" (copy)"`.
+- `POST /api/quizzes/{id}/duplicate` for a non-owner quiz → `404`; for a non-existent id → `404`.
+- `POST /api/quizzes/{id}/duplicate` with no auth → `401`.
+
+**Tests (UI)**
+- On `/quizzes`, clicking Duplicate on a row in `#quiz-rows` adds a `"<title> (copy)"` row with a Draft badge and opens `#editor-card` on the copy.
 
 ### UC-A-14: Add a quiz question
 

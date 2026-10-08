@@ -1884,6 +1884,50 @@ def delete_quiz(
     return {"ok": True}
 
 
+COPY_SUFFIX = " (copy)"
+QUIZ_TITLE_MAX = 200  # matches Quiz.title column length
+
+
+@app.post("/api/quizzes/{quiz_id}/duplicate")
+def duplicate_quiz(
+    quiz_id: int,
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    """Copy the editable tree into a new draft quiz. Versions and runs stay
+    with the source; image files are shared by URL (uploads are never
+    deleted, so sharing is safe)."""
+    src = _owned_quiz_or_404(db, quiz_id, me)
+    title = src.title[: QUIZ_TITLE_MAX - len(COPY_SUFFIX)] + COPY_SUFFIX
+    copy = m.Quiz(
+        title=title,
+        owner_user_id=me.id,
+        questions=[
+            m.Question(
+                text=qq.text,
+                image_url=qq.image_url,
+                qtype=qq.qtype,
+                graded=qq.graded,
+                order_index=qq.order_index,
+                answers=[
+                    m.Answer(
+                        text=a.text,
+                        image_url=a.image_url,
+                        is_correct=a.is_correct,
+                        order_index=a.order_index,
+                    )
+                    for a in qq.answers
+                ],
+            )
+            for qq in src.questions
+        ],
+    )
+    db.add(copy)
+    db.commit()
+    db.refresh(copy)
+    return {"id": copy.id, "title": copy.title, "status": copy.status}
+
+
 @app.post("/api/quizzes/{quiz_id}/questions")
 def add_quiz_question(
     quiz_id: int,

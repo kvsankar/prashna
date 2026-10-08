@@ -253,7 +253,8 @@ accepted behavior.
     8. Admin publishes the template.
     9. System makes the ready quiz available for session runs.
   -  Alternate flows: Admin edits an existing ready quiz. Admin unpublishes a
-    quiz. Admin deletes an unused or allowed template. Admin creates a
+    quiz. Admin duplicates a template into a new draft and edits the copy.
+    Admin deletes an unused or allowed template. Admin creates a
     poll-style question without a correct answer when the baseline supports that
     mode.
   -  Error/exception flows: Invalid publish attempts show actionable validation.

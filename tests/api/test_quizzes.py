@@ -1,4 +1,4 @@
-"""UC-A-09 through UC-A-22: quiz CRUD, items, answers, publish, uploads."""
+"""UC-A-09 through UC-A-22 and UC-A-27: quiz CRUD, items, answers, publish, uploads, duplicate."""
 from __future__ import annotations
 
 import re
@@ -234,6 +234,130 @@ def test_uc_a_13_non_owner_404(admin_client, make_quiz):
         db.commit()
     r = admin_client.request("DELETE", f"/api/quizzes/{q['id']}")
     assert r.status_code == 404
+
+
+# ---------- UC-A-27: Duplicate quiz template ----------
+
+def _rich_quiz(admin_client) -> int:
+    """A quiz with a graded single question and an ungraded multi poll, with images."""
+    qid = admin_client.post("/api/quizzes", json={"title": "Source"}).json()["id"]
+    q1 = admin_client.post(f"/api/quizzes/{qid}/questions",
+                           json={"text": "2+2?", "qtype": "single"}).json()["id"]
+    admin_client.patch(f"/api/quiz_questions/{q1}", json={"image_url": "/uploads/q1.png"})
+    admin_client.post(f"/api/quiz_questions/{q1}/answers", json={"text": "3", "is_correct": False})
+    a = admin_client.post(f"/api/quiz_questions/{q1}/answers",
+                          json={"text": "4", "is_correct": True}).json()["id"]
+    admin_client.patch(f"/api/quiz_answers/{a}", json={"image_url": "/uploads/a4.png"})
+    q2 = admin_client.post(f"/api/quizzes/{qid}/questions",
+                           json={"text": "Languages?", "qtype": "multi", "graded": False}).json()["id"]
+    admin_client.post(f"/api/quiz_questions/{q2}/answers", json={"text": "Python"})
+    admin_client.post(f"/api/quiz_questions/{q2}/answers", json={"text": "Go"})
+    return qid
+
+
+def _tree(admin_client, quiz_id: int) -> list[dict]:
+    """The quiz's questions and answers without ids, for content comparison."""
+    quiz = admin_client.get(f"/api/quizzes/{quiz_id}?include_correct=true").json()
+    return [
+        {
+            **{k: q[k] for k in ("text", "image_url", "qtype", "graded", "order_index")},
+            "answers": [
+                {k: a[k] for k in ("text", "image_url", "is_correct", "order_index")}
+                for a in q["answers"]
+            ],
+        }
+        for q in quiz["questions"]
+    ]
+
+
+def test_uc_a_27_duplicate_returns_draft_copy(admin_client):
+    """UC-A-27: duplicate returns a new draft quiz titled '<title> (copy)'."""
+    src = _rich_quiz(admin_client)
+    r = admin_client.post(f"/api/quizzes/{src}/duplicate")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] != src
+    assert body["title"] == "Source (copy)"
+    assert body["status"] == "draft"
+
+
+def test_uc_a_27_duplicate_copies_questions_and_answers(admin_client):
+    """UC-A-27: the copy has the same question/answer content with new ids."""
+    src = _rich_quiz(admin_client)
+    new_id = admin_client.post(f"/api/quizzes/{src}/duplicate").json()["id"]
+    assert _tree(admin_client, new_id) == _tree(admin_client, src)
+    src_ids = {q["id"] for q in admin_client.get(f"/api/quizzes/{src}").json()["questions"]}
+    new_ids = {q["id"] for q in admin_client.get(f"/api/quizzes/{new_id}").json()["questions"]}
+    assert src_ids.isdisjoint(new_ids)
+
+
+def test_uc_a_27_ready_source_stays_ready_copy_is_draft(admin_client, make_quiz):
+    """UC-A-27: duplicating a ready quiz leaves it ready; the copy is draft."""
+    q = make_quiz("Ready one")
+    copy = admin_client.post(f"/api/quizzes/{q['id']}/duplicate").json()
+    assert admin_client.get(f"/api/quizzes/{q['id']}").json()["status"] == "ready"
+    assert admin_client.get(f"/api/quizzes/{copy['id']}").json()["status"] == "draft"
+
+
+def test_uc_a_27_editing_copy_leaves_source_unchanged(admin_client):
+    """UC-A-27: question and answer edits on the copy don't reach the source."""
+    src = _rich_quiz(admin_client)
+    before = _tree(admin_client, src)
+    new_id = admin_client.post(f"/api/quizzes/{src}/duplicate").json()["id"]
+    copy = admin_client.get(f"/api/quizzes/{new_id}?include_correct=true").json()
+    q = copy["questions"][0]
+    admin_client.patch(f"/api/quiz_questions/{q['id']}", json={"text": "Changed?"})
+    admin_client.patch(f"/api/quiz_answers/{q['answers'][0]['id']}", json={"text": "changed"})
+    admin_client.request("DELETE", f"/api/quiz_questions/{copy['questions'][1]['id']}")
+    assert _tree(admin_client, src) == before
+
+
+def test_uc_a_27_duplicate_used_quiz(admin_client, make_quiz, make_session):
+    """UC-A-27: a quiz used in a run can be duplicated; the copy has no runs."""
+    q = make_quiz()
+    s = make_session()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]})
+    r = admin_client.post(f"/api/quizzes/{q['id']}/duplicate")
+    assert r.status_code == 200, r.text
+    new_id = r.json()["id"]
+    runs = admin_client.get("/api/quiz_runs").json()
+    assert all(run["quiz_id"] != new_id for run in runs)
+    assert admin_client.request("DELETE", f"/api/quizzes/{new_id}").status_code == 200
+
+
+def test_uc_a_27_long_title_truncated(admin_client):
+    """UC-A-27: a 200-char title yields a copy title of at most 200 chars ending in ' (copy)'."""
+    src = admin_client.post("/api/quizzes", json={"title": "a" * 200}).json()["id"]
+    title = admin_client.post(f"/api/quizzes/{src}/duplicate").json()["title"]
+    assert len(title) <= 200
+    assert title.endswith(" (copy)")
+
+
+def test_uc_a_27_non_owner_404(admin_client, make_quiz):
+    """UC-A-27: non-owner → 404."""
+    q = make_quiz()
+    from app import auth
+    from app import models as m
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        other = m.User(username="other_dup", password_hash=auth.hash_password("longenough"))
+        db.add(other); db.commit(); db.refresh(other)
+        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.commit()
+    r = admin_client.post(f"/api/quizzes/{q['id']}/duplicate")
+    assert r.status_code == 404
+
+
+def test_uc_a_27_nonexistent_404(admin_client):
+    """UC-A-27: non-existent id → 404."""
+    r = admin_client.post("/api/quizzes/999999/duplicate")
+    assert r.status_code == 404
+
+
+def test_uc_a_27_no_auth_401(client):
+    """UC-A-27: no auth → 401."""
+    r = client.post("/api/quizzes/1/duplicate")
+    assert r.status_code == 401
 
 
 # ---------- UC-A-14: Add question ----------
