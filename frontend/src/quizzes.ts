@@ -1,4 +1,4 @@
-import { $, api, bindMenuDismiss, el, errorToast, guardClick, markUsable, statusLabel, toast } from "./common";
+import { $, api, bindMenuDismiss, el, errorToast, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type {
   EditorAnswer, EditorQuestion, QuizEditor, QuizRun, QuizRunResults, QuizRunRow, QuizSummary, SessionRow,
 } from "./types";
@@ -213,21 +213,21 @@ function renderQSessions(): void {
   }
 
   if (!quizRunRows.length) {
-    flat.style.display = "";
-    grouped.style.display = "none";
+    setVisible(flat, true);
+    setVisible(grouped, false);
     tbody.innerHTML = `<tr><td colspan="7" class="muted small">No quiz runs yet. Use <strong>Add to session</strong> on a quiz above, or <strong>+ Add quiz</strong> on a session page.</td></tr>`;
     return;
   }
 
   if (runView === "flat") {
-    flat.style.display = "";
-    grouped.style.display = "none";
+    setVisible(flat, true);
+    setVisible(grouped, false);
     renderRunTable(quizRunRows, tbody as HTMLTableSectionElement);
     return;
   }
 
-  flat.style.display = "none";
-  grouped.style.display = "";
+  setVisible(flat, false);
+  setVisible(grouped, true);
   grouped.innerHTML = "";
   for (const group of groupedRuns(runView)) {
     const details = el("details", { class: "run-group", open: true, "data-group-key": group.key }) as HTMLDetailsElement;
@@ -263,23 +263,23 @@ function revealCard(card: HTMLElement): void {
 
 function showEditor(title: string): void {
   $("#editor-title").textContent = title;
-  $("#editor-card").style.display = "";
+  setVisible($("#editor-card"), true);
   void loadQuizzes();
 }
 function closeEditor(): void {
   editingId = null;
   editing = null;
-  $("#editor-card").style.display = "none";
+  setVisible($("#editor-card"), false);
   void loadQuizzes();
 }
 function showResults(title: string): void {
   $("#results-title").textContent = title;
-  $("#results-card").style.display = "";
+  setVisible($("#results-card"), true);
   void loadQSessions();
 }
 function closeResults(): void {
   resultsId = null;
-  $("#results-card").style.display = "none";
+  setVisible($("#results-card"), false);
   void loadQSessions();
 }
 $("#editor-close").addEventListener("click", closeEditor);
@@ -360,7 +360,7 @@ function renderEditor(): void {
   body.appendChild(el("div", { class: "row gap" },
     el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft")));
 
-  body.appendChild(el("div", { class: "small muted", style: "margin-bottom: 8px;" },
+  body.appendChild(el("div", { class: "small muted mb-2" },
     "Edits are versioned at next Launch — they don't affect past runs."));
 
   const titleInp = el("input", { value: quiz.title, class: "inline", "aria-label": "Quiz title" }) as HTMLInputElement;
@@ -379,7 +379,7 @@ function renderEditor(): void {
   quiz.questions.forEach((qq, idx) => list.appendChild(renderQuestion(qq, idx)));
   body.appendChild(list);
 
-  body.appendChild(el("div", { class: "row gap", style: "margin-top: 10px;" },
+  body.appendChild(el("div", { class: "row gap mt-2" },
     guardClick(el("button", { class: "primary small" }, "+ Add question") as HTMLButtonElement, addQuestion)));
 }
 
@@ -424,7 +424,7 @@ function renderQuestion(qq: EditorQuestion, idx: number): HTMLElement {
   wrap.appendChild(head);
   wrap.appendChild(textInp);
 
-  const imgRow = el("div", { class: "row gap small muted", style: "margin-top: 6px;" });
+  const imgRow = el("div", { class: "row gap small muted mt-2" });
   if (qq.image_url) imgRow.appendChild(el("img", { src: qq.image_url, class: "thumb" }));
   imgRow.append(...imagePicker(Boolean(qq.image_url), `Question ${idx + 1} image`, async (file) => {
     const url = await uploadImage(file);
@@ -441,7 +441,7 @@ function renderQuestion(qq: EditorQuestion, idx: number): HTMLElement {
   qq.answers.forEach((op, aIdx) => opts.appendChild(renderAnswer(qq, op, aIdx)));
   wrap.appendChild(opts);
   wrap.appendChild(guardClick(
-    el("button", { class: "ghost xsmall", style: "margin-top: 4px;" }, "+ Answer") as HTMLButtonElement,
+    el("button", { class: "ghost xsmall mt-1" }, "+ Answer") as HTMLButtonElement,
     async () => {
       await api(`/api/quiz_questions/${qq.id}/answers`, { method: "POST", body: { text: "New answer" } });
       void openQuizDetail(quizId);
@@ -632,7 +632,7 @@ function renderResults(r: QuizRunResults): void {
     el("a", { href: `/m/${r.session_code}`, target: "_blank", class: "small" }, "Open moderator →")));
 
   if (!r.questions.length) {
-    body.appendChild(el("div", { class: "muted small", style: "margin-top: 12px;" }, "Quiz has no questions."));
+    body.appendChild(el("div", { class: "muted small mt-3" }, "Quiz has no questions."));
     return;
   }
   for (let i = 0; i < r.questions.length; i++) {
@@ -644,12 +644,12 @@ function renderResults(r: QuizRunResults): void {
       el("span", {}, q.text),
       el("div", { class: "spacer" }),
       el("span", { class: "small muted" }, `${q.respondents} respondent${q.respondents === 1 ? "" : "s"}`)));
-    if (q.image_url) card.appendChild(el("img", { src: q.image_url, class: "thumb", style: "margin-top: 6px;" }));
+    if (q.image_url) card.appendChild(el("img", { src: q.image_url, class: "thumb mt-2" }));
     for (const op of q.answers) {
       const pct = Math.round((op.count / max) * 100);
       const optRow = el("div", { class: "result-opt" + (op.is_correct ? " correct" : "") });
       const bar = el("div", { class: "result-bar" });
-      bar.style.width = pct + "%";
+      bar.style.setProperty("--share", String(pct / 100));
       optRow.appendChild(bar);
       optRow.appendChild(el("span", { class: "result-mark" }, op.is_correct ? "✓" : ""));
       optRow.appendChild(el("span", { class: "result-text" }, op.text));
@@ -666,8 +666,8 @@ bindMenuDismiss();
 // unless it just closed an open menu.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented) return;
-  if ($("#results-card").style.display !== "none") { closeResults(); return; }
-  if ($("#editor-card").style.display !== "none") closeEditor();
+  if (!$("#results-card").hidden) { closeResults(); return; }
+  if (!$("#editor-card").hidden) closeEditor();
 });
 
 // `?run=<id>` (the session page's "View results →") opens that run's results.

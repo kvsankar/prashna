@@ -13,14 +13,14 @@
 <body>
   <main class="proj">
     <h1 id="title">Loading…</h1>
-    <div class="row gap" style="align-items: flex-start; margin-bottom: 24px;">
-      <div style="flex:1;">
+    <div class="row gap align-start mb-5">
+      <div class="grow">
         <div class="code-display">Join: <strong id="code"></strong> at <span id="origin"></span></div>
       </div>
-      <div id="join-qr" style="width: 220px; min-width: 220px;"></div>
+      <div class="qr-box qr-lg" id="join-qr"></div>
     </div>
 
-    <section id="quiz-section" class="card" style="display:none;">
+    <section hidden id="quiz-section" class="card">
       <div id="quiz-body"></div>
     </section>
 

@@ -1,6 +1,6 @@
 import {
   $, api, bindMenuDismiss, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
-  markUsable, openLiveSocket, pathCode, renderQR, setModKey, statusLabel, toast,
+  markUsable, openLiveSocket, pathCode, renderQR, setModKey, setVisible, statusLabel, toast,
 } from "./common";
 import type {
   FeedbackSummary,
@@ -39,14 +39,14 @@ let latestProfilesSeq = 0;
 
 function showWorkSurfaces(visible: boolean): void {
   for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "profiles-card", "feedback-card"]) {
-    $("#" + id).style.display = visible ? "" : "none";
+    setVisible($("#" + id), visible);
   }
   // Owner-only controls (UC-A-08); delegates never see them.
-  $("#settings-card").style.display = visible && isOwner ? "" : "none";
+  setVisible($("#settings-card"), visible && isOwner);
 }
 function showKeyGate(): void {
   $("#modkey-code").textContent = CODE;
-  $("#modkey-card").style.display = "";
+  setVisible($("#modkey-card"), true);
   showWorkSurfaces(false);
   $("#modkey-input").focus();
   markUsable("moderator");
@@ -55,7 +55,7 @@ async function trySubmitKey(): Promise<void> {
   const k = $<HTMLInputElement>("#modkey-input").value.trim();
   if (!k) return;
   setModKey(k);
-  $("#modkey-card").style.display = "none";
+  setVisible($("#modkey-card"), false);
   try { await boot(); } catch { showKeyGate(); errorToast("Wrong key for this session."); }
 }
 $("#modkey-submit").addEventListener("click", () => void trySubmitKey());
@@ -96,7 +96,7 @@ async function renderInvite(seq = latestSessionSeq): Promise<void> {
   $<HTMLInputElement>("#base-url").value = sessionState.participant_base_url || "";
   $("#invite-url").textContent = url;
   const baseField = $("#base-url").closest(".field") as HTMLElement | null;
-  if (baseField) baseField.style.display = isOwner ? "" : "none";
+  if (baseField) setVisible(baseField, isOwner);
   try { await renderQR($("#invite-qr"), url, { cellSize: 4, margin: 2 }); }
   catch { $("#invite-qr").textContent = "QR unavailable"; }
 }
@@ -151,8 +151,8 @@ function renderLifecycle(): void {
   if (!sessionState) return;
   const status = sessionState.status;
   // Nothing can be queued once a session has ended (UX.md §16).
-  $("#quiz-composer").style.display = status === "ended" ? "none" : "";
-  $("#quiz-hint").style.display = status === "ended" ? "none" : "";
+  setVisible($("#quiz-composer"), status !== "ended");
+  setVisible($("#quiz-hint"), status !== "ended");
   $("#session-status").textContent = statusLabel(status);
   $("#session-status").className = "badge badge-" + status;
   const actions = $("#lifecycle-actions"); actions.innerHTML = "";
@@ -279,8 +279,8 @@ function renderQuery(q: Query): HTMLElement {
   const body = el("div", { class: "body" },
     el("div", { class: "text" }, q.text),
     q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
-    el("div", { style: "margin-top: 10px;" }, respInput),
-    el("div", { class: "row", style: "margin-top: 8px; gap: 6px;" },
+    el("div", { class: "mt-2" }, respInput),
+    el("div", { class: "row mt-2" },
       respondBtn, reopenBtn, el("div", { class: "spacer" }), removeBtn),
   );
   return el("div", { class: "question" + (q.responded ? " answered" : "") + (q.removed ? " hidden-q" : "") }, voteBox, body);
@@ -349,7 +349,7 @@ function renderQuizRun(r: QuizRun): HTMLElement {
   );
   if (r.status === "live" && r.reveal_current) {
     head.insertBefore(
-      el("span", { class: "small", style: "color: var(--accent);" }, "voting closed"),
+      el("span", { class: "small accent-text" }, "voting closed"),
       head.querySelector(".spacer"));
   }
   if (r.status === "queued" && !sessionEnded) {
@@ -378,7 +378,7 @@ function renderQuizRun(r: QuizRun): HTMLElement {
       const pct = respondents ? Math.round((totals[a.id] || 0) / respondents * 100) : 0;
       const aDiv = el("div", { class: "option disabled" + (a.is_correct ? " correct" : "") });
       const bar = el("div", { class: "bar" });
-      bar.style.transform = `scaleX(${respondents ? (totals[a.id] || 0) / respondents : 0})`;
+      bar.style.setProperty("--share", String(respondents ? (totals[a.id] || 0) / respondents : 0));
       aDiv.appendChild(bar);
       if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
       aDiv.appendChild(el("div", { class: "opt-text" }, a.text + (a.is_correct ? "  ✓" : "")));
@@ -391,7 +391,7 @@ function renderQuizRun(r: QuizRun): HTMLElement {
   if (r.status === "closed" && isOwner) {
     detail.appendChild(el("a", { class: "small", href: `/quizzes?run=${r.id}` }, "View results →"));
   }
-  return el("section", { class: "card", style: "background: var(--panel-2);" }, head, detail);
+  return el("section", { class: "card inset" }, head, detail);
 }
 
 function buildRunMenu(r: QuizRun): HTMLElement | null {

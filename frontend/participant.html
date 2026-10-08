@@ -71,11 +71,10 @@
       <div class="field">
         <label for="my-photo" class="small muted">Photograph</label>
         <div class="profile-photo-row">
-          <img
+          <img hidden
             id="my-photo-preview"
             class="profile-photo-preview"
             alt="Your photograph"
-            style="display:none;"
           >
           <input
             id="my-photo"
@@ -83,11 +82,10 @@
             accept="image/*"
             aria-label="Your photograph (optional)"
           >
-          <button
+          <button hidden
             id="my-photo-clear"
             type="button"
             class="ghost xsmall"
-            style="display:none;"
           >Clear</button>
         </div>
       </div>
@@ -99,7 +97,7 @@
         <label for="my-learning-goal" class="small muted">Learning goal</label>
         <textarea id="my-learning-goal" maxlength="500" placeholder="What do you want to get from this session?"></textarea>
       </div>
-      <div class="row" style="margin-top: 10px;">
+      <div class="row mt-2">
         <span class="muted small">
           Optional. Visible to the host and moderators for this session.
         </span>
@@ -110,7 +108,7 @@
       </div>
     </details>
 
-    <details class="card" id="feedback-card" open style="display:none;">
+    <details hidden class="card" id="feedback-card" open>
       <summary class="card-head">
         <h2>Rate this session</h2>
         <span class="fb-chevron" aria-hidden="true"></span>
@@ -118,19 +116,19 @@
       <div class="fb-rate-row">
         <div id="fb-stars" class="stars" role="radiogroup" aria-label="Session rating"></div>
         <span id="fb-status" class="muted small"></span>
-        <button id="fb-clear" type="button" class="ghost xsmall" style="display:none;">Clear rating</button>
-        <span id="fb-clear-confirm" class="small muted" style="display:none;">Clear feedback?
+        <button hidden id="fb-clear" type="button" class="ghost xsmall">Clear rating</button>
+        <span hidden id="fb-clear-confirm" class="small muted">Clear feedback?
           <button id="fb-clear-yes" type="button" class="danger ghost xsmall">Yes</button>
           <button id="fb-clear-no" type="button" class="ghost xsmall">No</button>
         </span>
       </div>
-      <div id="fb-expand" style="display:none; margin-top: 12px;">
+      <div hidden class="mt-3" id="fb-expand">
         <label for="fb-went-well" class="small muted">What went well?</label>
         <textarea id="fb-went-well" maxlength="2000" placeholder="What worked for you…"></textarea>
-        <label for="fb-to-improve" class="small muted" style="display:block; margin-top: 8px;">What could be better?</label>
+        <label for="fb-to-improve" class="small muted block mt-2">What could be better?</label>
         <textarea id="fb-to-improve" maxlength="2000" placeholder="What you'd change…"></textarea>
       </div>
-      <div class="row wrap" style="margin-top: 12px;">
+      <div class="row wrap mt-3">
         <span id="fb-submit-hint" class="muted small">Choose a rating to submit feedback.</span>
         <div class="spacer"></div>
         <button id="fb-submit" type="button" class="primary">
@@ -139,21 +137,21 @@
       </div>
     </details>
 
-    <section class="card" id="quiz-card" style="display:none;">
+    <section hidden class="card" id="quiz-card">
       <div class="card-head"><h2>Live quiz</h2></div>
       <div id="quiz-body"></div>
     </section>
 
-    <section class="card" id="ended-card" style="display:none;">
+    <section hidden class="card" id="ended-card">
       <div class="card-head"><h2>Session ended</h2></div>
-      <p class="muted small" style="margin: 0;">This session has ended. You can still see what was asked, but you can't add new questions or vote.</p>
+      <p class="muted small m-0">This session has ended. You can still see what was asked, but you can't add new questions or vote.</p>
     </section>
 
     <section class="card" id="ask-card">
       <div class="card-head"><h2>Ask</h2></div>
       <label for="query-text" class="small muted">Your question</label>
       <textarea id="query-text" aria-label="Your question" placeholder="Type your question… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
-      <div class="row" style="margin-top: 8px;">
+      <div class="row mt-2">
         <span class="muted small">Anonymous unless you set a name above.</span>
         <div class="spacer"></div>
         <button class="primary" id="ask-btn">Ask</button>
@@ -167,9 +165,9 @@
 
     <section class="card" id="invite-card">
       <div class="card-head"><h2>Invite others</h2></div>
-      <div class="row gap" style="align-items: center;">
-        <div id="share-qr" style="width: 120px; min-width: 120px;"></div>
-        <div class="small muted" style="flex:1;">
+      <div class="row gap align-center">
+        <div class="qr-box qr-sm" id="share-qr"></div>
+        <div class="small muted grow">
           Show this QR to someone nearby — they'll join this session by scanning it.
         </div>
       </div>

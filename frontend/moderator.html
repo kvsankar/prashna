@@ -39,22 +39,22 @@
   </div>
 
   <main class="wide">
-    <section class="card" id="modkey-card" style="display:none;">
+    <section hidden class="card" id="modkey-card">
       <div class="card-head"><h2>Moderator key required</h2></div>
       <p class="muted small">Paste the moderator key for session <strong id="modkey-code"></strong>. (Find it in the moderator URL after <code>#k=</code>; the session owner copies that URL with <em>Share moderator URL</em> on the session page.)</p>
       <div class="field"><label for="modkey-input">Moderator key</label><input id="modkey-input" aria-label="Moderator key" placeholder="e.g. a1b2c3d4e5f6g7h8"></div>
       <button class="primary" id="modkey-submit">Continue</button>
     </section>
 
-    <section class="card" id="lifecycle-card" style="display:none;">
+    <section hidden class="card" id="lifecycle-card">
       <div class="card-head">
         <h2>Session lifecycle</h2>
         <div class="card-tools" id="lifecycle-actions"></div>
       </div>
-      <p class="muted small" id="lifecycle-hint" style="margin: 0;"></p>
+      <p class="muted small m-0" id="lifecycle-hint"></p>
     </section>
 
-    <details class="setup" id="setup-section" style="display:none;">
+    <details hidden class="setup" id="setup-section">
       <summary class="setup-summary">
         <span class="setup-title">Set up</span>
         <span class="muted small">Invite participants · session settings</span>
@@ -62,43 +62,43 @@
 
       <section class="card" id="invite-card">
         <div class="card-head"><h2>Invite participants</h2></div>
-        <p class="muted small" style="margin: 0 0 8px;">
+        <p class="muted small m-0 mb-2">
           Override the base URL if this server is reached via a different public address (e.g. a reverse proxy, LAN IP, or tunnel). Leave blank to use the address shown in the moderator's address bar.
         </p>
         <div class="field row gap">
-          <label for="base-url" class="small muted" style="margin-right: 4px;">Base URL</label>
-          <input id="base-url" class="inline" style="flex:1;" aria-label="Participant base URL" placeholder="e.g. https://prashna.sankara.net">
+          <label for="base-url" class="small muted mr-1">Base URL</label>
+          <input id="base-url" class="inline grow" aria-label="Participant base URL" placeholder="e.g. https://prashna.sankara.net">
           <button id="base-url-clear" class="ghost small">Use default</button>
         </div>
-        <div class="row gap" style="align-items: flex-start;">
-          <div id="invite-qr" style="width: 180px; min-width: 180px;"></div>
-          <div style="flex:1;">
-            <div class="small muted" style="margin-bottom: 4px;">Participants join at:</div>
-            <code id="invite-url" class="small" style="display:block; padding: 8px; background: var(--panel-2); border-radius: 6px; word-break: break-all;"></code>
-            <button id="invite-copy" class="ghost small" style="margin-top: 8px;">Copy URL</button>
+        <div class="row gap align-start">
+          <div class="qr-box qr-md" id="invite-qr"></div>
+          <div class="grow">
+            <div class="small muted mb-1">Participants join at:</div>
+            <code id="invite-url" class="small url-box"></code>
+            <button id="invite-copy" class="ghost small mt-2">Copy URL</button>
           </div>
         </div>
       </section>
 
-      <section class="card" id="settings-card" style="display:none;">
+      <section hidden class="card" id="settings-card">
         <div class="card-head"><h2>Session settings</h2></div>
         <div class="field row gap">
-          <label class="small muted" for="set-title" style="min-width: 110px;">Title</label>
-          <input id="set-title" class="inline" style="flex:1;" maxlength="200">
+          <label class="small muted label-col" for="set-title">Title</label>
+          <input id="set-title" class="inline grow" maxlength="200">
         </div>
         <div class="field row gap">
-          <label class="small muted" style="min-width: 110px;">Moderator</label>
+          <label class="small muted label-col">Moderator</label>
           <button id="set-share-mod" class="ghost small">Share moderator URL</button>
           <span class="small muted">Lets someone without an admin account moderate this session.</span>
         </div>
         <div class="field row gap">
-          <label class="small muted" style="min-width: 110px;">Delete</label>
+          <label class="small muted label-col">Delete</label>
           <button id="set-delete" class="danger ghost small">Delete session…</button>
         </div>
       </section>
     </details>
 
-    <section class="card" id="quizzes-card" style="display:none;">
+    <section hidden class="card" id="quizzes-card">
       <div class="card-head">
         <h2>Quiz</h2>
         <div class="card-tools" id="quiz-composer">
@@ -106,21 +106,21 @@
           <button class="primary small" id="add-quiz-btn">+ Add quiz</button>
         </div>
       </div>
-      <p class="muted small" id="quiz-hint" style="margin: 0 0 10px;">Pick a quiz and click <strong>+ Add quiz</strong> to queue it; a draft is published when you add it. <strong>Start</strong> one when the audience is ready, then drive it with the buttons on its row. <a href="/quizzes" target="_blank">Edit library →</a></p>
+      <p class="muted small m-0 mb-2" id="quiz-hint">Pick a quiz and click <strong>+ Add quiz</strong> to queue it; a draft is published when you add it. <strong>Start</strong> one when the audience is ready, then drive it with the buttons on its row. <a href="/quizzes" target="_blank">Edit library →</a></p>
       <div id="quiz-runs"></div>
     </section>
 
-    <section class="card" id="queries-card" style="display:none;">
+    <section hidden class="card" id="queries-card">
       <div class="card-head"><h2>Questions</h2></div>
       <div id="queries"></div>
     </section>
 
-    <section class="card" id="profiles-card" style="display:none;">
+    <section hidden class="card" id="profiles-card">
       <div class="card-head"><h2>Attendee profiles</h2><div class="card-tools" id="profiles-summary"></div></div>
       <div id="profiles-list"></div>
     </section>
 
-    <section class="card" id="feedback-card" style="display:none;">
+    <section hidden class="card" id="feedback-card">
       <div class="card-head"><h2>Feedback</h2><div class="card-tools" id="feedback-summary"></div></div>
       <div id="feedback-list"></div>
     </section>

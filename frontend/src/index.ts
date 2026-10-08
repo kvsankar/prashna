@@ -1,4 +1,4 @@
-import { $, api, el, errorToast, escapeHtml, guardClick, markUsable, statusLabel, toast } from "./common";
+import { $, api, el, errorToast, escapeHtml, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type { AdminStatus, SessionRow } from "./types";
 
 // `?session=<code>` is an older link to a session; the session page is now
@@ -13,10 +13,10 @@ const bad = new URLSearchParams(location.search).get("bad_code");
 if (bad) {
   const msg = $("#bad-code-msg");
   msg.textContent = `Session "${bad.toUpperCase()}" does not exist. Check the code and try again.`;
-  msg.style.display = "";
+  setVisible(msg, true);
   history.replaceState({}, "", "/");
 }
-$("#join-code").addEventListener("input", () => { $("#bad-code-msg").style.display = "none"; });
+$("#join-code").addEventListener("input", () => { setVisible($("#bad-code-msg"), false); });
 
 // ----- GitHub OAuth error banner -----
 const authErr = new URLSearchParams(location.search).get("auth_error");
@@ -36,7 +36,7 @@ const cards: Record<string, HTMLElement> = {
   changePw: $("#change-pw-card"),
 };
 function show(...names: string[]): void {
-  for (const k of Object.keys(cards)) cards[k].style.display = names.includes(k) ? "" : "none";
+  for (const k of Object.keys(cards)) setVisible(cards[k], names.includes(k));
 }
 
 function setHeaderMeta(node: HTMLElement): void {
@@ -49,7 +49,7 @@ function setHeaderMeta(node: HTMLElement): void {
 async function refresh(): Promise<void> {
   const s = await api<AdminStatus>("/api/admin/status");
   $<HTMLElement>("main").classList.toggle("wide", s.authenticated);
-  $("#admin-page-nav").style.display = s.authenticated ? "" : "none";
+  setVisible($("#admin-page-nav"), s.authenticated);
   if (!s.initialized) {
     setHeaderMeta(el("span", { class: "muted small" }, "Initial setup"));
     show("setup");
@@ -57,7 +57,7 @@ async function refresh(): Promise<void> {
   }
   if (!s.authenticated) {
     setHeaderMeta(el("span", { class: "muted small" }, "Live Q&A and quizzes for training sessions."));
-    $("#github-login-wrap").style.display = s.github_enabled ? "" : "none";
+    setVisible($("#github-login-wrap"), s.github_enabled);
     show("join", "login");
     return;
   }
@@ -178,7 +178,7 @@ async function loadSessions(): Promise<void> {
 
 // ----- session delete flow -----
 function hideConfirmCard(): void {
-  $("#confirm-delete-card").style.display = "none";
+  setVisible($("#confirm-delete-card"), false);
   $<HTMLInputElement>("#cd-confirm").value = "";
   const go = $<HTMLButtonElement>("#cd-go");
   go.disabled = true;
@@ -222,7 +222,7 @@ function startDeleteFlow(s: SessionRow): void {
       void loadSessions();
     } catch (e) { errorToast((e as Error).message); }
   };
-  $("#confirm-delete-card").style.display = "";
+  setVisible($("#confirm-delete-card"), true);
   confInp.focus();
   $("#confirm-delete-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -232,12 +232,12 @@ function openChangePassword(): void {
   $<HTMLInputElement>("#cp-current").value = "";
   $<HTMLInputElement>("#cp-new").value = "";
   $<HTMLInputElement>("#cp-new2").value = "";
-  $("#change-pw-card").style.display = "";
+  setVisible($("#change-pw-card"), true);
   $("#cp-current").focus();
   $("#change-pw-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 function closeChangePassword(): void {
-  $("#change-pw-card").style.display = "none";
+  setVisible($("#change-pw-card"), false);
 }
 $("#cp-close").addEventListener("click", closeChangePassword);
 async function submitChangePassword(): Promise<void> {
@@ -261,8 +261,8 @@ $("#cp-new2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key 
 // Escape closes whichever drill-down is open.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if ($("#change-pw-card").style.display !== "none") { closeChangePassword(); return; }
-  if ($("#confirm-delete-card").style.display !== "none") hideConfirmCard();
+  if (!$("#change-pw-card").hidden) { closeChangePassword(); return; }
+  if (!$("#confirm-delete-card").hidden) hideConfirmCard();
 });
 
 markUsable("landing");

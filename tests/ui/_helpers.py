@@ -115,8 +115,8 @@ def admin_login_via_ui(page, base_url: str) -> None:
     page.goto(base_url + "/")
     # Wait for either login or sessions card.
     page.wait_for_function(
-        "document.querySelector('#login-card').style.display !== 'none' || "
-        "document.querySelector('#sessions-card').style.display !== 'none'"
+        "!document.querySelector('#login-card').hidden || "
+        "!document.querySelector('#sessions-card').hidden"
     )
     if page.locator("#sessions-card").is_visible():
         return  # somehow already authed

@@ -1992,6 +1992,23 @@ Every surface works at a 390 px wide viewport.
 - At 390×844, every visible `input[type=text]`, `textarea`, and `select` on `/quizzes` (editor open), `/m/<code>`, and `/s/<code>` has a computed font size of at least 16 px.
 - In a touch-emulating context at 390×844, every visible `button` and `details.menu > summary` on `/quizzes` and `/m/<code>`, and every `.section-links a`, is at least 32 px tall.
 
+### UC-X-13: One button size scale
+
+Buttons come in three sizes (UX.md §10), and all of a card's own actions
+use the same one, so a page never mixes large and small versions of the
+same kind of action.
+
+- **Given** any page at desktop width
+- **Then** default buttons use 14 px text and are about 34 px tall
+- **And** custom call-to-action elements (the participant profile's
+  "Add details") match the default button size and weight
+- **And** `.small` (card headers, dense lists) and `.xsmall` (table rows)
+  are the only smaller sizes
+
+**Tests (UI)**
+- At 1280×800 on `/s/<code>` with rating open, `.profile-cta`, `#fb-submit`, and `#ask-btn` have the same height (within 1 px), at most 36 px, and a 14 px font.
+- At 1280×800 on `/` signed out, `#join-btn` and `#li-btn` have that same height and font size.
+
 ---
 
 ## Deferred (decision needed)

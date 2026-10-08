@@ -1,4 +1,4 @@
-"""UC-X-12: phone-width layout across surfaces."""
+"""UC-X-12 and UC-X-13: phone-width layout and the button size scale."""
 from __future__ import annotations
 
 import secrets
@@ -113,3 +113,38 @@ def test_uc_x_12_touch_targets_at_least_32px(base_url, admin_setup, browser):
     finally:
         ctx.close()
         c.close()
+
+
+# ---------- UC-X-13 ----------
+
+SIZES_JS = """(sels) => sels.map(s => { const e = document.querySelector(s); const r = e.getBoundingClientRect();
+  return { sel: s, h: r.height, fs: getComputedStyle(e).fontSize }; })"""
+
+
+def _assert_same_scale(sizes):
+    heights = [x["h"] for x in sizes]
+    assert max(heights) - min(heights) <= 1, sizes
+    assert max(heights) <= 36, sizes
+    assert all(x["fs"] == "14px" for x in sizes), sizes
+
+
+def test_uc_x_13_participant_actions_share_one_size(base_url, admin_setup, page):
+    """UC-X-13: the participant page's card actions share the default button size."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-X13 {secrets.token_hex(3)}")
+    c.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True}).raise_for_status()
+    try:
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#feedback-card:visible")
+        _assert_same_scale(page.evaluate(SIZES_JS, [".profile-cta", "#fb-submit", "#ask-btn"]))
+    finally:
+        c.close()
+
+
+def test_uc_x_13_landing_actions_share_one_size(base_url, admin_setup, page):
+    """UC-X-13: Join and Log in use the default button size."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(base_url + "/")
+    page.wait_for_selector("#login-card:visible")
+    _assert_same_scale(page.evaluate(SIZES_JS, ["#join-btn", "#li-btn"]))

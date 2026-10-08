@@ -38,6 +38,25 @@ Use multiples; don't invent values.
 
 ---
 
+### Tokens and the no-inline-style rule
+
+`app.css` defines design tokens in `:root`: a type scale (`--text-xs` …
+`--text-5xl`), a spacing scale (`--space-1` … `--space-5`), and control
+heights (`--control-h`, `--control-h-sm`, `--control-h-xs`, `--tap-min`).
+
+- Every font size outside `:root` uses a `--text-*` token. Add a token
+  rather than a one-off pixel value.
+- Markup and scripts never set inline styles. Use a class — a spacing
+  utility (`.mt-2`, `.mb-2`, `.grow`, …) or a component class
+  (`.label-col`, `.qr-box`, `.url-box`, `.card.inset`).
+- Show and hide with the `hidden` attribute through `setVisible()` from
+  `common.ts`; `[hidden]` overrides any display rule.
+- The one allowed script write is a CSS custom property carrying data,
+  e.g. a result bar's `--share`.
+- `tests/api/test_frontend_contracts.py` enforces all four rules.
+
+---
+
 ## 2. Surface taxonomy
 
 Every screen is one of **three densities**:
@@ -413,6 +432,20 @@ editing will revert it to Draft."
 | `.danger`       | Destructive; pair with `.ghost` for low-visual-weight     |
 | `.small`        | Inside dense tables / `card-tools`                        |
 | `.xsmall`       | Row actions inside `.ctable`                              |
+
+**Size scale (UC-X-13).** Three sizes, no others:
+
+| Size      | Text  | Height | Use                                              |
+| --------- | ----- | ------ | ------------------------------------------------ |
+| default   | 14 px | ~34 px | A card's own actions (Submit, Ask, Join, Log in) |
+| `.small`  | 13 px | ~26 px | `card-tools`, dense lists                        |
+| `.xsmall` | 11 px | ~19 px | Row actions in `.ctable`                         |
+
+- All of a card's own actions share one size; never mix default and
+  `.small` for the same kind of action on a page.
+- A custom call-to-action that isn't a `<button>` (e.g. the profile
+  summary's "Add details") copies the default size and weight.
+- On touch devices every size grows to at least 32 px tall (§16a).
 
 - Verb-first labels: "Publish", "Delete", "Open moderator →".
 - One primary button per card. Two primaries on one surface is a smell.

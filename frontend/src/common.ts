@@ -31,6 +31,13 @@ export const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: Paren
 type Child = Node | string | number | null | false | undefined;
 type Attrs = Record<string, unknown>;
 
+/** Show or hide an element with the `hidden` attribute. app.css makes
+ *  `[hidden]` win over any display rule. Use this instead of setting
+ *  `style.display` (UX.md §1, enforced by test_frontend_contracts). */
+export function setVisible(node: HTMLElement, visible: boolean): void {
+  node.hidden = !visible;
+}
+
 /** Create an element. `class`/`html` are special; `on*` attach listeners;
  *  false/null attrs are skipped; `true` becomes a bare attribute. */
 export function el(tag: string, attrs: Attrs = {}, ...children: (Child | Child[])[]): HTMLElement {
@@ -57,8 +64,8 @@ function syncSectionLinks(): void {
   sectionSyncQueued = false;
   for (const link of document.querySelectorAll<HTMLAnchorElement>(".section-links a[href^='#']")) {
     const target = document.querySelector<HTMLElement>(link.hash);
-    const display = !target || target.getClientRects().length > 0 ? "" : "none";
-    if (link.style.display !== display) link.style.display = display;
+    const visible = !target || target.getClientRects().length > 0;
+    if (link.hidden === visible) setVisible(link, visible);
   }
 }
 function queueSectionSync(): void {
@@ -241,12 +248,12 @@ let _qrLightbox: { overlay: HTMLElement; inner: HTMLElement } | null = null;
 function _qrLightboxEl() {
   if (_qrLightbox) return _qrLightbox;
   const inner = el("div", { class: "qr-lightbox-inner" });
-  const overlay = el("div", { class: "qr-lightbox", style: "display:none;" },
+  const overlay = el("div", { class: "qr-lightbox", hidden: true },
     inner, el("div", { class: "qr-lightbox-hint" }, "Click anywhere or press Esc to close"));
-  const close = () => { overlay.style.display = "none"; inner.innerHTML = ""; };
+  const close = () => { setVisible(overlay, false); inner.innerHTML = ""; };
   overlay.addEventListener("click", close);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && overlay.style.display !== "none") close();
+    if (e.key === "Escape" && !overlay.hidden) close();
   });
   document.body.appendChild(overlay);
   _qrLightbox = { overlay, inner };
@@ -257,9 +264,9 @@ function _expandQR(svg: SVGElement): void {
   const { overlay, inner } = _qrLightboxEl();
   inner.innerHTML = "";
   const clone = svg.cloneNode(true) as SVGElement;
-  clone.style.cssText = "width:100%;height:100%;display:block;background:white;border-radius:8px;";
+  clone.classList.add("qr-svg", "qr-svg-full");
   inner.appendChild(clone);
-  overlay.style.display = "";
+  setVisible(overlay, true);
 }
 
 export async function renderQR(
@@ -275,11 +282,7 @@ export async function renderQR(
   target.innerHTML = qr.createSvgTag({ cellSize, margin, scalable: true });
   const svg = target.querySelector("svg");
   if (svg) {
-    svg.style.width = "100%";
-    svg.style.height = "auto";
-    svg.style.display = "block";
-    svg.style.background = "white";
-    svg.style.borderRadius = "8px";
+    svg.classList.add("qr-svg");
     target.classList.add("qr-expandable");
     target.setAttribute("role", "button");
     target.setAttribute("tabindex", "0");

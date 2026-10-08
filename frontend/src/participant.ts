@@ -1,4 +1,4 @@
-import { $, api, el, errorToast, guardClick, markUsable, type LiveMessage, openLiveSocket, pathCode, renderQR, toast } from "./common";
+import { $, api, el, errorToast, guardClick, markUsable, type LiveMessage, openLiveSocket, pathCode, renderQR, setVisible, toast } from "./common";
 import type { Feedback, ParticipantBootstrap, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
@@ -30,9 +30,9 @@ function applySession(s: Session, refreshFeedback = true): void {
   $("#participant-breadcrumb-session").textContent = s.title;
   sessionEnded = s.status === "ended";
   feedbackEnabled = s.feedback_enabled;
-  $("#ask-card").style.display = sessionEnded ? "none" : "";
-  $("#ended-card").style.display = sessionEnded ? "" : "none";
-  $("#feedback-card").style.display = feedbackEnabled ? "" : "none";
+  setVisible($("#ask-card"), !sessionEnded);
+  setVisible($("#ended-card"), sessionEnded);
+  setVisible($("#feedback-card"), feedbackEnabled);
   if (feedbackEnabled && refreshFeedback) void loadFeedback();
   const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
   void renderQR($("#share-qr"), `${base}/s/${s.code}`, { cellSize: 3, margin: 2 })
@@ -87,12 +87,12 @@ function renderProfilePhoto(url: string | null): void {
   const clear = $<HTMLButtonElement>("#my-photo-clear");
   if (url) {
     preview.src = url;
-    preview.style.display = "";
-    clear.style.display = "";
+    setVisible(preview, true);
+    setVisible(clear, true);
   } else {
     preview.removeAttribute("src");
-    preview.style.display = "none";
-    clear.style.display = "none";
+    setVisible(preview, false);
+    setVisible(clear, false);
   }
 }
 
@@ -108,8 +108,8 @@ function previewSelectedProfilePhoto(): void {
   pendingPhotoPreviewUrl = URL.createObjectURL(file);
   const preview = $<HTMLImageElement>("#my-photo-preview");
   preview.src = pendingPhotoPreviewUrl;
-  preview.style.display = "";
-  $<HTMLButtonElement>("#my-photo-clear").style.display = "";
+  setVisible(preview, true);
+  setVisible($<HTMLButtonElement>("#my-photo-clear"), true);
   markProfileDirty();
 }
 
@@ -313,8 +313,8 @@ function applyQuizRuns(rows: QuizRun[]): void {
 function renderQuiz(): void {
   const card = $("#quiz-card");
   const body = $("#quiz-body");
-  if (!activeQuiz) { card.style.display = "none"; return; }
-  card.style.display = "";
+  if (!activeQuiz) { setVisible(card, false); return; }
+  setVisible(card, true);
   body.innerHTML = "";
   const q = activeQuiz.current_question;
   body.appendChild(el("div", { class: "small muted" },
@@ -351,7 +351,7 @@ function renderQuiz(): void {
     });
     if (totals) {
       const bar = el("div", { class: "bar" });
-      bar.style.transform = `scaleX(${(totals[a.id] || 0) / respondents})`;
+      bar.style.setProperty("--share", String((totals[a.id] || 0) / respondents));
       aDiv.appendChild(bar);
     }
     // Mark the choice with a tick and words, not only a border tint (UC-P-08).
@@ -363,7 +363,7 @@ function renderQuiz(): void {
     body.appendChild(aDiv);
   }
   if (activeQuiz.results) {
-    body.appendChild(el("div", { class: "small muted", style: "margin-top: 8px;" },
+    body.appendChild(el("div", { class: "small muted mt-2" },
       `${activeQuiz.results.respondents} respondent(s)`));
   }
   if (!locked) {
@@ -372,11 +372,11 @@ function renderQuiz(): void {
       submitQuiz);
     const needPick = !submitted && pendingSelection.size === 0;
     const note = submitted
-      ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Your answer is recorded.")
-      : (needPick ? el("span", { class: "small muted", style: "margin-left: 12px;" }, "Pick an answer, then Submit.") : null);
-    body.appendChild(el("div", { style: "margin-top: 12px;" }, submitBtn, note));
+      ? el("span", { class: "small muted ml-3" }, "Your answer is recorded.")
+      : (needPick ? el("span", { class: "small muted ml-3" }, "Pick an answer, then Submit.") : null);
+    body.appendChild(el("div", { class: "mt-3" }, submitBtn, note));
   } else {
-    body.appendChild(el("div", { class: "small muted", style: "margin-top: 12px;" },
+    body.appendChild(el("div", { class: "small muted mt-3" },
       "Voting closed — the answer has been revealed."));
   }
 }
@@ -419,7 +419,7 @@ function renderStars(): void {
       "aria-label": `${i} star${i > 1 ? "s" : ""}`,
       onclick: () => {
         myRating = i;
-        $("#fb-expand").style.display = "";
+        setVisible($("#fb-expand"), true);
         renderStars();
         markFeedbackDirty();
       },
@@ -430,8 +430,8 @@ function renderStars(): void {
   }
   root.onmouseleave = () => paint(myRating);
   paint(myRating);
-  $("#fb-clear").style.display = myRating > 0 ? "" : "none";
-  $("#fb-clear-confirm").style.display = "none";
+  setVisible($("#fb-clear"), myRating > 0);
+  setVisible($("#fb-clear-confirm"), false);
   renderFeedbackAction();
 }
 
@@ -476,21 +476,21 @@ async function clearFeedback(): Promise<void> {
   feedbackSubmitted = false;
   $<HTMLTextAreaElement>("#fb-went-well").value = "";
   $<HTMLTextAreaElement>("#fb-to-improve").value = "";
-  $("#fb-expand").style.display = "none";
+  setVisible($("#fb-expand"), false);
   $("#fb-status").textContent = "";
   renderStars();
   toast("Rating cleared");
 }
 $("#fb-clear").addEventListener("click", () => {
-  $("#fb-clear").style.display = "none";
-  $("#fb-clear-confirm").style.display = "";
+  setVisible($("#fb-clear"), false);
+  setVisible($("#fb-clear-confirm"), true);
 });
 $("#fb-clear-no").addEventListener("click", () => {
-  $("#fb-clear-confirm").style.display = "none";
-  $("#fb-clear").style.display = "";
+  setVisible($("#fb-clear-confirm"), false);
+  setVisible($("#fb-clear"), true);
 });
 $("#fb-clear-yes").addEventListener("click", () => {
-  $("#fb-clear-confirm").style.display = "none";
+  setVisible($("#fb-clear-confirm"), false);
   void clearFeedback();
 });
 async function loadFeedback(): Promise<void> {
@@ -505,7 +505,7 @@ function applyFeedback(f: Feedback | null): void {
       myRating = f.rating;
       $<HTMLTextAreaElement>("#fb-went-well").value = f.went_well || "";
       $<HTMLTextAreaElement>("#fb-to-improve").value = f.to_improve || "";
-      $("#fb-expand").style.display = "";
+      setVisible($("#fb-expand"), true);
       feedbackSubmitted = true;
       $("#fb-status").textContent = "Submitted ✓";
   } else {
@@ -513,7 +513,7 @@ function applyFeedback(f: Feedback | null): void {
       feedbackSubmitted = false;
       $<HTMLTextAreaElement>("#fb-went-well").value = "";
       $<HTMLTextAreaElement>("#fb-to-improve").value = "";
-      $("#fb-expand").style.display = "none";
+      setVisible($("#fb-expand"), false);
       $("#fb-status").textContent = "";
   }
   renderStars();

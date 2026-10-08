@@ -1,4 +1,4 @@
-import { $, api, el, markUsable, openLiveSocket, pathCode, renderQR } from "./common";
+import { $, api, el, markUsable, openLiveSocket, pathCode, renderQR, setVisible } from "./common";
 import type { DisplayBootstrap, Query, QuizRun } from "./types";
 
 const CODE = pathCode();
@@ -29,16 +29,16 @@ async function loadAll(): Promise<void> {
   if (live) renderQuiz(live);
   else if (queued) renderLobby(queued);
   else if (closed) renderQuiz(closed);
-  else $("#quiz-section").style.display = "none";
+  else setVisible($("#quiz-section"), false);
 }
 
 function renderLobby(run: QuizRun): void {
   const section = $("#quiz-section");
   const body = $("#quiz-body");
-  section.style.display = "";
+  setVisible(section, true);
   body.innerHTML = "";
   body.appendChild(el("div", { class: "muted" }, "Next up:"));
-  body.appendChild(el("h2", { style: "font-size: 40px; margin: 8px 0 24px;" }, run.quiz_title));
+  body.appendChild(el("h2", { class: "proj-lobby-title" }, run.quiz_title));
   body.appendChild(el("div", { class: "muted" }, "Scan to join — quiz starts when the moderator clicks Start."));
 }
 
@@ -92,7 +92,7 @@ function placeholderOptionLabel(idx: number): string {
 function renderQuiz(run: QuizRun): void {
   const section = $("#quiz-section");
   const body = $("#quiz-body");
-  section.style.display = "";
+  setVisible(section, true);
   body.innerHTML = "";
   body.appendChild(el("div", { class: "muted" }, `${run.quiz_title} — question ${run.current_question_idx + 1}/${run.question_count}`));
   const q = run.current_question;
@@ -109,7 +109,7 @@ function renderQuiz(run: QuizRun): void {
     const aDiv = el("div", { class: "option disabled" + (showCorrect && a.is_correct ? " correct" : "") });
     if (showCounts) {
       const bar = el("div", { class: "bar" });
-      bar.style.transform = `scaleX(${respondents ? (totals[a.id] || 0) / respondents : 0})`;
+      bar.style.setProperty("--share", String(respondents ? (totals[a.id] || 0) / respondents : 0));
       aDiv.appendChild(bar);
     }
     if (!hideAnswerDetails && a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
