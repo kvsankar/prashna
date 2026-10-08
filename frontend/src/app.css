@@ -170,6 +170,8 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
   pointer-events: none;
 }
 .option .opt-text { flex: 1; position: relative; z-index: 1; }
+.option .opt-mark { width: 1em; position: relative; z-index: 1; color: var(--accent-2); font-weight: 700; }
+.option .opt-chosen { position: relative; z-index: 1; font-size: 12px; font-weight: 600; color: var(--accent-2); white-space: nowrap; }
 .option .opt-pct { position: relative; z-index: 1; font-weight: 600; color: var(--accent-2); }
 .option img.opt-img { max-height: 80px; max-width: 120px; border-radius: 4px; position: relative; z-index: 1; }
 .q-image { max-width: 100%; max-height: 280px; border-radius: 8px; margin: 8px 0; display: block; }

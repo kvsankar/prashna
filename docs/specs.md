@@ -711,6 +711,7 @@ Used by question and answer editors to set `image_url`.
 **Tests (UI)**
 - On `/quizzes`, clicking a row in `#qs-rows` opens `#results-card`; `#results-body` shows per-question answer counts with correctness markers.
 - `#results-card` is in the viewport after opening.
+- Opening `/quizzes?run=<run_id>` opens that run's `#results-card` directly (the session page's "View results →" link, UC-M-06).
 - `#results-close` closes the pane.
 
 ### UC-A-25: Change admin password
@@ -1035,6 +1036,7 @@ recognizes which phase the current question is in.
 **Tests (UI)**
 - In `#quiz-runs`, after closing (via the ⋯ menu's "Finish quiz", or the primary "Finish quiz →" on the last question) the row's badge flips to `.badge-closed` and the run's ⋯ menu (`details.menu`) disappears.
 - The participant page (in another tab) refreshes via WS and continues to show the last question with results.
+- For the admin owner, a closed row shows a "View results →" link to `/quizzes?run=<run_id>`, which opens that run's `#results-card` (UC-A-24) with every question's tallies. A delegate (mod_key only) doesn't see the link, because the quiz library is admin-only.
 
 ### UC-M-07: Remove a quiz run (only when queued / live)
 
@@ -1387,6 +1389,7 @@ by default while the session is `planning`.
 - On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive; clicking **Submit answer** POSTs and toasts. The Submit button is **always enabled** (a disabled button reads as broken) — submitting with no selection shows a "Pick an answer first" toast instead of a no-op; a "Pick an answer, then Submit." hint shows until one is chosen. (The button reads "Submit answer", then "Update answer" after a prior submission; tests locate it via `#quiz-body button.primary`, not its text.)
 - With multi-choice, clicking answers toggles each independently.
 - After moderator reveals, the answer inputs become disabled.
+- A chosen answer is marked by more than a border tint: it shows a ✓ and the word "Selected" (after reveal, "Your answer"); unchosen answers show neither.
 
 ### UC-P-09: See results on Reveal (participant)
 

@@ -354,8 +354,11 @@ function renderQuiz(): void {
       bar.style.transform = `scaleX(${(totals[a.id] || 0) / respondents})`;
       aDiv.appendChild(bar);
     }
+    // Mark the choice with a tick and words, not only a border tint (UC-P-08).
+    aDiv.appendChild(el("span", { class: "opt-mark", "aria-hidden": "true" }, selected ? "✓" : ""));
     if (a.image_url) aDiv.appendChild(el("img", { class: "opt-img", src: a.image_url }));
     aDiv.appendChild(el("div", { class: "opt-text" }, a.text));
+    if (selected) aDiv.appendChild(el("span", { class: "opt-chosen" }, locked ? "Your answer" : "Selected"));
     if (totals) aDiv.appendChild(el("div", { class: "opt-pct" }, `${totals[a.id] || 0} (${pct}%)`));
     body.appendChild(aDiv);
   }

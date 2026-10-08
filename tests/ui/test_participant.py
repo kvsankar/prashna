@@ -571,6 +571,26 @@ def test_uc_p_08_submit_single_choice(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_p_08_selected_answer_is_marked(base_url, admin_setup, page):
+    """UC-P-08: the chosen answer shows a ✓ and "Selected"; others show neither."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-P08m {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-P08ms {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#quiz-card:visible")
+        options = page.locator("#quiz-body button.option")
+        options.first.click()
+        expect(options.first).to_contain_text("✓")
+        expect(options.first).to_contain_text("Selected")
+        expect(options.nth(1)).not_to_contain_text("Selected")
+        expect(options.nth(1)).not_to_contain_text("✓")
+    finally:
+        c.close()
+
+
 def test_uc_p_08_reveal_disables_inputs(base_url, admin_setup, page):
     """UC-P-08: after moderator reveals, the answer inputs become disabled."""
     c = api_login(base_url)

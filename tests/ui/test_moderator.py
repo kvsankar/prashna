@@ -497,6 +497,43 @@ def test_uc_m_06_close_run_flips_badge_and_hides_menu(base_url, admin_setup, pag
         c.close()
 
 
+def test_uc_m_06_closed_run_links_to_results(base_url, admin_setup, page):
+    """UC-M-06: for the owner, a closed row links to /quizzes?run=<id>, which opens its results."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M06res {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M06ress {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close").raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-runs .badge-closed")
+        link = page.locator("#quiz-runs a", has_text="View results")
+        expect(link).to_have_attribute("href", f"/quizzes?run={run['id']}")
+        link.click()
+        expect(page.locator("#results-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#results-title")).to_contain_text(quiz["title"])
+    finally:
+        c.close()
+
+
+def test_uc_m_06_delegate_sees_no_results_link(base_url, admin_setup, page):
+    """UC-M-06: a delegate doesn't get the admin-only results link."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M06del {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M06dels {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close").raise_for_status()
+    try:
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        page.wait_for_selector("#quiz-runs .badge-closed")
+        expect(page.locator("#quiz-runs a", has_text="View results")).to_have_count(0)
+    finally:
+        c.close()
+
+
 # ---------- UC-M-07 ----------
 
 

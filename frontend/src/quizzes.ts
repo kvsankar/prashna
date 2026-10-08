@@ -670,6 +670,10 @@ document.addEventListener("keydown", (e) => {
   if ($("#editor-card").style.display !== "none") closeEditor();
 });
 
+// `?run=<id>` (the session page's "View results →") opens that run's results.
+const requestedRun = Number(new URLSearchParams(location.search).get("run")) || null;
+
 Promise.all([loadQuizzes(), loadQSessions()])
   .then(() => markUsable("quizzes"))
+  .then(() => { if (requestedRun) void openQSDetail(requestedRun); })
   .catch((error: unknown) => errorToast((error as Error).message));

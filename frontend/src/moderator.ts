@@ -387,6 +387,10 @@ function renderQuizRun(r: QuizRun): HTMLElement {
     }
     detail.appendChild(el("div", { class: "small muted" }, `${respondents} respondent(s)`));
   }
+  // Full per-question results live in the admin-only quiz library (UC-M-06).
+  if (r.status === "closed" && isOwner) {
+    detail.appendChild(el("a", { class: "small", href: `/quizzes?run=${r.id}` }, "View results →"));
+  }
   return el("section", { class: "card", style: "background: var(--panel-2);" }, head, detail);
 }
 
