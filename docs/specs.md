@@ -354,8 +354,16 @@ own use case so tests and PRs can cite one ID per behavior.
 - `GET /api/quizzes/{id}` for a non-existent id → `404`.
 - `GET /api/quizzes/{id}` with no auth → `404`.
 
+The editor card sits directly below the quiz list and scrolls into view
+when it opens, so on a phone the editor appears where the admin is
+looking. Every editor control has an accessible name ("Question 1 text",
+"Question 1 type", "Answer 1 text", "Answer 1 is correct"), and images
+are added with an **Add image** button rather than a bare file input.
+
 **Tests (UI)**
 - On `/quizzes`, clicking a row in `#quiz-rows` opens `#editor-card`, populates `#editor-title`, and `#editor-body` lists each question with its answers and a correctness marker per answer.
+- `#editor-card` immediately follows `#quiz-library-card` in the page and is in the viewport after opening, at desktop and phone widths.
+- The first question's text box is reachable by role as "Question 1 text", its first answer as "Answer 1 text", and that answer's checkbox as "Answer 1 is correct".
 
 ### UC-A-12: Rename a quiz
 
@@ -588,6 +596,7 @@ Used by question and answer editors to set `image_url`.
 - 6 MB file (Content-Length header set) → `400 "max 5MB"`.
 - 6 MB streamed payload (no Content-Length) → `400 "max 5MB"`.
 - `POST /api/uploads` with no auth → `401`.
+- In the editor, each question and answer offers an **Add image** button (**Change image** once set) that opens the hidden file input.
 
 **Tests (UI)**
 - In `#editor-body`, picking an image file via the question's file input uploads, then PATCHes the question with the new `image_url`, then re-renders the thumbnail.
@@ -701,6 +710,7 @@ Used by question and answer editors to set `image_url`.
 
 **Tests (UI)**
 - On `/quizzes`, clicking a row in `#qs-rows` opens `#results-card`; `#results-body` shows per-question answer counts with correctness markers.
+- `#results-card` is in the viewport after opening.
 - `#results-close` closes the pane.
 
 ### UC-A-25: Change admin password
@@ -890,8 +900,11 @@ the UI shows no button.
 
 The **+ Add quiz** composer is an operational control during a session,
 so it lives in the Quiz card header (`#quizzes-card` card-tools) and
-stays visible whether the session is `planning` or `live`. The staged
-runs render below it in `#quiz-runs`.
+stays visible whether the session is `planning` or `live`. On an `ended`
+session nothing can be queued, so the composer is hidden (UX.md §16).
+The picker starts on a "Choose a quiz…" placeholder, so a stray tap on
+**+ Add quiz** can't queue the wrong quiz. The staged runs render below
+it in `#quiz-runs`.
 
 **Tests (UI)**
 - On `/m/<code>` as a delegate (mod_key only), `#quiz-select` lists only ready quizzes (drafts filtered).
@@ -899,6 +912,8 @@ runs render below it in `#quiz-runs`.
 - Selecting a quiz and clicking `#add-quiz-btn` appends a queued row to `#quiz-runs` with `.badge-queued`.
 - On a `live` session, `#add-quiz-btn` is visible without opening Set up.
 - Selecting a valid draft and clicking `#add-quiz-btn` queues it and toasts that it was published.
+- `#quiz-select` starts on the placeholder (value `""`); clicking `#add-quiz-btn` without choosing toasts "Pick a quiz first." and queues nothing.
+- On an `ended` session, `#quiz-composer` is hidden.
 
 ### UC-M-04: Start a queued quiz run
 
@@ -924,6 +939,8 @@ runs render below it in `#quiz-runs`.
 **Tests (UI)**
 - In `#quiz-runs` on `/m/<code>`, clicking Start on a `.badge-queued` row flips the row to `.badge-live` and reveals the Next/Reveal control.
 - With one run already live, clicking Start on a second queued row toasts the 409 error.
+- `#quiz-runs` lists the live run first, then queued runs in play order (oldest first), then closed runs (newest first).
+- A queued row shows the quiz title, version, and question count with its controls, but no answer options (`.option`), so the correct answer stays hidden until the run starts.
 
 ### UC-M-05: Walk through questions
 
@@ -1250,6 +1267,9 @@ by default while the session is `planning`.
   Participant; a toast confirms
 - **And** an `ended` session refuses with `400 Session has ended` and
   the Ask card is hidden from the UI
+- **And** the placeholder mentions the Cmd/Ctrl+Enter shortcut only on
+  devices with a precise pointer (a keyboard is likely); phones show
+  "Type your question…"
 
 **Tests (API)**
 - `POST /api/sessions/{code}/queries` with `{"text": "Hi?"}` on a `planning` or `live` session → `200 {id, text, author_name, response_text: null, responded: false, removed: false, vote_count: 0, voted: false, mine: true, created_at}`. Auth: none (cookie issued on first call).
@@ -1415,6 +1435,8 @@ by default while the session is `planning`.
 **Tests (UI)**
 - On `/s/<CODE>`, after the moderator ends the session, the participant view (via WS) hides `#ask-card` and shows `#ended-card` with the "Session ended" message.
 - Existing queries in `#queries` and the last quiz state in `#quiz-card` remain visible.
+- On an ended session with no questions, `#queries` reads "No questions were asked." (not an invitation to ask).
+- The participant section links show only sections that are visible: on an ended session with no quiz and rating closed, the Ask, Quiz, and Rating links are hidden; Profile and Questions remain.
 
 ### UC-P-12: Live answer counts during voting
 
@@ -1619,6 +1641,7 @@ hidden entirely.
 - After reveal (results phase), bars + correctness markers appear.
 - With a single `closed` run and no live/queued, `#quiz-body` keeps the last question with final tallies and correctness.
 - Priority: when both `live` and `closed` runs exist, the live one wins; when both `queued` and `closed` exist (no live), the queued one wins (lobby).
+- The question text renders as written (no forced uppercase) in the main text colour, so long questions stay readable from the back of the room.
 
 ### UC-D-07: Quiz lobby state
 
@@ -1944,6 +1967,27 @@ capacity is the allowed burst and refill is the sustained rate.
 - The Cloudflare cache rule is scoped only to `prashna.sankara.net` HTML page
   routes and respects the origin cache directives; `/api/`, `/ws/`, and
   `/uploads/` are never matched.
+
+### UC-X-12: Phone-width layout
+
+Most participants use phones, and admins and moderators sometimes do.
+Every surface works at a 390 px wide viewport.
+
+- **Given** a viewport 390 px wide
+- **Then** no page scrolls sideways; wide tables scroll inside their own
+  `.table-scroll` box, and row headers (quiz-run controls, editor rows)
+  wrap instead of widening the page
+- **And** text inputs, text areas, and selects use at least a 16 px font
+  on narrow screens, so iOS Safari does not zoom in when one is focused
+- **And** on touch devices (`pointer: coarse`) buttons, menu toggles, and
+  section links are at least 32 px tall
+- **And** a detail card opened from a list (quiz editor, run results)
+  scrolls into view
+
+**Tests (UI)**
+- At 390×844, `/`, `/quizzes` (with the editor open), `/m/<code>` (live, with a live run and questions), `/s/<code>` (live quiz), and `/p/<code>` each have `document.documentElement.scrollWidth <= 390`.
+- At 390×844, every visible `input[type=text]`, `textarea`, and `select` on `/quizzes` (editor open), `/m/<code>`, and `/s/<code>` has a computed font size of at least 16 px.
+- In a touch-emulating context at 390×844, every visible `button` and `details.menu > summary` on `/quizzes` and `/m/<code>`, and every `.section-links a`, is at least 32 px tall.
 
 ---
 

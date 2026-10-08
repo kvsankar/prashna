@@ -12,6 +12,7 @@ from playwright.sync_api import expect
 
 from ._helpers import (
     admin_login_via_ui,
+    api_end_session,
     api_login,
     api_make_quiz,
     api_make_session,
@@ -256,6 +257,38 @@ def test_uc_m_03_add_draft_publishes_and_queues(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_03_picker_starts_on_placeholder(base_url, admin_setup, page):
+    """UC-M-03: #quiz-select starts empty; Add without a choice toasts and queues nothing."""
+    c = api_login(base_url)
+    api_make_quiz(c, f"UI-M03ph {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M03phs {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-select option[value]:not([value=''])", state="attached")
+        expect(page.locator("#quiz-select")).to_have_value("")
+        page.click("#add-quiz-btn")
+        expect(page.locator(".toast-error")).to_contain_text("Pick a quiz first")
+        assert c.get(f"/api/sessions/{s['code']}/quiz_runs").json() == []
+    finally:
+        c.close()
+
+
+def test_uc_m_03_ended_session_hides_composer(base_url, admin_setup, page):
+    """UC-M-03: on an ended session the + Add quiz composer is hidden."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M03end {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    api_end_session(c, s["code"])
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quizzes-card:visible", timeout=5000)
+        expect(page.locator("#quiz-composer")).to_be_hidden()
+    finally:
+        c.close()
+
+
 # ---------- UC-M-04 ----------
 
 
@@ -293,6 +326,33 @@ def test_uc_m_04_second_live_run_toasts_409(base_url, admin_setup, page):
         queued_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-queued"))
         queued_row.locator("button", has_text="Start").click()
         expect(page.locator(".toast-error")).to_contain_text("Another quiz is already live", timeout=5000)
+    finally:
+        c.close()
+
+
+def test_uc_m_04_live_run_listed_first_and_queued_rows_compact(base_url, admin_setup, page):
+    """UC-M-04: live run first, then queued (play order); queued rows show no answers."""
+    c = api_login(base_url)
+    quiz_a = api_make_quiz(c, f"UI-M04first {secrets.token_hex(3)}", publish=True)
+    quiz_b = api_make_quiz(c, f"UI-M04second {secrets.token_hex(3)}", publish=True)
+    quiz_c = api_make_quiz(c, f"UI-M04live {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M04order {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz_a["id"])
+    api_queue_quiz_run(c, s["code"], quiz_b["id"])
+    live = api_queue_quiz_run(c, s["code"], quiz_c["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{live['id']}/start").raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-runs .badge-live")
+        rows = page.locator("#quiz-runs > section")
+        expect(rows).to_have_count(3)
+        expect(rows.nth(0)).to_contain_text(quiz_c["title"])
+        expect(rows.nth(1)).to_contain_text(quiz_a["title"])
+        expect(rows.nth(2)).to_contain_text(quiz_b["title"])
+        queued = rows.filter(has=page.locator(".badge-queued"))
+        expect(queued.locator(".option")).to_have_count(0)
+        expect(queued.first).to_contain_text("1 question")
     finally:
         c.close()
 

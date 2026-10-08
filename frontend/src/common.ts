@@ -49,6 +49,30 @@ export function el(tag: string, attrs: Attrs = {}, ...children: (Child | Child[]
   return node;
 }
 
+// Section links list only sections that are currently shown (UX.md §16):
+// hide a link whenever its target card is hidden (display: none), and show
+// it again when the card appears. Debounced to one pass per frame.
+let sectionSyncQueued = false;
+function syncSectionLinks(): void {
+  sectionSyncQueued = false;
+  for (const link of document.querySelectorAll<HTMLAnchorElement>(".section-links a[href^='#']")) {
+    const target = document.querySelector<HTMLElement>(link.hash);
+    const display = !target || target.getClientRects().length > 0 ? "" : "none";
+    if (link.style.display !== display) link.style.display = display;
+  }
+}
+function queueSectionSync(): void {
+  if (sectionSyncQueued) return;
+  sectionSyncQueued = true;
+  requestAnimationFrame(syncSectionLinks);
+}
+if (document.querySelector(".section-links")) {
+  new MutationObserver((records) => {
+    if (records.some((r) => !(r.target as Element).closest?.(".section-links"))) queueSectionSync();
+  }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["style", "hidden"] });
+  queueSectionSync();
+}
+
 // Section navigation is shared by the long role-based pages. If a jump target
 // is a collapsed disclosure (for example moderator Set up), open it before the
 // browser scrolls to the anchor.

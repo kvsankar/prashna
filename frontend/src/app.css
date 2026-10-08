@@ -44,6 +44,9 @@ main.wide { max-width: 1200px; }
 .section-links a { white-space: nowrap; }
 section[id], details[id] { scroll-margin-top: 58px; }
 section.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+/* Keep cards clear of the sticky page-nav when scrolled to (section links,
+   detail cards opened from a list). */
+section.card, details.card, details.setup { scroll-margin-top: 64px; }
 h2 { margin-top: 0; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 input, textarea, select {
   width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
@@ -177,6 +180,9 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 .proj .question { font-size: 20px; padding: 16px; }
 .proj .option { font-size: 24px; padding: 20px; }
 .proj .q-image { max-height: 360px; }
+/* The question as written: no inherited h2 uppercase/muted styling, so long
+   questions stay readable from the back of the room (UC-D-06). */
+.proj .proj-question { font-size: 32px; margin: 12px 0; line-height: 1.25; color: var(--text); text-transform: none; letter-spacing: normal; }
 
 /* Compact card variant for admin tables */
 section.card.compact { padding: 12px 14px; margin-bottom: 12px; }
@@ -279,6 +285,13 @@ button.xsmall { padding: 2px 8px; font-size: 11px; border-radius: 6px; }
   width: auto;
   margin: 0;
 }
+/* Quiz-run header on the session page: wraps instead of pushing its
+   controls off a phone screen (UC-X-12). */
+.run-head { flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+/* Moderator response box: one line until used. */
+.question textarea.response-input { min-height: 38px; }
+.question textarea.response-input:focus,
+.question textarea.response-input:not(:placeholder-shown) { min-height: 70px; }
 .editor-opt { display: flex; gap: 6px; align-items: center; padding: 4px 0; }
 .editor-opt input[type="text"] { flex: 1; min-width: 80px; }
 
@@ -354,4 +367,22 @@ details.menu > .menu-panel.session-picker button { display: flex; gap: 6px; alig
      move/delete buttons wrap below. */
   .editor-opt { flex-wrap: wrap; }
   .editor-opt input[type="text"] { flex: 1 1 60%; }
+  /* iOS Safari zooms into focused fields under 16 px (UX.md §16a). */
+  input, textarea, select, input.inline, select.inline, .editor-q.compact textarea { font-size: 16px; }
+  .proj { padding: 16px; }
+  .proj h1 { font-size: 28px; }
+  .proj .code-display { font-size: 20px; }
+  .proj .proj-question { font-size: 22px; }
+}
+
+/* Small phones: tighter table cells so 4-column tables fit 360 px. */
+@media (max-width: 400px) {
+  .ctable th, .ctable td { padding: 6px 4px; }
+}
+
+/* Touch devices: tap targets at least 32 px tall (UC-X-12). */
+@media (pointer: coarse) {
+  button.small, button.xsmall, details.menu > summary { min-height: 32px; }
+  input[type="checkbox"] { width: 22px; height: 22px; }
+  .section-links a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 4px; }
 }

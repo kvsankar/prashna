@@ -231,7 +231,8 @@ function renderQueries(): void {
   const root = $("#queries");
   root.innerHTML = "";
   if (!queries.length) {
-    root.appendChild(el("div", { class: "muted small" }, "No questions yet. Be the first to ask."));
+    root.appendChild(el("div", { class: "muted small" },
+      sessionEnded ? "No questions were asked." : "No questions yet. Be the first to ask."));
     return;
   }
   const sorted = [...queries].sort((a, b) => {
@@ -281,6 +282,10 @@ async function askQuery(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 guardClick($<HTMLButtonElement>("#ask-btn"), askQuery);
+// Mention the keyboard shortcut only where a keyboard is likely (UX.md §16a).
+if (!matchMedia("(pointer: fine)").matches) {
+  $<HTMLTextAreaElement>("#query-text").placeholder = "Type your question…";
+}
 $("#query-text").addEventListener("keydown", (e) => {
   const ke = e as KeyboardEvent;
   if (ke.key === "Enter" && (ke.metaKey || ke.ctrlKey)) { ke.preventDefault(); void askQuery(); }

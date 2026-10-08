@@ -150,6 +150,9 @@ $("#set-delete").addEventListener("click", () => {
 function renderLifecycle(): void {
   if (!sessionState) return;
   const status = sessionState.status;
+  // Nothing can be queued once a session has ended (UX.md §16).
+  $("#quiz-composer").style.display = status === "ended" ? "none" : "";
+  $("#quiz-hint").style.display = status === "ended" ? "none" : "";
   $("#session-status").textContent = statusLabel(status);
   $("#session-status").className = "badge badge-" + status;
   const actions = $("#lifecycle-actions"); actions.innerHTML = "";
@@ -234,7 +237,10 @@ function renderQueries(): void {
 
 function renderQuery(q: Query): HTMLElement {
   const initial = pendingResponseText.has(q.id) ? pendingResponseText.get(q.id)! : (q.response_text || "");
-  const respInput = el("textarea", { placeholder: "Type a response (optional — leave empty if you answered verbally)…" }, initial) as HTMLTextAreaElement;
+  const respInput = el("textarea", {
+    class: "response-input", rows: 1, "aria-label": "Response to this question",
+    placeholder: "Type a response (optional)…",
+  }, initial) as HTMLTextAreaElement;
   respInput.addEventListener("input", () => pendingResponseText.set(q.id, respInput.value));
   const respondBtn = el("button", { class: "primary small" }, q.responded ? "Update response" : "Mark responded");
   respondBtn.addEventListener("click", async () => {
@@ -289,6 +295,9 @@ function applyQuizzes(rows: QuizSummary[]): void {
     sel.appendChild(el("option", { value: "" }, "No ready quizzes — publish one in the library"));
     return;
   }
+  // A placeholder first, so a stray tap on + Add quiz can't queue the
+  // wrong quiz (UC-M-03).
+  sel.appendChild(el("option", { value: "" }, "Choose a quiz…"));
   for (const q of quizzes) {
     const label = `${q.title} (${q.question_count} questions)`
       + (q.status === "draft" ? " (draft)" : "");
@@ -316,17 +325,26 @@ function renderQuizRuns(): void {
     root.appendChild(el("div", { class: "muted small" }, "No quizzes added yet — pick one above and click + Add quiz."));
     return;
   }
-  for (const r of quizRuns) root.appendChild(renderQuizRun(r));
+  // Live first (the one being driven), then queued in play order, then
+  // closed newest first (UC-M-04). Run ids grow with creation time.
+  const rank: Record<string, number> = { live: 0, queued: 1, closed: 2 };
+  const sorted = [...quizRuns].sort((a, b) =>
+    (rank[a.status] ?? 3) - (rank[b.status] ?? 3)
+    || (a.status === "closed" ? b.id - a.id : a.id - b.id));
+  for (const r of sorted) root.appendChild(renderQuizRun(r));
 }
 
 function renderQuizRun(r: QuizRun): HTMLElement {
   const sessionEnded = sessionState?.status === "ended";
   const tag = el("span", { class: "badge badge-" + r.status }, statusLabel(r.status));
-  const head = el("div", { class: "row", style: "margin-bottom: 8px; gap: 6px;" },
+  const progress = r.status === "queued"
+    ? ` · ${r.question_count} question${r.question_count === 1 ? "" : "s"}`
+    : ` · q ${r.current_question_idx + 1}/${r.question_count}`;
+  const head = el("div", { class: "row run-head" },
     el("strong", {}, r.quiz_title),
     el("span", { class: "small muted" }, ` v${r.version_no}`),
     tag,
-    el("span", { class: "small muted" }, ` · q ${r.current_question_idx + 1}/${r.question_count}`),
+    el("span", { class: "small muted" }, progress),
     el("div", { class: "spacer" }),
   );
   if (r.status === "live" && r.reveal_current) {
@@ -347,7 +365,9 @@ function renderQuizRun(r: QuizRun): HTMLElement {
   }
   const menu = buildRunMenu(r);
   if (menu) head.appendChild(menu);
-  const cur = r.current_question;
+  // A queued run shows no answers: nothing to tally yet, and the correct
+  // answer stays hidden until the run starts (UC-M-04).
+  const cur = r.status === "queued" ? null : r.current_question;
   const totals = r.results?.totals ?? {};
   const respondents = r.results?.respondents ?? 0;
   const detail = el("div");

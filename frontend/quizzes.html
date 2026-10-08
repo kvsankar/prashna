@@ -29,7 +29,7 @@
       <div class="card-head">
         <h2>Quizzes</h2>
         <div class="card-tools">
-          <input id="new-quiz-title" placeholder="New quiz title" class="inline">
+          <input id="new-quiz-title" placeholder="New quiz title" aria-label="New quiz title" class="inline">
           <button class="primary small" id="create-quiz">+ New</button>
         </div>
       </div>
@@ -41,6 +41,14 @@
         </tr></thead>
         <tbody id="quiz-rows"><tr><td colspan="4" class="muted small">Loading…</td></tr></tbody>
       </table>
+    </section>
+
+    <section class="card compact" id="editor-card" style="display:none;">
+      <div class="card-head">
+        <h2 id="editor-title">Editing quiz</h2>
+        <button class="ghost small" id="editor-close">Close</button>
+      </div>
+      <div id="editor-body"></div>
     </section>
 
     <section class="card compact" id="quiz-runs-card">
@@ -63,14 +71,6 @@
         </table>
       </div>
       <div id="qs-groups" style="display:none;"></div>
-    </section>
-
-    <section class="card compact" id="editor-card" style="display:none;">
-      <div class="card-head">
-        <h2 id="editor-title">Editing quiz</h2>
-        <button class="ghost small" id="editor-close">Close</button>
-      </div>
-      <div id="editor-body"></div>
     </section>
 
     <section class="card compact" id="results-card" style="display:none;">

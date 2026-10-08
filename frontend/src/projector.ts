@@ -97,7 +97,7 @@ function renderQuiz(run: QuizRun): void {
   body.appendChild(el("div", { class: "muted" }, `${run.quiz_title} — question ${run.current_question_idx + 1}/${run.question_count}`));
   const q = run.current_question;
   if (!q) return;
-  body.appendChild(el("h2", { style: "font-size: 32px; margin: 12px 0;" }, q.text));
+  body.appendChild(el("h2", { class: "proj-question" }, q.text));
   if (q.image_url) body.appendChild(el("img", { class: "q-image", src: q.image_url }));
   const totals = run.results?.totals ?? {};
   const respondents = run.results?.respondents ?? 0;

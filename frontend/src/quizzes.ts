@@ -255,6 +255,12 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-run-vie
 
 // ---------- detail panes ----------
 
+// Bring a newly opened detail card into view; on a phone it is otherwise
+// off-screen below the list (UX.md §16a).
+function revealCard(card: HTMLElement): void {
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function showEditor(title: string): void {
   $("#editor-title").textContent = title;
   $("#editor-card").style.display = "";
@@ -335,10 +341,13 @@ async function unpublishQuiz(id: number): Promise<void> {
 
 async function openQuizDetail(id: number): Promise<void> {
   try {
+    const opening = editingId !== id;
     editing = await api<QuizEditor>(`/api/quizzes/${id}?include_correct=true`);
     editingId = id;
     showEditor(`Editing quiz: ${editing.title}`);
     renderEditor();
+    // Re-renders after each edit keep the scroll position.
+    if (opening) revealCard($("#editor-card"));
   } catch (e) { errorToast((e as Error).message); }
 }
 
@@ -354,7 +363,7 @@ function renderEditor(): void {
   body.appendChild(el("div", { class: "small muted", style: "margin-bottom: 8px;" },
     "Edits are versioned at next Launch — they don't affect past runs."));
 
-  const titleInp = el("input", { value: quiz.title, class: "inline" }) as HTMLInputElement;
+  const titleInp = el("input", { value: quiz.title, class: "inline", "aria-label": "Quiz title" }) as HTMLInputElement;
   titleInp.addEventListener("change", async () => {
     const r = await api<{ status?: string }>(`/api/quizzes/${quiz.id}`, { method: "PATCH", body: { title: titleInp.value } });
     quiz.title = titleInp.value;
@@ -380,10 +389,10 @@ function renderQuestion(qq: EditorQuestion, idx: number): HTMLElement {
   const wrap = el("div", { class: "editor-q compact", "data-id": qq.id });
   const saveOrder = (order: number[]) => saveQuestionOrder(quizId, order);
 
-  const textInp = el("textarea", { rows: 2 }, qq.text) as HTMLTextAreaElement;
+  const textInp = el("textarea", { rows: 2, "aria-label": `Question ${idx + 1} text` }, qq.text) as HTMLTextAreaElement;
   textInp.addEventListener("change", () => void patchQuestion(qq.id, { text: textInp.value }));
 
-  const typeSel = el("select", { class: "inline narrow" }) as HTMLSelectElement;
+  const typeSel = el("select", { class: "inline narrow", "aria-label": `Question ${idx + 1} type` }) as HTMLSelectElement;
   for (const t of ["single", "multi"]) {
     const o = el("option", { value: t }, t === "single" ? "Single" : "Multiple");
     if (qq.qtype === t) o.setAttribute("selected", "");
@@ -417,14 +426,10 @@ function renderQuestion(qq: EditorQuestion, idx: number): HTMLElement {
 
   const imgRow = el("div", { class: "row gap small muted", style: "margin-top: 6px;" });
   if (qq.image_url) imgRow.appendChild(el("img", { src: qq.image_url, class: "thumb" }));
-  const imgInp = el("input", { type: "file", accept: "image/*", class: "inline" }) as HTMLInputElement;
-  imgInp.addEventListener("change", async () => {
-    const file = imgInp.files?.[0];
-    if (!file) return;
+  imgRow.append(...imagePicker(Boolean(qq.image_url), `Question ${idx + 1} image`, async (file) => {
     const url = await uploadImage(file);
     if (url) { await patchQuestion(qq.id, { image_url: url }); void openQuizDetail(quizId); }
-  });
-  imgRow.appendChild(imgInp);
+  }));
   if (qq.image_url) {
     imgRow.appendChild(el("button", { class: "ghost xsmall", onclick: async () => {
       await patchQuestion(qq.id, { image_url: null }); void openQuizDetail(quizId);
@@ -450,27 +455,20 @@ function renderAnswer(qq: EditorQuestion, op: EditorAnswer, idx: number): HTMLEl
   const saveOrder = (order: number[]) => saveAnswerOrder(quizId, qq.id, order);
   const row = el("div", { class: "editor-opt", "data-id": op.id });
   row.appendChild(dragHandle(row, "answer", saveOrder));
-  const txt = el("input", { type: "text", value: op.text, class: "inline" }) as HTMLInputElement;
+  const txt = el("input", { type: "text", value: op.text, class: "inline", "aria-label": `Answer ${idx + 1} text` }) as HTMLInputElement;
   txt.addEventListener("change", () => void patchAnswer(op.id, { text: txt.value }));
   if (qq.graded) {
-    const correctBox = el("input", { type: "checkbox" }) as HTMLInputElement;
+    const correctBox = el("input", { type: "checkbox", "aria-label": `Answer ${idx + 1} is correct` }) as HTMLInputElement;
     if (op.is_correct) correctBox.setAttribute("checked", "");
     correctBox.addEventListener("change", () => void patchAnswer(op.id, { is_correct: correctBox.checked }));
     row.appendChild(el("label", { class: "small", title: "Correct" }, correctBox));
   }
   row.appendChild(txt);
   if (op.image_url) row.appendChild(el("img", { src: op.image_url, class: "thumb-sm", alt: "" }));
-  const imgInp = el("input", {
-    type: "file", accept: "image/*", class: "inline",
-    "aria-label": "Set answer image", style: "width: auto; max-width: 140px;",
-  }) as HTMLInputElement;
-  imgInp.addEventListener("change", async () => {
-    const file = imgInp.files?.[0];
-    if (!file) return;
+  row.append(...imagePicker(Boolean(op.image_url), `Answer ${idx + 1} image`, async (file) => {
     const url = await uploadImage(file);
     if (url) { await patchAnswer(op.id, { image_url: url }); void openQuizDetail(quizId); }
-  });
-  row.appendChild(imgInp);
+  }));
   if (op.image_url) {
     row.appendChild(el("button", {
       class: "ghost xsmall", "aria-label": "Clear answer image",
@@ -589,6 +587,20 @@ async function addQuestion(): Promise<void> {
     void openQuizDetail(editing.id);
   } catch (e) { errorToast((e as Error).message); }
 }
+/** "Add image" / "Change image" button driving a hidden file input; the
+ *  native file control's "No file chosen" text is noise in a dense editor. */
+function imagePicker(hasImage: boolean, inputLabel: string, onFile: (file: File) => Promise<void>): HTMLElement[] {
+  const input = el("input", { type: "file", accept: "image/*", hidden: true, "aria-label": inputLabel }) as HTMLInputElement;
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (file) void onFile(file);
+  });
+  const button = el("button", { class: "ghost xsmall", type: "button", title: inputLabel },
+    hasImage ? "Change image" : "Add image");
+  button.addEventListener("click", () => input.click());
+  return [button, input];
+}
+
 async function uploadImage(file: File): Promise<string | null> {
   const fd = new FormData();
   fd.append("file", file);
@@ -601,10 +613,12 @@ async function uploadImage(file: File): Promise<string | null> {
 
 async function openQSDetail(id: number): Promise<void> {
   try {
+    const opening = resultsId !== id;
     const r = await api<QuizRunResults>(`/api/quiz_runs/${id}/results`);
     resultsId = id;
     showResults(`Quiz session: ${r.quiz_title} in ${r.session_code}`);
     renderResults(r);
+    if (opening) revealCard($("#results-card"));
   } catch (e) { errorToast((e as Error).message); }
 }
 

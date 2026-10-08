@@ -676,6 +676,25 @@ def test_uc_p_11_ended_session_hides_ask_and_keeps_queries(base_url, admin_setup
         c.close()
 
 
+def test_uc_p_11_ended_empty_state_and_section_links(base_url, admin_setup, page):
+    """UC-P-11: ended + no questions reads 'No questions were asked.'; links hide for hidden sections."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P11e {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    api_end_session(c, s["code"])
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        expect(page.locator("#ended-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#queries")).to_contain_text("No questions were asked.")
+        links = page.locator(".section-links a")
+        for hidden in ("Ask", "Quiz", "Rating"):
+            expect(links.filter(has_text=hidden)).to_be_hidden()
+        for shown in ("Profile", "Questions"):
+            expect(links.filter(has_text=shown)).to_be_visible()
+    finally:
+        c.close()
+
+
 # ---------- UC-P-12 ----------
 
 

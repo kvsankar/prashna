@@ -128,6 +128,41 @@ def test_uc_a_11_open_quiz_for_editing(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_a_11_editor_follows_list_and_scrolls_into_view(base_url, admin_setup, page):
+    """UC-A-11: #editor-card follows the quiz list and is in view after opening, on a phone too."""
+    c = api_login(base_url)
+    for i in range(6):
+        api_make_quiz(c, f"UI-Q11pad{i} {secrets.token_hex(3)}")
+    quiz = api_make_quiz(c, f"UI-Q11view {secrets.token_hex(3)}", questions=_valid_questions("A"))
+    api_make_quiz(c, f"UI-Q11top {secrets.token_hex(3)}")
+    try:
+        page.set_viewport_size({"width": 390, "height": 700})
+        _goto_quizzes(page, base_url)
+        assert page.evaluate(
+            "document.querySelector('#quiz-library-card').nextElementSibling.id") == "editor-card"
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).locator("td").first.click()
+        expect(page.locator("#editor-card")).to_be_in_viewport(timeout=5000)
+    finally:
+        c.close()
+
+
+def test_uc_a_11_editor_controls_have_accessible_names(base_url, admin_setup, page):
+    """UC-A-11: editor controls are reachable by role and name; images use an Add image button."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q11a11y {secrets.token_hex(3)}", questions=_valid_questions("A"))
+    try:
+        _goto_quizzes(page, base_url)
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).click()
+        expect(page.get_by_role("textbox", name="Question 1 text")).to_have_value("A")
+        expect(page.get_by_role("combobox", name="Question 1 type")).to_be_visible()
+        expect(page.get_by_role("textbox", name="Answer 1 text")).to_have_value("A-right")
+        expect(page.get_by_role("checkbox", name="Answer 1 is correct")).to_be_checked()
+        expect(page.locator("#editor-body").get_by_role("button", name="Add image").first).to_be_visible()
+        expect(page.locator("#editor-body input[type=file]").first).to_be_hidden()
+    finally:
+        c.close()
+
+
 # ---------- UC-A-12 ----------
 
 
@@ -736,6 +771,22 @@ def test_uc_a_23_switches_flat_quiz_version_and_session_views(
 
 
 # ---------- UC-A-24 ----------
+
+
+def test_uc_a_24_results_card_scrolls_into_view(base_url, admin_setup, page):
+    """UC-A-24: #results-card is in the viewport after opening a run."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q24view {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-Q24views {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz["id"])
+    try:
+        page.set_viewport_size({"width": 390, "height": 700})
+        _goto_quizzes(page, base_url)
+        page.locator("#qs-rows tr").filter(has_text=quiz["title"]).first.click()
+        expect(page.locator("#results-card")).to_be_in_viewport(timeout=5000)
+    finally:
+        c.close()
+
 
 
 def test_uc_a_24_results_card_opens_and_closes(base_url, admin_setup, page):

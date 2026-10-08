@@ -318,6 +318,23 @@ def test_uc_d_06_live_in_answering_phase(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_d_06_question_text_not_uppercased(base_url, admin_setup, page):
+    """UC-D-06: the projector shows the question as written (no forced uppercase)."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-D06case {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-D06cases {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    try:
+        page.goto(f"{base_url}/p/{s['code']}")
+        expect(page.locator("#quiz-body")).to_contain_text("2+2?", timeout=5000)
+        question = page.locator("#quiz-body .proj-question")
+        expect(question).to_have_text("2+2?")
+        assert question.evaluate("e => getComputedStyle(e).textTransform") == "none"
+    finally:
+        c.close()
+
+
 def test_uc_d_06_reveal_shows_bars_and_correctness(base_url, admin_setup, page):
     """UC-D-06: after reveal, bars + correctness markers appear."""
     c = api_login(base_url)

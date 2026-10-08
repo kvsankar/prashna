@@ -494,12 +494,39 @@ Every entity with state must show that state in three places:
 ## 16. Don't show what the user can't act on
 
 - Hide controls the current role can't use, don't disable them.
+- Hide controls the current *state* makes useless: the session page hides
+  **+ Add quiz** once a session has ended.
+- Section links (§3) list only sections that are currently visible.
 - Filter lists by what the current viewer can act on:
-  - Moderator's quiz dropdown → only `ready` quizzes.
+  - Moderator's quiz picker → `ready` quizzes for delegates; `ready` and
+    `draft` (publish on add) for the admin owner.
   - Participant's question list → only `not hidden` questions.
   - Admin's session list → all sessions.
 - Disabled state is reserved for transient blocks ("submit while
   loading"), not for permission.
+
+---
+
+## 16a. Phones and touch
+
+Participants are almost always on phones; admins and moderators sometimes
+are. Check every change at 390 px wide (UC-X-12).
+
+- **No sideways page scroll.** Wide tables go in `.table-scroll`; row
+  headers that hold controls use `flex-wrap: wrap`. Don't wrap a table in
+  `.table-scroll` if its rows hold `details.menu` dropdowns — the scroll
+  box clips them; let the actions cell wrap instead.
+- **16 px inputs on narrow screens.** iOS Safari zooms the page when a
+  focused field's font is under 16 px.
+- **Tap targets ≥ 32 px tall on touch** (`@media (pointer: coarse)`),
+  including `.xsmall` buttons, menu toggles, and section links.
+- **Bring opened detail cards into view** (`scrollIntoView`), and place
+  a detail card right after the list it belongs to.
+- **Most urgent content first.** Keep collapsed or below the fold what
+  isn't needed in the moment (e.g. a queued quiz run shows its title and
+  Start, not its answers).
+- **Mention keyboard shortcuts only where a keyboard is likely**
+  (`matchMedia("(pointer: fine)")`).
 
 ---
 
