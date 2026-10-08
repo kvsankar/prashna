@@ -1998,10 +1998,18 @@ Every surface works at a 390 px wide viewport.
 - **And** a detail card opened from a list (quiz editor, run results)
   scrolls into view
 
-**Tests (UI)**
-- At 390×844, `/`, `/quizzes` (with the editor open), `/m/<code>` (live, with a live run and questions), `/s/<code>` (live quiz), and `/p/<code>` each have `document.documentElement.scrollWidth <= 390`.
-- At 390×844, every visible `input[type=text]`, `textarea`, and `select` on `/quizzes` (editor open), `/m/<code>`, and `/s/<code>` has a computed font size of at least 16 px.
-- In a touch-emulating context at 390×844, every visible `button` and `details.menu > summary` on `/quizzes` and `/m/<code>`, and every `.section-links a`, is at least 32 px tall.
+**Tests (UI)** — one sweep (`tests/ui/test_layout.py`) seeds a live
+session (questions, a live and a queued run), a not-started session, and
+an ended session with a closed run, then visits every page: `/` signed
+out and signed in, `/quizzes` (list, editor open, run results open),
+`/m/<code>` (live, not started, ended), `/s/<code>` (live, ended), and
+`/p/<code>`. At 1280×800, 390×844, and 360×740 it fails on:
+- `document.documentElement.scrollWidth` greater than the viewport width;
+- any page error or console error;
+- a visible control without an accessible name (label, `aria-label`, `title`, or text);
+- at 390 and 360 px: a visible text input, text area, or select under 16 px;
+- at 1280 px: a visible button (other than answer options, rating stars, and vote buttons) whose height is not 34, 26, or 20 px (UC-X-13), or a `.profile-cta` that isn't 34 px;
+- in a touch-emulating context at 390 px: a visible `button`, `details.menu > summary`, or `.section-links a` under 32 px tall.
 
 ### UC-X-13: One button size scale
 

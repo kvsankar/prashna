@@ -1,4 +1,4 @@
-"""UC-X-12 and UC-X-13: phone-width layout and the button size scale."""
+"""UC-X-12, UC-X-13, UC-X-14: every page fits phones, one button scale, one answer-option renderer."""
 from __future__ import annotations
 
 import re
@@ -16,106 +16,148 @@ from ._helpers import (
     ask_query_api,
 )
 
-PHONE = {"width": 390, "height": 844}
+VIEWPORTS = {
+    "desk": {"width": 1280, "height": 800},
+    "phone": {"width": 390, "height": 844},
+    "small": {"width": 360, "height": 740},
+}
+
+# Per-page checks (UC-X-12, UC-X-13). Returns lists of offenders.
+PAGE_CHECKS_JS = """(opts) => {
+  // checkVisibility() also excludes the contents of a closed <details>,
+  // which Chromium keeps laid out.
+  const vis = e => { const r = e.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && e.checkVisibility({ visibilityProperty: true }); };
+  const name = e => (e.getAttribute('aria-label') || e.getAttribute('title') || (e.textContent || '').trim()
+    || e.id || e.tagName).replace(/\\s+/g, ' ').slice(0, 40);
+  const controls = [...document.querySelectorAll('button, input:not([type=hidden]), select, textarea, summary')].filter(vis);
+  const unnamed = controls.filter(e => !(e.getAttribute('aria-label') || e.getAttribute('aria-labelledby')
+      || (e.labels && e.labels.length) || (e.textContent || '').trim() || e.getAttribute('title')))
+    .map(e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : ''));
+  const out = { overflow: document.documentElement.scrollWidth - innerWidth, unnamed };
+  if (opts.phone) {
+    out.smallInputs = controls.filter(e => ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName)
+        && !['checkbox', 'radio', 'file'].includes(e.type) && parseFloat(getComputedStyle(e).fontSize) < 16)
+      .map(e => name(e) + ' ' + getComputedStyle(e).fontSize);
+  }
+  if (opts.desk) {
+    const scale = [34, 26, 20];
+    const offScale = h => !scale.some(s => Math.abs(h - s) <= 1);
+    out.offScale = [...document.querySelectorAll('button')].filter(vis)
+      .filter(e => !e.closest('.option, .stars, .vote-btn') && !e.classList.contains('option'))
+      .filter(e => offScale(e.getBoundingClientRect().height))
+      .map(e => name(e) + ' ' + Math.round(e.getBoundingClientRect().height));
+    out.offScale.push(...[...document.querySelectorAll('.profile-cta')].filter(vis)
+      .filter(e => Math.abs(e.getBoundingClientRect().height - 34) > 1).map(e => 'profile-cta'));
+  }
+  if (opts.touch) {
+    out.shortTargets = [...document.querySelectorAll('button, details.menu > summary, .section-links a')].filter(vis)
+      .filter(e => e.getBoundingClientRect().height < 32)
+      .map(e => name(e) + ' ' + Math.round(e.getBoundingClientRect().height));
+  }
+  return out;
+}"""
 
 
-def _live_fixture(base_url):
-    """A live session with a long-titled live run, a queued run, and a question."""
+def _seed(base_url):
+    """Live session (questions, live + queued runs), a not-started session,
+    and an ended session with a closed run."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"Agentic coding fundamentals {secrets.token_hex(3)}", publish=True)
-    s = api_make_session(c, f"UI-X12 session with a long title {secrets.token_hex(3)}")
-    api_start_session(c, s["code"])
-    api_queue_quiz_run(c, s["code"], quiz["id"])
-    run = api_queue_quiz_run(c, s["code"], quiz["id"])
-    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
-    ask_query_api(base_url, s["code"], "A question long enough to need several lines on a narrow phone screen?")
-    return c, quiz, s
+    other = api_make_quiz(c, f"Python warm-up {secrets.token_hex(3)}", publish=True)
+    live = api_make_session(c, f"UI-X12 session with a long title {secrets.token_hex(3)}")
+    api_start_session(c, live["code"])
+    api_queue_quiz_run(c, live["code"], other["id"])
+    run = api_queue_quiz_run(c, live["code"], quiz["id"])
+    c.post(f"/api/sessions/{live['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    ask_query_api(base_url, live["code"], "A question long enough to need several lines on a narrow phone screen?")
+    planning = api_make_session(c, f"UI-X12 planning {secrets.token_hex(3)}")
+    ended = api_make_session(c, f"UI-X12 ended {secrets.token_hex(3)}")
+    closed = api_queue_quiz_run(c, ended["code"], other["id"])
+    c.post(f"/api/sessions/{ended['code']}/quiz_runs/{closed['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{ended['code']}/quiz_runs/{closed['id']}/close").raise_for_status()
+    c.post(f"/api/sessions/{ended['code']}/end").raise_for_status()
+    return c, quiz, live, planning, ended
 
 
-def _open_editor(page, base_url, title):
-    page.goto(base_url + "/quizzes")
-    page.locator("#quiz-rows tr").filter(has_text=title).locator("td").first.click()
-    page.wait_for_selector("#editor-body .editor-q")
+def _pages(quiz, live, planning, ended):
+    """(label, url, needs_admin, prepare) for every surface and state."""
+    def open_editor(page):
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).locator("td").first.click()
+        page.wait_for_selector("#editor-body .editor-q")
+
+    def open_results(page):
+        page.locator("#qs-rows tr").first.click()
+        page.wait_for_selector("#results-body .result-q")
+
+    return [
+        ("landing signed out", "/", False, lambda p: p.wait_for_selector("#login-card:visible")),
+        ("landing signed in", "/", True, lambda p: p.wait_for_selector("#session-rows tr.rowable")),
+        ("quiz library", "/quizzes", True, lambda p: p.wait_for_selector("#quiz-rows tr.rowable")),
+        ("quiz editor", "/quizzes", True, open_editor),
+        ("run results", "/quizzes", True, open_results),
+        ("session live", f"/m/{live['code']}", True, lambda p: p.wait_for_selector("#queries .question")),
+        ("session planning", f"/m/{planning['code']}", True, lambda p: p.wait_for_selector("#settings-card:visible")),
+        ("session ended", f"/m/{ended['code']}", True, lambda p: p.wait_for_selector("#quiz-runs .badge-closed")),
+        ("participant live", f"/s/{live['code']}", False, lambda p: p.wait_for_selector("#quiz-body .option")),
+        ("participant ended", f"/s/{ended['code']}", False, lambda p: p.wait_for_selector("#ended-card:visible")),
+        ("projector", f"/p/{live['code']}", False, lambda p: p.wait_for_selector("#quiz-body .option")),
+    ]
 
 
-def _scroll_width(page) -> int:
-    return page.evaluate("document.documentElement.scrollWidth")
-
-
-def test_uc_x_12_no_sideways_scroll_at_phone_width(base_url, admin_setup, page):
-    """UC-X-12: at 390 px no page scrolls sideways."""
-    c, quiz, s = _live_fixture(base_url)
+def _sweep(browser, base_url, viewport, *, touch=False):
+    c, quiz, live, planning, ended = _seed(base_url)
+    failures = []
     try:
-        page.set_viewport_size(PHONE)
-        admin_login_via_ui(page, base_url)
-        page.wait_for_selector("#session-rows tr.rowable")
-        assert _scroll_width(page) <= 390, "/"
-        _open_editor(page, base_url, quiz["title"])
-        assert _scroll_width(page) <= 390, "/quizzes"
-        page.goto(f"{base_url}/m/{s['code']}")
-        page.wait_for_selector("#quiz-runs .badge-live")
-        page.wait_for_selector("#queries .question")
-        assert _scroll_width(page) <= 390, "/m"
-        page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#quiz-body .option")
-        assert _scroll_width(page) <= 390, "/s"
-        page.goto(f"{base_url}/p/{s['code']}")
-        page.wait_for_selector("#quiz-body .option")
-        assert _scroll_width(page) <= 390, "/p"
+        for label, url, needs_admin, prepare in _pages(quiz, live, planning, ended):
+            ctx = browser.new_context(viewport=VIEWPORTS[viewport], has_touch=touch, is_mobile=touch)
+            page = ctx.new_page()
+            errors = []
+            page.on("pageerror", lambda e: errors.append(str(e)[:120]))
+            page.on("console", lambda m: errors.append(m.text[:120]) if m.type == "error" else None)
+            try:
+                if needs_admin:
+                    admin_login_via_ui(page, base_url)
+                page.goto(base_url + url)
+                prepare(page)
+                page.wait_for_timeout(200)
+                result = page.evaluate(PAGE_CHECKS_JS, {
+                    "phone": viewport != "desk", "desk": viewport == "desk", "touch": touch})
+                # A mobile-emulating context widens innerWidth to fit content,
+                # so measure overflow against the configured width there.
+                if touch:
+                    result["overflow"] = page.evaluate(
+                        "document.documentElement.scrollWidth") - VIEWPORTS[viewport]["width"]
+                problems = {k: v for k, v in result.items() if (v if k != "overflow" else v > 0)}
+                if errors:
+                    problems["errors"] = errors
+                if problems:
+                    failures.append(f"{label} @ {viewport}{' touch' if touch else ''}: {problems}")
+            finally:
+                ctx.close()
     finally:
         c.close()
+    assert failures == [], "\n".join(failures)
 
 
-SMALL_FONT_JS = """() => [...document.querySelectorAll('input[type=text], input:not([type]), textarea, select')]
-  .filter(e => e.getBoundingClientRect().width > 0)
-  .filter(e => parseFloat(getComputedStyle(e).fontSize) < 16)
-  .map(e => (e.id || e.getAttribute('aria-label') || e.tagName) + ' ' + getComputedStyle(e).fontSize)"""
+def test_uc_x_12_sweep_desktop(base_url, admin_setup, browser):
+    """UC-X-12/13: every page at 1280 px — no overflow, errors, unnamed controls, off-scale buttons."""
+    _sweep(browser, base_url, "desk")
 
 
-def test_uc_x_12_inputs_are_16px_on_phones(base_url, admin_setup, page):
-    """UC-X-12: text inputs are at least 16 px at phone width (no iOS focus zoom)."""
-    c, quiz, s = _live_fixture(base_url)
-    try:
-        page.set_viewport_size(PHONE)
-        admin_login_via_ui(page, base_url)
-        _open_editor(page, base_url, quiz["title"])
-        assert page.evaluate(SMALL_FONT_JS) == [], "/quizzes"
-        page.goto(f"{base_url}/m/{s['code']}")
-        page.wait_for_selector("#queries .question")
-        assert page.evaluate(SMALL_FONT_JS) == [], "/m"
-        page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#quiz-body .option")
-        assert page.evaluate(SMALL_FONT_JS) == [], "/s"
-    finally:
-        c.close()
+def test_uc_x_12_sweep_phone(base_url, admin_setup, browser):
+    """UC-X-12: every page at 390 px — no overflow, errors, unnamed controls, sub-16 px inputs."""
+    _sweep(browser, base_url, "phone")
 
 
-SHORT_TARGETS_JS = """(sel) => [...document.querySelectorAll(sel)]
-  .filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })
-  .filter(e => e.getBoundingClientRect().height < 32)
-  .map(e => ((e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 30)) + ' ' + Math.round(e.getBoundingClientRect().height))"""
+def test_uc_x_12_sweep_small_phone(base_url, admin_setup, browser):
+    """UC-X-12: every page at 360 px."""
+    _sweep(browser, base_url, "small")
 
 
-def test_uc_x_12_touch_targets_at_least_32px(base_url, admin_setup, browser):
-    """UC-X-12: on touch devices, buttons, menu toggles, and section links are >= 32 px tall."""
-    c, quiz, s = _live_fixture(base_url)
-    ctx = browser.new_context(viewport=PHONE, has_touch=True, is_mobile=True)
-    try:
-        page = ctx.new_page()
-        assert page.evaluate("matchMedia('(pointer: coarse)').matches")
-        admin_login_via_ui(page, base_url)
-        _open_editor(page, base_url, quiz["title"])
-        sel = "button, details.menu > summary, .section-links a"
-        assert page.evaluate(SHORT_TARGETS_JS, sel) == [], "/quizzes"
-        page.goto(f"{base_url}/m/{s['code']}")
-        page.wait_for_selector("#queries .question")
-        assert page.evaluate(SHORT_TARGETS_JS, sel) == [], "/m"
-        page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#quiz-body .option")
-        assert page.evaluate(SHORT_TARGETS_JS, ".section-links a") == [], "/s"
-    finally:
-        ctx.close()
-        c.close()
+def test_uc_x_12_sweep_touch(base_url, admin_setup, browser):
+    """UC-X-12: every page at 390 px on a touch device — tap targets at least 32 px."""
+    _sweep(browser, base_url, "phone", touch=True)
 
 
 # ---------- UC-X-13 ----------

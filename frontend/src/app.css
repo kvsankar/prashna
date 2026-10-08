@@ -273,7 +273,7 @@ details.menu > .menu-panel {
   padding: 8px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--panel); box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
-details.menu > .menu-panel button { width: 100%; text-align: left; }
+details.menu > .menu-panel button { width: 100%; text-align: left; white-space: nowrap; }
 details.menu > .menu-panel label { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding: 2px 0; }
 details.menu > .menu-panel .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
 input.inline, select.inline { width: auto; padding: 5px 8px; font-size: var(--text-md); }
@@ -349,9 +349,9 @@ button.xsmall { font-size: var(--text-xs); padding: calc((var(--control-h-xs) - 
 
 /* Reorder (UX.md §7): drag handle + move buttons. touch-action keeps touch
    drags from scrolling the page. */
-.drag-handle { cursor: grab; touch-action: none; font-size: var(--text-base); line-height: 1; padding: 2px 6px; }
+.drag-handle { cursor: grab; touch-action: none; }
 .drag-handle:active { cursor: grabbing; }
-.move-btn { padding: 2px 6px; }
+.move-btn { padding-left: 6px; padding-right: 6px; }
 .move-btn:disabled { opacity: 0.35; cursor: default; }
 .dragging { opacity: 0.7; outline: 2px dashed var(--accent); outline-offset: 2px; }
 
