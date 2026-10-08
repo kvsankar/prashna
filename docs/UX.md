@@ -118,6 +118,16 @@ A **card** is the single layout unit. Pages are sequences of cards.
 - Cards stack vertically. No horizontal card grids except in galleries
   (none today).
 
+### Rows wrap by default
+
+`.row`, `.card-head`, `card-tools`, `header.top`, and `.page-nav` wrap
+when their contents don't fit, so controls drop to a new line on a phone
+instead of pushing the page sideways. A row that must stay on one line
+(a vote button beside its question, the five rating stars, an answer
+option) says so: `.row.nowrap` or `flex-wrap: nowrap` in its component
+rule. Every flex container in `app.css` declares `flex-wrap` (or is a
+column); `tests/api/test_frontend_contracts.py` enforces it.
+
 ### Operational vs. creational, and the collapsible "Set up" group
 
 A work surface often mixes **creational/setup** controls (things you do

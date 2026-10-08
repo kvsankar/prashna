@@ -117,3 +117,18 @@ def test_button_sizes_come_from_control_tokens():
     css = (ROOT / "frontend/src/app.css").read_text()
     for token in ("--control-h)", "--control-h-sm)", "--control-h-xs)"):
         assert token in css, token
+
+
+def test_flex_containers_declare_wrapping():
+    """Every flex container states flex-wrap (or is a column), so rows wrap
+    unless a rule decides otherwise (UX.md §4). Overflow on phones came from
+    rows that never made that decision."""
+    css = (ROOT / "frontend/src/app.css").read_text()
+    offenders = [
+        sel.strip().splitlines()[-1]
+        for sel, decls in re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+        if re.search(r"display:\s*(inline-)?flex\b", decls)
+        and "flex-wrap" not in decls
+        and not re.search(r"flex-direction:\s*column", decls)
+    ]
+    assert offenders == []
