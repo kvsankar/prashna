@@ -27,14 +27,12 @@ jobs:
       # Frontend deps so the UI test fixture can `npm run build` the Vite app.
       - run: npm ci
       - run: uv sync
-      - name: Ruff (lint)
-        run: uv run ruff check .
-      - name: Pyrefly (type check)
-        run: uv run pyrefly check
+      - name: Pre-commit hooks on every file (lint, types, hygiene, secrets, PII)
+        run: uv run pre-commit run --all-files --show-diff-on-failure
       - name: Install Playwright browser
         run: uv run playwright install --with-deps chromium
       - name: Pytest (with coverage)
-        run: uv run pytest --cov=app --cov-report=term-missing
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=94
 
   frontend-lint:
     name: ESLint + Stylelint

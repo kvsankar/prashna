@@ -150,6 +150,21 @@ uv run pytest tests/api/    # API only (fast, ~1 min)
 uv run pytest tests/ui/     # UI only (Playwright, ~1 min)
 ```
 
+Checks (pre-commit, also run by CI on every file):
+
+```bash
+uv run pre-commit install           # once: pre-commit, commit-msg, pre-push
+uv run pre-commit run --all-files   # what CI runs
+uv run pyrefly check                # Python types (app, scripts, tests)
+```
+
+The pre-commit stage runs file hygiene, `detect-secrets` (against
+`.secrets.baseline`), `scripts/check_pii.py` (no real emails, public IPs,
+or home paths; mark a deliberate line `pii-allow`), ruff, Pyrefly, tsc,
+eslint, and stylelint. The commit-msg stage enforces Conventional
+Commits with a body (`scripts/check_commit_msg.py`); pre-push runs the
+API tests. CI fails below 94% coverage.
+
 ## Roles & entities
 
 Five surfaces (`UC-A-*` Admin, `UC-M-*` Moderator, `UC-P-*`

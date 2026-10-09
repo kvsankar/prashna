@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # One-time bootstrap for the Hetzner box.
 #
-# Run as the `sankar` user. Will prompt for sudo password.
+# Run as your normal (non-root) user. Will prompt for sudo password.
+# Set CERTBOT_EMAIL to the address Let's Encrypt should use for expiry
+# notices; it is needed only when a certificate is requested.
 #
 # Pre-reqs:
 #   - DNS A record: prashna.sankara.net → <server-ip> must resolve.
@@ -106,7 +108,7 @@ if [[ ! -d "/etc/letsencrypt/live/$DOMAIN" ]]; then
     --redirect \
     --non-interactive \
     --agree-tos \
-    -m "kvsankar@gmail.com"
+    -m "${CERTBOT_EMAIL:?Set CERTBOT_EMAIL to receive TLS certificate expiry notices}"
 else
   log "TLS cert already exists for $DOMAIN — skipping certbot"
 fi

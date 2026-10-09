@@ -141,3 +141,71 @@ def test_uc_a_26_password_admin_coexists(admin_client, monkeypatch, app_module):
     admin_client.cookies.clear()
     r = admin_client.post("/api/admin/login", json={"username": "admin", "password": "testpass1"})
     assert r.status_code == 200
+
+
+# ---------- UC-A-26: the GitHub HTTP calls themselves ----------
+# The flow tests above stub exchange_code/fetch_user; these check what those
+# two functions send and how they handle GitHub's replies, with urlopen
+# replaced so no network is used.
+
+class _Reply:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _capture_urlopen(monkeypatch, oauth, body: bytes | Exception):
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["url"], seen["data"], seen["timeout"] = req.full_url, req.data, timeout
+        seen["headers"] = {k.lower(): v for k, v in req.header_items()}
+        if isinstance(body, Exception):
+            raise body
+        return _Reply(body)
+
+    monkeypatch.setattr(oauth.urllib.request, "urlopen", fake_urlopen)
+    return seen
+
+
+def test_uc_a_26_exchange_code_posts_credentials_and_returns_token(app_module, monkeypatch):
+    """UC-A-26: the code exchange sends client id, secret and code; returns the token."""
+    _enable_github(monkeypatch)
+    oauth = app_module.oauth
+    seen = _capture_urlopen(monkeypatch, oauth, b'{"access_token": "gho_test", "scope": "read:user"}')
+    assert oauth.exchange_code("the-code") == "gho_test"
+    assert seen["url"] == oauth.TOKEN_URL
+    assert seen["data"] == b"client_id=cid&client_secret=csecret&code=the-code"
+    assert seen["headers"]["accept"] == "application/json"
+    assert seen["timeout"] == oauth._HTTP_TIMEOUT
+
+
+def test_uc_a_26_exchange_code_without_token_or_on_error_returns_none(app_module, monkeypatch):
+    """UC-A-26: an error reply or a network failure yields None (callback rejects it)."""
+    _enable_github(monkeypatch)
+    oauth = app_module.oauth
+    _capture_urlopen(monkeypatch, oauth, b'{"error": "bad_verification_code"}')
+    assert oauth.exchange_code("stale") is None
+    _capture_urlopen(monkeypatch, oauth, OSError("network down"))
+    assert oauth.exchange_code("x") is None
+    _capture_urlopen(monkeypatch, oauth, b"<html>not json</html>")
+    assert oauth.exchange_code("x") is None
+
+
+def test_uc_a_26_fetch_user_sends_bearer_token_and_returns_profile(app_module, monkeypatch):
+    """UC-A-26: the profile request carries the bearer token; failures yield None."""
+    oauth = app_module.oauth
+    seen = _capture_urlopen(monkeypatch, oauth, b'{"id": 42, "login": "someone"}')
+    assert oauth.fetch_user("gho_test") == {"id": 42, "login": "someone"}
+    assert seen["url"] == oauth.USER_URL
+    assert seen["headers"]["authorization"] == "Bearer gho_test"
+    _capture_urlopen(monkeypatch, oauth, OSError("network down"))
+    assert oauth.fetch_user("gho_test") is None

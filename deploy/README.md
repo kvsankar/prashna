@@ -16,7 +16,7 @@ version-pinned copy with their own README and named-volume storage.
    ```
 
    With the orange cloud enabled, public DNS correctly returns Cloudflare
-   anycast addresses rather than `<server-ip>`. Verify the record and proxy
+   anycast addresses rather than the server's IP. Verify the record and proxy
    state in Cloudflare before continuing.
 
 2. **GitHub Actions** — the `Build & publish Docker image` workflow pushes to
@@ -41,7 +41,7 @@ version-pinned copy with their own README and named-volume storage.
    ```bash
    git clone git@github.com:kvsankar/prashna.git ~/repos/prashna
    cd ~/repos/prashna
-   ./deploy/setup.sh
+   CERTBOT_EMAIL=you@example.com ./deploy/setup.sh
    ```
 
    This installs Docker, lays down `/opt/prashna/`, fetches the image, drops

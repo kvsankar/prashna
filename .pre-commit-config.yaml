@@ -1,9 +1,63 @@
 # Pre-commit hooks. Install once with: uv run pre-commit install
+# (installs the pre-commit, commit-msg and pre-push stages below).
 # All hooks use the project's own tools (language: system) so versions match
-# what CI and local dev already have — no separate managed envs.
+# what CI and local dev already have — no separate managed envs. CI runs the
+# pre-commit stage on every file: uv run pre-commit run --all-files
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 repos:
   - repo: local
     hooks:
+      # ---- file hygiene (pre-commit-hooks package) ----
+      - id: check-yaml
+        name: check yaml
+        entry: uv run check-yaml
+        language: system
+        types: [yaml]
+      - id: check-toml
+        name: check toml
+        entry: uv run check-toml
+        language: system
+        types: [toml]
+      - id: check-merge-conflict
+        name: no merge-conflict markers
+        entry: uv run check-merge-conflict
+        language: system
+        types: [text]
+      - id: check-added-large-files
+        name: no large files (> 600 KB)
+        entry: uv run check-added-large-files --maxkb=600
+        language: system
+      - id: end-of-file-fixer
+        name: files end with one newline
+        entry: uv run end-of-file-fixer
+        language: system
+        types: [text]
+        exclude: ^frontend/public/vendor/
+      - id: trailing-whitespace
+        name: no trailing whitespace
+        entry: uv run trailing-whitespace-fixer
+        language: system
+        types: [text]
+        exclude: ^frontend/public/vendor/
+
+      # ---- secrets and personal data ----
+      - id: detect-private-key
+        name: no private keys
+        entry: uv run detect-private-key
+        language: system
+        types: [text]
+      - id: detect-secrets
+        name: no new secrets (detect-secrets, see .secrets.baseline)
+        entry: uv run detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        exclude: ^(package-lock\.json|uv\.lock|frontend/public/vendor/)
+      - id: check-pii
+        name: no personal data or private infrastructure
+        entry: uv run python scripts/check_pii.py
+        language: system
+        types: [text]
+
+      # ---- python ----
       - id: ruff
         name: ruff (python lint)
         entry: uv run ruff check --force-exclude
@@ -38,3 +92,19 @@ repos:
         language: system
         files: ^frontend/.*\.css$
         pass_filenames: false
+
+      # ---- commit message (commit-msg stage) ----
+      - id: commit-msg
+        name: conventional commit with a body
+        entry: uv run python scripts/check_commit_msg.py
+        language: system
+        stages: [commit-msg]
+
+      # ---- before pushing (pre-push stage) ----
+      - id: api-tests
+        name: API tests
+        entry: uv run pytest tests/api -q -x -p no:warnings
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

@@ -804,6 +804,8 @@ the UI shows no button.
 
 **Tests (API)**
 - `oauth.enabled()` is `True` only when all three env vars are set; `oauth.is_allowed()` matches the allowlist case-insensitively.
+- `oauth.exchange_code(code)` POSTs `client_id`, `client_secret`, and `code` to GitHub's token URL with `Accept: application/json` and returns `access_token`; an error reply, non-JSON, or a network failure returns `None`.
+- `oauth.fetch_user(token)` sends `Authorization: Bearer <token>` to `https://api.github.com/user` and returns the profile; a network failure returns `None`.
 - With GitHub unconfigured: `GET /api/auth/github/login` and `/callback` → `404`; `GET /api/admin/status` → `github_enabled: false`.
 - With GitHub configured: `GET /api/admin/status` → `github_enabled: true`; `GET /api/auth/github/login` → `302` to `github.com/login/oauth/authorize` carrying a `state`.
 - Callback with a forged/garbage `state` → `303` to `/?auth_error=…`, no `prashna_admin` cookie.
