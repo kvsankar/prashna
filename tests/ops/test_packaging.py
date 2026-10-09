@@ -1,7 +1,9 @@
 """UC-X-15: the PyPI wheel ships the frontend, the installers and the CLI.
 
-Builds the wheel with `uv build`; needs the frontend built first (the test
-session builds it) and network access for the build backend.
+Builds the wheel with `uv build`; needs network access for the build
+backend. It packages the frontend the test session already built and builds
+one only when none exists: a production rebuild here would replace the
+test-mode build that the UI tests rely on later in the same session.
 """
 from __future__ import annotations
 
@@ -13,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_wheel_contains_frontend_installers_and_entry_point(tmp_path):
-    subprocess.run(["npm", "run", "build"], cwd=ROOT, check=True, capture_output=True)
+    if not (ROOT / "prashna" / "static" / "index.html").is_file():
+        subprocess.run(["npm", "run", "build", "--", "--mode", "test"], cwd=ROOT, check=True,
+                       capture_output=True)
     subprocess.run(["uv", "build", "--wheel", "--out-dir", str(tmp_path)], cwd=ROOT, check=True,
                    capture_output=True)
     wheel = next(tmp_path.glob("prashna-*.whl"))
