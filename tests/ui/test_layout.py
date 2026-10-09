@@ -87,7 +87,9 @@ def _pages(quiz, live, planning, ended):
         page.wait_for_selector("#editor-body .editor-q")
 
     def open_results(page):
-        page.locator("#qs-rows tr").first.click()
+        # The table starts with a "Loading…" placeholder row; click the seeded
+        # run's real row so a slow run list cannot swallow the click.
+        page.locator("#qs-rows tr.rowable").filter(has_text=ended["code"]).click()
         page.wait_for_selector("#results-body .result-q")
 
     return [
