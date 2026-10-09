@@ -90,8 +90,14 @@ def test_uc_p_13_submit_and_resubmit_prefills_prior_values(
             submit.click()
         expect(page.locator("#fb-status")).to_contain_text("Submitted")
         expect(submit).to_have_text("Resubmit feedback")
-        # Reload → prior feedback prefilled.
+        # A submitted rating collapses to a one-line summary.
+        expect(page.locator("#feedback-card")).not_to_have_attribute("open", "")
+        expect(page.locator("#fb-summary")).to_have_text("Rated ★★★★☆")
+        # Reload → still collapsed; opening shows the prior feedback.
         page.reload()
+        expect(page.locator("#fb-summary")).to_have_text("Rated ★★★★☆", timeout=5000)
+        expect(page.locator("#feedback-card")).not_to_have_attribute("open", "")
+        page.locator("#feedback-card > summary").click()
         page.wait_for_selector("#fb-expand:visible")
         expect(page.locator("#fb-went-well")).to_have_value("Loved the demos")
         expect(page.locator("#fb-stars button.star.filled")).to_have_count(4)
@@ -125,6 +131,8 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
         ):
             page.click("#fb-submit")
         expect(page.locator("#fb-stars button.star.filled")).to_have_count(5)
+        # The card collapsed after submitting; reopen it to clear.
+        page.locator("#feedback-card > summary").click()
         # First tap reveals the confirm; "No" cancels (no delete).
         page.click("#fb-clear")
         expect(page.locator("#fb-clear-confirm")).to_be_visible()
@@ -144,6 +152,42 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
 
 
 # ---------- UC-P-02 ----------
+
+
+def test_uc_p_13_rating_card_follows_profile_and_opens(base_url, admin_setup, page):
+    """UC-P-13: with no prior feedback the open rating card follows the profile card."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P13o {secrets.token_hex(3)}")
+    c.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True}).raise_for_status()
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#feedback-card:visible")
+        assert page.evaluate(
+            "document.querySelector('#profile-card').nextElementSibling.id") == "feedback-card"
+        expect(page.locator("#feedback-card")).to_have_attribute("open", "")
+        expect(page.locator("#fb-summary")).to_be_hidden()
+    finally:
+        c.close()
+
+
+def test_uc_p_13_live_quiz_card_moves_to_top(base_url, admin_setup, page):
+    """UC-P-13: a live quiz moves to the top; when it closes, Profile is first again."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-P13q {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-P13qs {secrets.token_hex(3)}")
+    c.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True}).raise_for_status()
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    first_card = "[...document.querySelector('main').children].find(e => !e.hidden).id"
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#quiz-card:visible")
+        assert page.evaluate(first_card) == "quiz-card"
+        c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close").raise_for_status()
+        expect(page.locator("#quiz-card")).to_be_hidden(timeout=5000)
+        assert page.evaluate(first_card) == "profile-card"
+    finally:
+        c.close()
 
 
 def test_uc_p_02_voter_token_cookie_set_on_load(base_url, admin_setup, page):

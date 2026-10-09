@@ -1478,13 +1478,23 @@ Participant-side counterpart of UC-D-08.
 
 ### UC-P-13: Rate the session (feedback)
 
-A participant can rate the session and leave course feedback. The control
-is **always available** (any session status) as the **first element on the
-page** in a **collapsible card** (`#feedback-card`, a `<details>` that is
-**open by default**) and uses progressive disclosure: a 1–5 **star** rating
-that, once a star is picked, expands to reveal "What went well?" and "What
-could be better?" text fields plus Submit. Hovering a star previews the
-fill up to that star (hovering the 5th lights all five).
+A participant can rate the session and leave course feedback once the
+moderator opens rating (**Open rating** on the session page,
+`feedback_enabled`; any session status). The control is a **collapsible
+card** (`#feedback-card`, a `<details>`) placed right after the Profile
+card. It is **open** until the participant submits; after a submit, and
+on later visits, it **collapses** to a one-line summary in its header
+(`#fb-summary`, e.g. "Rated ★★★★☆") and reopens when tapped. It uses
+progressive disclosure: a 1–5 **star** rating that, once a star is
+picked, expands to reveal "What went well?" and "What could be better?"
+text fields plus Submit. Hovering a star previews the fill up to that
+star (hovering the 5th lights all five).
+
+**Card order.** The participant page shows Profile, Rating (when open),
+Ask, Questions, and Invite. While a quiz is live, the **Live quiz card
+moves to the top**, above Profile and Rating, so a participant who joins
+or reloads mid-quiz sees the question first; it returns to its place
+when the run is no longer live.
 
 - **Given** the participant is on `/s/<CODE>`
 - **When** they pick a star
@@ -1526,9 +1536,11 @@ fill up to that star (hovering the 5th lights all five).
 - `DELETE /api/sessions/{code}/feedback` after a submit → `200 {ok: true}`; `mine` then returns null and `summary.count` drops by one. The `SessionFeedbackVersion` history is retained.
 
 **Tests (UI)**
-- `#feedback-card` is the first card on `/s/<CODE>` and is a collapsible `<details>` that is open by default.
+- With rating open and no prior feedback, `#feedback-card` immediately follows `#profile-card` and is an open `<details>`.
+- After a submit, `#feedback-card` closes and `#fb-summary` reads "Rated" with the chosen number of filled stars; tapping the summary reopens it.
+- While a quiz is live, `#quiz-card` is the first card in `main`; once the run closes, `#quiz-card` is hidden and `#profile-card` is first again.
 - `#fb-submit` is present and enabled. With no rating it shows a "Choose a rating first" cue; selecting a star reveals `#fb-expand` without submitting, and clicking **Submit feedback** fires one `POST .../feedback` with the rating and both comments.
-- After reload, the prior rating (filled stars count) and comment values are prefilled, and the button reads **Resubmit feedback**. Editing then resubmitting fires another `POST`.
+- After reload, `#feedback-card` is closed with `#fb-summary` showing the prior rating; opening it shows the prior rating (filled stars count) and comment values prefilled, and the button reads **Resubmit feedback**. Editing then resubmitting fires another `POST`.
 - Clicking `#fb-clear` reveals an inline confirm (`#fb-clear-confirm`); `#fb-clear-no` cancels (rating unchanged), `#fb-clear-yes` clears the stars (filled count 0) and hides `#fb-expand`.
 
 ---

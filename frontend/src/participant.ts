@@ -313,7 +313,15 @@ function applyQuizRuns(rows: QuizRun[]): void {
 function renderQuiz(): void {
   const card = $("#quiz-card");
   const body = $("#quiz-body");
-  if (!activeQuiz) { setVisible(card, false); return; }
+  // While a quiz is live it is the most urgent card, so it goes first;
+  // otherwise it sits back after the rating card (UC-P-13 card order).
+  if (!activeQuiz) {
+    setVisible(card, false);
+    if (card.previousElementSibling !== $("#feedback-card")) $("#feedback-card").after(card);
+    return;
+  }
+  const main = card.parentElement;
+  if (main && main.firstElementChild !== card) main.prepend(card);
   setVisible(card, true);
   body.innerHTML = "";
   const q = activeQuiz.current_question;
@@ -450,6 +458,9 @@ async function saveFeedback(): Promise<void> {
     feedbackSubmitted = true;
     $("#fb-status").textContent = "Submitted ✓";
     renderFeedbackAction();
+    renderFeedbackSummary();
+    // A finished task folds away to one line; tapping it reopens (UC-P-13).
+    $<HTMLDetailsElement>("#feedback-card").open = false;
     toast(wasResubmission ? "Feedback resubmitted" : "Thanks for your feedback");
   } catch (e) {
     $("#fb-status").textContent = "Submit failed";
@@ -469,6 +480,7 @@ async function clearFeedback(): Promise<void> {
   setVisible($("#fb-expand"), false);
   $("#fb-status").textContent = "";
   renderStars();
+  renderFeedbackSummary();
   toast("Rating cleared");
 }
 $("#fb-clear").addEventListener("click", () => {
@@ -490,6 +502,14 @@ async function loadFeedback(): Promise<void> {
   } catch { /* no feedback yet */ }
 }
 
+/** One-line header summary of the saved rating, shown once submitted. */
+function renderFeedbackSummary(): void {
+  const summary = $("#fb-summary");
+  summary.textContent = `Rated ${"★".repeat(myRating)}${"☆".repeat(5 - myRating)}`;
+  setVisible(summary, feedbackSubmitted && myRating > 0);
+}
+
+let feedbackLoaded = false;
 function applyFeedback(f: Feedback | null): void {
   if (f) {
       myRating = f.rating;
@@ -507,6 +527,13 @@ function applyFeedback(f: Feedback | null): void {
       $("#fb-status").textContent = "";
   }
   renderStars();
+  renderFeedbackSummary();
+  // Start collapsed when the participant already rated; later refreshes
+  // leave the card as the participant left it.
+  if (!feedbackLoaded) {
+    feedbackLoaded = true;
+    if (f) $<HTMLDetailsElement>("#feedback-card").open = false;
+  }
 }
 $("#fb-went-well").addEventListener("input", markFeedbackDirty);
 $("#fb-to-improve").addEventListener("input", markFeedbackDirty);

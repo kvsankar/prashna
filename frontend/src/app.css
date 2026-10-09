@@ -240,6 +240,8 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 section.card.compact { padding: 12px 14px; margin-bottom: 12px; }
 section.card.compact h2 { font-size: var(--text-sm); margin: 0; }
 .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
+/* A collapsed card is just its header line. */
+details:not([open]) > summary.card-head { margin-bottom: 0; }
 .card-head .card-tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* Collapsible "Set up" disclosure — groups the creational cards
