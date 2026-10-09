@@ -1,0 +1,143 @@
+<!doctype html>
+<!-- Infographic source. Render with the project-infographic skill:
+     render.py prashna-infographic.html prashna-infographic.png
+     Facts come from README.md and docs/specs.md; update them together. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="infographic.css">
+<style>
+  /* Layout only: zone, arrow, zone, arrow, zone. */
+  .flow { grid-template-columns: 1fr 44px 1.55fr 44px 1fr; }
+  .core-grid { display: grid; grid-template-rows: auto auto auto; gap: 10px; flex: 1; min-height: 0; }
+  .steps { grid-template-columns: repeat(2, 1fr); }
+  .tiles { grid-template-columns: 1fr 1fr; }
+</style>
+</head>
+<body>
+
+<header class="title">
+  <h1>prashna</h1>
+  <p>Live Q&amp;A and quizzes for any session with an audience</p>
+</header>
+
+<main class="flow">
+
+  <section class="zone input">
+    <h2>Who takes part</h2>
+    <div class="card">
+      <i data-icon="calendar-days"></i>
+      <div><h3>Any event with an audience</h3>
+        <p>training, lectures, workshops, town halls and meetups</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="user-cog"></i>
+      <div><h3>Admin</h3>
+        <p>creates sessions and authors quizzes; password or GitHub sign-in</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="user-check"></i>
+      <div><h3>Moderator</h3>
+        <p>runs the room; a private link delegates it to a co-host</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="smartphone"></i>
+      <div><h3>Participants</h3>
+        <p>join by code or QR on their phones, anonymous by default</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="presentation"></i>
+      <div><h3>Projector</h3>
+        <p>join code, QR, top questions and the current quiz on the big screen</p></div>
+    </div>
+  </section>
+
+  <div class="arrow"><i data-icon="arrow-right"></i></div>
+
+  <section class="zone core">
+    <h2>What happens live</h2>
+    <div class="core-grid">
+      <div class="steps">
+        <div class="step">
+          <div class="head"><span class="num">1</span><i data-icon="calendar-plus"></i></div>
+          <h3>Open a session</h3><p>not started, live, then ended; one join code</p>
+        </div>
+        <div class="step">
+          <div class="head"><span class="num">2</span><i data-icon="message-circle-question"></i></div>
+          <h3>Ask and upvote</h3><p>anonymous questions; the moderator responds or removes</p>
+        </div>
+        <div class="step">
+          <div class="head"><span class="num">3</span><i data-icon="list-checks"></i></div>
+          <h3>Run a quiz</h3><p>reveal results question by question, with optional live counts</p>
+        </div>
+        <div class="step">
+          <div class="head"><span class="num">4</span><i data-icon="star"></i></div>
+          <h3>Rate the session</h3><p>one to five stars plus comments, when the moderator opens rating</p>
+        </div>
+      </div>
+      <div class="sub">
+        <h4>Quiz library</h4>
+        <div class="tiles">
+          <div class="tile"><i data-icon="layout-template"></i><div><b>Reusable templates</b><span>publish checks before a quiz can run</span></div></div>
+          <div class="tile"><i data-icon="history"></i><div><b>Versioned runs</b><span>edits never change a past run</span></div></div>
+          <div class="tile"><i data-icon="image"></i><div><b>Images and polls</b><span>single or multiple choice, or no right answer</span></div></div>
+          <div class="tile"><i data-icon="grip-vertical"></i><div><b>Drag to reorder</b><span>questions and answers</span></div></div>
+          <div class="tile"><i data-icon="copy"></i><div><b>Duplicate and edit</b><span>start a new quiz from an old one</span></div></div>
+          <div class="tile"><i data-icon="calendar-check"></i><div><b>Add to a session</b><span>from the library or the session page</span></div></div>
+        </div>
+      </div>
+      <div class="sub">
+        <h4>Every screen stays in step</h4>
+        <div class="chips">
+          <span class="chip">live updates over WebSocket</span>
+          <span class="chip">automatic reconnect</span>
+          <span class="chip">projector follows the moderator</span>
+          <span class="chip">quiz lobby before start</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="arrow"><i data-icon="arrow-right"></i></div>
+
+  <section class="zone output">
+    <h2>What you get</h2>
+    <div class="card">
+      <i data-icon="thumbs-up"></i>
+      <div><h3>Questions by votes</h3>
+        <p>responded and removed questions kept for the record</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="chart-column"></i>
+      <div><h3>Per-question results</h3>
+        <p>answer counts, the correct answer and respondents</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="table-2"></i>
+      <div><h3>Run reports</h3>
+        <p>every playthrough, grouped by quiz, version or session</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="id-card"></i>
+      <div><h3>Attendee profiles</h3>
+        <p>optional name, organisation, role and learning goals</p></div>
+    </div>
+    <div class="card">
+      <i data-icon="message-square-heart"></i>
+      <div><h3>Session feedback</h3>
+        <p>average rating and what went well or could improve</p></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="strip">
+  <span class="item"><i data-icon="venetian-mask"></i>Anonymous by default</span>
+  <span class="item"><i data-icon="lock"></i>Past results never change</span>
+  <span class="item"><i data-icon="smartphone"></i>Made for phones</span>
+  <span class="item"><i data-icon="laptop"></i>Laptop with ngrok, or Docker</span>
+  <span class="item"><i data-icon="database"></i>One process, SQLite</span>
+</footer>
+
+</body>
+</html>

@@ -1,5 +1,9 @@
 # Prashna
 
+![How prashna brings an admin, moderators, participants and a projector into one live session for Q&A and quizzes, and what it produces afterwards](docs/images/prashna-infographic.png)
+
+*How prashna runs a session with an audience: an admin sets it up, a moderator runs the room, participants join on their phones and the projector shows the room the same state. Questions are asked and upvoted, versioned quizzes are run question by question, and the session ends with ranked questions, quiz results, run reports, attendee profiles and feedback. The [infographic source](docs/images/prashna-infographic.html) is kept with the image.*
+
 A live Q&A and quiz tool for any session with an audience — training,
 lectures, workshops, town halls, meetups. *Prashna* (प्रश्न) is
 Sanskrit for *question*.
@@ -93,9 +97,10 @@ moderator UI directly with their cookie. The `mod_key` (delivered
 via `/m/<code>#k=<key>` URL) is the *delegation* mechanism —
 hand it to a TA / co-host who has no admin account.
 
-Interactive role pages include breadcrumbs and section jump links. The
-moderator session breadcrumb returns an authenticated owner directly to
-that session's admin detail. The quiz library's run report can be viewed
+Interactive role pages include breadcrumbs and section jump links. An
+admin who opens a session from the session list lands on that session's
+page, which carries every moderator control plus owner-only settings. The
+quiz library's run report can be viewed
 flat or grouped by quiz, immutable quiz version, or session. The projector
 deliberately remains chrome-free for presentation use.
 
