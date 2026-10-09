@@ -2127,7 +2127,7 @@ one command, on macOS, Linux, or Windows.
 - `prashna --version` prints the installed version.
 
 **Tests (packaging, CI)**
-- `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package.
+- `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT` and includes `LICENSE`.
 
 ---
 

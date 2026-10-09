@@ -3,6 +3,8 @@ name = "prashna"
 version = "0.1.0"
 description = "Live Q&A and quizzes for any session with an audience"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 keywords = ["live", "q&a", "quiz", "audience", "training", "classroom"]
 classifiers = [
@@ -54,7 +56,7 @@ packages = ["prashna"]
 artifacts = ["prashna/static/**"]
 
 [tool.hatch.build.targets.sdist]
-include = ["prashna", "README.md", "pyproject.toml"]
+include = ["prashna", "README.md", "LICENSE", "pyproject.toml"]
 artifacts = ["prashna/static/**"]
 
 [tool.pytest.ini_options]

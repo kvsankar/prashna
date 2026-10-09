@@ -21,6 +21,9 @@ def test_wheel_contains_frontend_installers_and_entry_point(tmp_path):
         names = zf.namelist()
         entry_points = next(n for n in names if n.endswith(".dist-info/entry_points.txt"))
         assert "prashna = prashna.cli:main" in zf.read(entry_points).decode()
+        metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
+        assert "License-Expression: MIT" in metadata
+        assert any(n.endswith(".dist-info/licenses/LICENSE") for n in names)
     assert "prashna/static/index.html" in names
     assert "prashna/installers/install.sh" in names
     assert "prashna/installers/install.ps1" in names

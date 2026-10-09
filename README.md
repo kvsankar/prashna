@@ -273,6 +273,10 @@ nginx with Certbot/Let's Encrypt. Images publish to
 workflow on each push to `main` and version tags. See
 [`deploy/README.md`](deploy/README.md).
 
+## License
+
+MIT. See [`LICENSE`](LICENSE).
+
 ## Status
 
 Prashna has a live single-operator production deployment at
