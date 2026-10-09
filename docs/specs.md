@@ -2104,6 +2104,10 @@ one command, on macOS, Linux, or Windows.
 - **And** `--port`, `--host`, `--data-dir` (or `PRASHNA_DATA_DIR`), and
   `--no-browser` change those defaults; a port already in use exits with
   status 1 and suggests `--port`
+- **And** behind a reverse proxy on the same machine (nginx proxying to
+  `127.0.0.1`), the forwarded scheme is honoured: uvicorn trusts
+  `X-Forwarded-*` from `127.0.0.1` by default, so sign-in cookies are
+  marked `Secure` when visitors use HTTPS; no extra option is needed
 - **And** `prashna backup create|restore …` runs the backup tool
   (UC-X-10) against the same data folder; `prashna --version` prints the
   version
@@ -2118,6 +2122,7 @@ one command, on macOS, Linux, or Windows.
 - The CLI resolves the data folder from `--data-dir`, then `PRASHNA_DATA_DIR`, then the default, and sets `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` inside it.
 - On a fresh data folder the CLI opens the browser at `http://127.0.0.1:<port>/#setup=<token>` with the token the server will accept; once an admin exists it opens `/`; `--no-browser` opens nothing.
 - With the port already bound, `prashna --port <it>` exits 1 and prints a message naming `--port`.
+- A request from `127.0.0.1` carrying `X-Forwarded-Proto: https` gets a `Secure` session cookie; the same request without the header doesn't.
 - `prashna backup create <file>` writes an archive of that data folder.
 - `prashna --version` prints the installed version.
 

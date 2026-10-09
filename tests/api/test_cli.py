@@ -130,6 +130,25 @@ def test_uc_x_15_port_in_use_exits_with_a_hint(tmp_path):
     assert "--port" in result.stdout + result.stderr
 
 
+def test_uc_x_15_honours_https_from_a_local_reverse_proxy(tmp_path):
+    """UC-X-15: behind nginx on the same machine, cookies are Secure for HTTPS visitors."""
+    port = _free_port()
+    proc = _start_cli(["--data-dir", str(tmp_path / "d"), "--port", str(port), "--no-browser"],
+                      _cli_env(PRASHNA_SETUP_TOKEN="t"))
+    try:
+        _wait_up(port)
+        base = f"http://127.0.0.1:{port}"
+        proxied = httpx.post(f"{base}/api/admin/setup", headers={"X-Forwarded-Proto": "https"},
+                             json={"username": "me", "password": "longenough", "setup_token": "t"})
+        assert proxied.status_code == 200, proxied.text
+        assert "secure" in proxied.headers["set-cookie"].lower()
+        direct = httpx.post(f"{base}/api/admin/login", json={"username": "me", "password": "longenough"})
+        assert direct.status_code == 200
+        assert "secure" not in direct.headers["set-cookie"].lower()
+    finally:
+        _stop(proc)
+
+
 def test_uc_x_15_backup_and_version(tmp_path):
     """UC-X-15: `prashna backup create` archives the data folder; --version prints it."""
     data = tmp_path / "data"
