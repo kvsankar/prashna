@@ -41,20 +41,15 @@ def test_authoritative_docs_describe_additive_sqlite_migrations():
     assert "### Database migrations\nNone." not in claude
 
 
-def test_spec_classifies_public_bootstrap_as_future_delta():
-    """The SRS should not mix private baseline and public hardening scope."""
+def test_spec_describes_setup_token_bootstrap():
+    """First-admin setup through a one-time link is the current baseline
+    (UC-A-01); the SRS no longer defers public-safe bootstrap."""
     spec = read("spec.md")
 
-    assert "Public-first bootstrap is not current baseline scope" in spec
-    assert re.search(
-        r"Future public deployments shall expose first-admin\s+setup",
-        spec,
-    )
-    assert (
-        "Current baseline verification: private operator setup review" in spec
-    )
-    assert "Given a private operator deployment" in spec
-    assert "Future delta: public or hosted bootstrap" in spec
+    assert "Public-first bootstrap is not current baseline scope" not in spec
+    assert "Future delta: public or hosted bootstrap" not in spec
+    assert re.search(r"NFR-BOOTSTRAP-PUBLIC: Deployments, including ones already\s+public", spec)
+    assert "one-time setup link" in spec
 
 
 def test_traceability_file_classifies_accepted_obligations():

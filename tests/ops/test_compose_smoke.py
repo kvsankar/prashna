@@ -20,6 +20,8 @@ PNG_BYTES = bytes.fromhex(
     "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
 )
 SMOKE_SECRET = "dummy_secret_not_real"
+# First-admin setup needs the one-time token (UC-A-01).
+SMOKE_SETUP_TOKEN = "smoke-setup-token"
 PUBLISHED_IMAGE = os.environ.get("PRASHNA_COMPOSE_SMOKE_IMAGE")
 
 
@@ -62,6 +64,7 @@ def _write_env(path: Path, *, port: int, data_dir: Path, uploads_dir: Path):
         "\n".join(
             [
                 f"PRASHNA_SECRET_KEY={SMOKE_SECRET}",
+                f"PRASHNA_SETUP_TOKEN={SMOKE_SETUP_TOKEN}",
                 "PRASHNA_TRUSTED_PROXY_HOPS=1",
                 "PRASHNA_RATELIMIT=off",
                 f"PRASHNA_PORT={port}",
@@ -226,7 +229,7 @@ if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1" or PUBLISHED_IMAGE:
             with httpx.Client(base_url=base_url, timeout=10.0) as client:
                 setup = client.post(
                     "/api/admin/setup",
-                    json={"username": "admin", "password": "testpass1"},
+                    json={"username": "admin", "password": "testpass1", "setup_token": SMOKE_SETUP_TOKEN},
                 )
                 assert setup.status_code == 200, setup.text
                 cookie = client.cookies.get("prashna_admin")

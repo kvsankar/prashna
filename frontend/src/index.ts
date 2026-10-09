@@ -8,6 +8,12 @@ const pageParams = new URLSearchParams(location.search);
 const requestedSessionCode = pageParams.get("session")?.toUpperCase() ?? null;
 let requestedDeleteCode = pageParams.get("delete")?.toUpperCase() ?? null;
 
+// ----- one-time first-admin setup link (UC-A-01) -----
+// The server logs /#setup=<token> on first start. Keep the token in memory
+// and drop it from the address bar so it doesn't linger in history.
+const setupToken = new URLSearchParams(location.hash.slice(1)).get("setup");
+if (setupToken) history.replaceState(null, "", location.pathname + location.search);
+
 // ----- bad code banner from /s/BOGUS redirect -----
 const bad = new URLSearchParams(location.search).get("bad_code");
 if (bad) {
@@ -29,6 +35,7 @@ if (authErr) {
 const cards: Record<string, HTMLElement> = {
   join: $("#join-card"),
   setup: $("#setup-card"),
+  setupNeeded: $("#setup-needed-card"),
   login: $("#login-card"),
   sessions: $("#sessions-card"),
   library: $("#library-card"),
@@ -52,7 +59,13 @@ async function refresh(): Promise<void> {
   setVisible($("#admin-page-nav"), s.authenticated);
   if (!s.initialized) {
     setHeaderMeta(el("span", { class: "muted small" }, "Initial setup"));
-    show("setup");
+    // Without the link, explain where it is instead of showing a form the
+    // server would refuse; GitHub sign-in can also create the first admin.
+    if (setupToken) show("setup");
+    else {
+      show("setupNeeded");
+      setVisible($("#setup-github-wrap"), s.github_enabled);
+    }
     return;
   }
   if (!s.authenticated) {
@@ -98,7 +111,7 @@ async function submitSetup(): Promise<void> {
   const confirmPw = $<HTMLInputElement>("#su-pass2").value;
   if (password !== confirmPw) { errorToast("Passwords don't match"); return; }
   try {
-    await api("/api/admin/setup", { method: "POST", body: { username, password } });
+    await api("/api/admin/setup", { method: "POST", body: { username, password, setup_token: setupToken } });
     void refresh();
   } catch (e) { errorToast((e as Error).message); }
 }

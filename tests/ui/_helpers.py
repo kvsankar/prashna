@@ -16,6 +16,8 @@ from typing import Any
 
 import httpx
 
+from ..support import SETUP_TOKEN
+
 ADMIN = {"username": "admin", "password": "testpass1"}
 
 
@@ -26,7 +28,7 @@ def api_login(base_url: str) -> httpx.Client:
     """
     c = httpx.Client(base_url=base_url, timeout=10.0)
     # Either setup (first run) or login.
-    r = c.post("/api/admin/setup", json=ADMIN)
+    r = c.post("/api/admin/setup", json={**ADMIN, "setup_token": SETUP_TOKEN})
     if r.status_code == 409:
         r = c.post("/api/admin/login", json=ADMIN)
     assert r.status_code == 200, r.text

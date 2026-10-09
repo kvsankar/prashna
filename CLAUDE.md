@@ -119,9 +119,13 @@ Frontend checks: `npm run typecheck`, `npm run lint`.
 
 Environment:
 
-- `PRASHNA_SECRET_KEY` — signs admin session cookies. **Production
-  must set this** to a long random string; without it, cookies die
-  on every process restart (UC-X-07).
+- `PRASHNA_SECRET_KEY` — optional cookie-signing key. Unset, the
+  server creates `secret-key` (0600) beside the database and reuses it,
+  so sessions survive restarts (UC-X-07).
+- `PRASHNA_SETUP_TOKEN` — optional fixed first-admin setup token. Unset,
+  the server generates one in `setup-token` beside the database and logs
+  the link `/#setup=<token>` at start until an admin exists (UC-A-01).
+  Tests set it (see `tests/support.py`).
 - `PRASHNA_DB_PATH` — override DB location (default
   `<repo>/prashna.db`). Used by Docker + tests.
 - `PRASHNA_UPLOADS_DIR` — override uploads dir (default
@@ -180,9 +184,10 @@ Don't conflate `QuizRun` (playthrough) with `Session` (the gathering).
 ## Conventions
 
 ### Auth model
-- **Admin** — bcrypt password, signed cookie. First-run setup
-  creates the only admin row; `POST /api/admin/setup` returns 409
-  thereafter (UC-A-01).
+- **Admin** — bcrypt password, signed cookie. First-run setup needs
+  the one-time setup token from the server log (or
+  `PRASHNA_SETUP_TOKEN`); it creates the only admin row, retires the
+  token, and `POST /api/admin/setup` returns 409 thereafter (UC-A-01).
 - **Admin via GitHub OAuth** — optional, allowlisted sign-in for
   hosted deploys (UC-A-26, `app/oauth.py`). Enabled when
   `PRASHNA_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_ADMINS` are set.

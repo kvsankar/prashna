@@ -77,15 +77,28 @@ notation (a 201-character string).
 
 ### UC-A-01: First-run admin setup
 
-A fresh deployment has no admin. The landing page surfaces a one-time
-setup form for the first visitor to claim admin.
+A fresh installation has no admin. Only someone who can see the server's
+output may create the first one, so an install whose address is already
+public can't be claimed by its first visitor.
 
-- **Given** no user rows exist
-- **When** the visitor submits a username and a password of ≥ 8 chars
-  via `POST /api/admin/setup`
-- **Then** the user is created, an `admin_session` cookie is issued,
-  and `/api/admin/status` reports `{initialized: true, authenticated:
-  true}`
+- **Given** no user rows exist when the server starts
+- **Then** it holds a one-time **setup token**: the value of
+  `PRASHNA_SETUP_TOKEN` if the operator set one, otherwise a random token
+  saved as `setup-token` (mode `0600`) beside the database and reused
+  across restarts until an admin exists
+- **And** it logs a `WARNING` with the setup link `/#setup=<token>`
+  ("open it on this server's address"), so it appears in the terminal or
+  in `docker compose logs`
+- **When** someone opens the landing page with `#setup=<token>` in the
+  address
+- **Then** the setup form is shown; submitting a username and a password
+  of ≥ 8 chars calls `POST /api/admin/setup` with
+  `{username, password, setup_token}`
+- **And** with the right token the admin is created, a session cookie is
+  issued, the `setup-token` file is deleted, and the link stops working
+- **And** without the link, the landing page explains that the server
+  log holds a one-time setup link (and shows **Sign in with GitHub** when
+  GitHub login is configured, UC-A-26) instead of a setup form
 - **And** any subsequent `POST /api/admin/setup` returns `409 Admin
   already initialized`
 - **And** passwords shorter than 8 chars return `400` with a length
@@ -93,19 +106,22 @@ setup form for the first visitor to claim admin.
 
 **Tests (API)**
 - `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null, github_enabled: false}` (`github_enabled` reflects whether GitHub OAuth is configured — see UC-A-26). Auth: none.
-- `POST /api/admin/setup` with `{"username": "alice", "password": "longenough"}` → `200 {username: "alice"}` and sets `admin_session` cookie. Auth: none.
+- `POST /api/admin/setup` with `{"username": "alice", "password": "longenough", "setup_token": <token>}` → `200 {username: "alice"}` and sets `admin_session` cookie. Auth: the setup token.
+- The same request without `setup_token`, or with a wrong one → `403 "Open the one-time setup link from the server log to create the first admin"`; no user is created.
 - `GET /api/admin/status` immediately after setup (with cookie) → `200 {initialized: true, authenticated: true, username: "alice"}`.
 - `POST /api/admin/setup` a second time → `409 "Admin already initialized"`.
 - Race: two concurrent setup calls with **different usernames** — exactly one returns `200`, the other returns `409`. Serialized by a process-wide `threading.Lock` around the check+insert (Prashna is single-process per CLAUDE.md, so this is a real invariant). Test: `test_uc_a_01_concurrent_setup_different_usernames`.
 - Same-username conflict path is also caught via `try/except IntegrityError` and surfaces as `409`.
-- `POST /api/admin/setup` with `{"username": "alice", "password": "short"}` → `400 "password must be at least 8 characters"`.
-- `POST /api/admin/setup` with `{"username": "", "password": "longenough"}` → `400 "username required"`.
+- `POST /api/admin/setup` with `{"username": "alice", "password": "short", ...}` → `400 "password must be at least 8 characters"`.
+- `POST /api/admin/setup` with `{"username": "", "password": "longenough", ...}` → `400 "username required"`.
+- Starting the server on a fresh database without `PRASHNA_SETUP_TOKEN` writes `setup-token` (mode `0600`) beside the database, logs `/#setup=<that token>`, and reuses the same token after a restart; a successful setup deletes the file.
 
 **Tests (UI)**
-- On `/` with no admin, `#setup-card` is visible; `#login-card` and `#sessions-card` are hidden.
-- Filling `#su-user`, `#su-pass`, `#su-pass2` (matching) and clicking `#su-btn` swaps the page to the authed view (`#sessions-card` visible).
+- On `/` with no admin and no `#setup=` in the address, `#setup-needed-card` is visible and explains the server-log link; `#setup-card`, `#login-card`, and `#sessions-card` are hidden.
+- On `/#setup=<token>` with no admin, `#setup-card` is visible; filling `#su-user`, `#su-pass`, `#su-pass2` (matching) and clicking `#su-btn` swaps the page to the authed view (`#sessions-card` visible).
 - Mismatched `#su-pass`/`#su-pass2` shows an error toast without an API call.
 - A password shorter than 8 chars surfaces a `400` toast and leaves `#setup-card` visible.
+- With GitHub login configured and no admin, the first-run page shows **Sign in with GitHub** (`#setup-github-login`).
 
 ### UC-A-02: Login / Logout
 
@@ -765,7 +781,8 @@ the UI shows no button.
 
 - **Given** GitHub login is configured
 - **Then** `GET /api/admin/status` reports `github_enabled: true`, and
-  the landing page shows a **Sign in with GitHub** button
+  the landing page shows a **Sign in with GitHub** button, including on
+  the first-run page before any admin exists (UC-A-01)
 - **When** the admin clicks it → `GET /api/auth/github/login` redirects
   to GitHub's authorize URL with a signed, short-lived `state` (CSRF)
 - **And** GitHub redirects back to `GET /api/auth/github/callback`;
@@ -775,7 +792,8 @@ the UI shows no button.
     the admin `User` keyed by the immutable GitHub `id` (so the first
     allowlisted sign-in bootstraps the admin — no password setup needed
     on the server), issues the normal signed `prashna_admin` session
-    cookie, and `303`-redirects to `/`
+    cookie, and `303`-redirects to `/`; when this creates the first admin, the
+    one-time setup token (UC-A-01) is retired as well
   - otherwise → `303`-redirects to `/?auth_error=…` with a banner; no
     cookie is issued
 - **And** a missing/invalid/expired `state` or a failed token exchange
@@ -1836,30 +1854,31 @@ Two tiers, applied by one middleware:
 - After `PATCH /api/quiz_questions/{qid}` (which advances `last_edited_at`), next queue produces `version_no = 2`.
 - Simulate concurrent queue attempts (two threads) → both succeed; one creates v2, the other catches `IntegrityError` and returns the already-created v2.
 
-### UC-X-07: PRASHNA_SECRET_KEY lifecycle
+### UC-X-07: Signing key lifecycle
 
-The admin session cookie is signed (HMAC) by `itsdangerous`. The
-signing key is read from `PRASHNA_SECRET_KEY` at process start.
+The admin session cookie is signed (HMAC) by `itsdangerous`. The key is
+chosen once at process start.
 
 - **Given** `PRASHNA_SECRET_KEY` is set in the environment
-- **Then** the signer uses that value; cookies survive process
-  restarts and admins stay logged in
+- **Then** the signer uses that value; rotating it is a deliberate
+  "invalidate all sessions" action
 - **Given** `PRASHNA_SECRET_KEY` is **unset**
-- **Then** the process generates a random key once and uses it for
-  the process lifetime; all admin sessions are invalidated on every
-  restart (admins must re-login)
-- **And** the process logs a `WARNING` at startup
-  (`auth.SECRET_KEY_IS_EPHEMERAL` is `True`) so an operator running
-  without the env var isn't surprised by sessions dropping on restart
-- **Operational rule:** production deployments **must** set
-  `PRASHNA_SECRET_KEY` to a long random string and keep it stable.
-  Rotating it is a deliberate "invalidate all sessions" action.
+- **Then** the server uses the key in `secret-key` beside the database,
+  creating it (random, mode `0600`) on first start; cookies therefore
+  survive restarts with no operator step
+- **And** only if that file can't be read or written does the process
+  fall back to a key for the process lifetime, logging a `WARNING`
+  (`auth.SECRET_KEY_IS_EPHEMERAL` is `True`) because sessions then end on
+  every restart
+- **Operational note:** setting `PRASHNA_SECRET_KEY` remains supported
+  (e.g. to share one key across hosts). A backup of the data folder
+  includes `secret-key`.
 
 **Tests (API)**
-- Start app with `PRASHNA_SECRET_KEY=abc...` env var, log in (admin cookie issued); restart app with same env var → `GET /api/admin/status` with the old cookie still returns `authenticated: true`.
-- Start app with `PRASHNA_SECRET_KEY` unset, log in; restart app without setting the env var → old cookie now fails to verify and `GET /api/admin/status` returns `authenticated: false`.
-- Start app with one value of `PRASHNA_SECRET_KEY`, log in; restart with a different value → old cookie fails to verify (rotation invalidates sessions).
-- `auth._resolve_secret(None)` returns `(<random>, True)` (ephemeral) and `auth._resolve_secret("abc")` returns `("abc", False)`; with the env var set (as in the test session) `auth.SECRET_KEY_IS_EPHEMERAL` is `False`.
+- Start app with `PRASHNA_SECRET_KEY=abc...`, log in; restart with the same value → the old cookie still returns `authenticated: true`.
+- Start app with one value of `PRASHNA_SECRET_KEY`, log in; restart with a different value → the old cookie fails to verify (rotation invalidates sessions).
+- Start app with `PRASHNA_SECRET_KEY` unset, log in; restart, still unset → the old cookie still returns `authenticated: true`; `secret-key` exists beside the database with mode `0600`; no ephemeral-key warning is logged.
+- `auth._resolve_secret("abc", path)` returns `("abc", False)`; `auth._resolve_secret(None, path)` creates the file and returns `(<key>, False)`, and a second call returns the same key; with an unwritable path it returns `(<random>, True)`.
 
 ### UC-X-08: Rate limiting
 

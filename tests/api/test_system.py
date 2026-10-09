@@ -523,15 +523,27 @@ def test_uc_x_07_secret_key_lifecycle_subprocess_contract_present():
     """UC-X-07: restart coverage lives in a subprocess integration file."""
     text = (Path(__file__).with_name("test_secret_lifecycle.py")).read_text()
     assert "test_fixed_secret_survives_restart" in text
-    assert "test_unset_secret_warns" in text
+    assert "test_unset_secret_persists_key_beside_database" in text
 
 
-def test_uc_x_07_resolve_secret_pure():
-    """UC-X-07: _resolve_secret reports ephemeral only when env is unset."""
+def test_uc_x_07_resolve_secret(tmp_path):
+    """UC-X-07: env wins; otherwise a persisted key file; ephemeral only if unwritable."""
     from app import auth
-    key, ephemeral = auth._resolve_secret(None)
-    assert ephemeral is True and isinstance(key, str) and key
-    key2, ephemeral2 = auth._resolve_secret("abc")
-    assert (key2, ephemeral2) == ("abc", False)
+    key_file = tmp_path / "secret-key"
+    assert auth._resolve_secret("abc", key_file) == ("abc", False)
+    assert not key_file.exists()
+    key, ephemeral = auth._resolve_secret(None, key_file)
+    assert ephemeral is False and key
+    assert key_file.read_text().strip() == key
+    assert (key_file.stat().st_mode & 0o777) == 0o600
+    assert auth._resolve_secret(None, key_file) == (key, False)
+    blocked = tmp_path / "missing-dir" / "sub"
+    blocked.parent.mkdir()
+    blocked.parent.chmod(0o500)
+    try:
+        key3, ephemeral3 = auth._resolve_secret(None, blocked / "secret-key")
+        assert ephemeral3 is True and key3
+    finally:
+        blocked.parent.chmod(0o700)
     # The test session sets PRASHNA_SECRET_KEY, so the live flag is False.
     assert auth.SECRET_KEY_IS_EPHEMERAL is False

@@ -17,6 +17,8 @@ from typing import Iterator
 import httpx
 import pytest
 
+from ..support import SETUP_TOKEN
+
 
 def _find_free_port() -> int:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -26,10 +28,11 @@ def _find_free_port() -> int:
     return port
 
 
-def _start_uvicorn(db_path: Path, upload_dir: Path) -> tuple[str, subprocess.Popen]:
+def _start_uvicorn(db_path: Path, upload_dir: Path, extra_env: dict[str, str] | None = None) -> tuple[str, subprocess.Popen]:
     """Start uvicorn on a free port with an isolated DB."""
     port = _find_free_port()
     env = os.environ.copy()
+    env.update(extra_env or {})
     env["PRASHNA_DB_PATH"] = str(db_path)
     env["PRASHNA_UPLOADS_DIR"] = str(upload_dir)
     env["PRASHNA_SECRET_KEY"] = "ui-test-" + secrets.token_hex(8)
@@ -87,6 +90,18 @@ def fresh_base_url(tmp_path) -> Iterator[str]:
 
 
 @pytest.fixture
+def fresh_github_base_url(tmp_path) -> Iterator[str]:
+    """A fresh server (no admin) with GitHub sign-in configured (UC-A-26)."""
+    base, proc = _start_uvicorn(tmp_path / "prashna-ui.db", tmp_path / "uploads", {
+        "PRASHNA_GITHUB_CLIENT_ID": "test-client-id",
+        "PRASHNA_GITHUB_CLIENT_SECRET": "test-client-secret",
+        "PRASHNA_GITHUB_ADMINS": "someone",
+    })
+    yield base
+    _stop_uvicorn(proc)
+
+
+@pytest.fixture
 def base_url(uvicorn_url: str) -> str:
     return uvicorn_url
 
@@ -96,7 +111,7 @@ def admin_setup(base_url: str):
     """Ensure an admin exists (idempotent across tests in one session)."""
     r = httpx.post(
         f"{base_url}/api/admin/setup",
-        json={"username": "admin", "password": "testpass1"},
+        json={"username": "admin", "password": "testpass1", "setup_token": SETUP_TOKEN},
         timeout=5.0,
     )
     # 200 on first run, 409 thereafter — both fine for tests that just need an admin to exist.

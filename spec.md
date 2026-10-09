@@ -7,16 +7,16 @@
 Prashna lets an organizer run a live room where participants can join without
 accounts, ask and support questions, answer moderator-led quiz questions, give
 feedback, and follow the projected room state. The baseline is deliberately
-small: one private operator bootstrap, one admin-owned session model, delegated
+small: one first-admin setup through a link only the operator sees, one admin-owned session model, delegated
 moderator access, anonymous participant identity scoped to a session, and a
 single-process deployment model.
 
 Success means the existing brownfield product remains understandable and
 testable from observable behavior. Admin, moderator, participant, projector,
 quiz, feedback, live-refresh, deployment, and documentation contracts must be
-explicit enough for future changes to preserve the accepted baseline. Public
-bootstrap hardening, distributed scale, richer migration tooling, and larger UX
-redesigns remain future deltas unless separately approved.
+explicit enough for future changes to preserve the accepted baseline.
+Distributed scale, richer migration tooling, and larger UX redesigns remain
+future deltas unless separately approved.
 
 ## Mission Statement
 
@@ -106,9 +106,6 @@ accepted behavior.
 
 -  Multi-tenant SaaS administration is not current baseline scope for
   UN-ADMIN-BOOTSTRAP or UN-ADMIN-SESSIONS.
--  Public-first bootstrap is not current baseline scope; the accepted private
-  operator bootstrap workflow constrains UN-OPS-SAFETY until a child spec
-  chooses a token, CLI, or equivalent public-safe flow.
 -  Reopening ended sessions or closed quiz runs is not current baseline scope
   for UN-MODERATOR-RUN or UN-MODERATOR-QUIZ.
 -  Per-question timers and auto-advance are not current baseline scope for
@@ -163,7 +160,8 @@ accepted behavior.
     service, password verifier, optional GitHub OAuth provider.
   - Goal: Establish trusted admin access for a fresh deployment.
   - Scope: Product/system baseline.
-  - Trigger: The operator opens the root page before any admin exists.
+  - Trigger: The operator opens the one-time setup link from the server log
+    before any admin exists.
   -  Preconditions: The app is running, the database is reachable, and no admin
     user exists.
   -  Minimal guarantees: A failed setup attempt does not create partial admin
@@ -171,20 +169,23 @@ accepted behavior.
   -  Success guarantees: Exactly one admin identity can authenticate after
     setup, and later setup attempts are rejected.
   - Main success scenario:
-    1. Operator opens the landing page.
-    2. System detects that no admin exists.
-    3. System shows first-run setup instead of login.
-    4. Operator submits a non-empty username plus an acceptable password.
-    5. System creates the admin identity.
-    6. System issues an admin session cookie.
-    7. System shows the authenticated admin view.
+    1. Operator starts the server with no admin.
+    2. System logs a one-time setup link (token from the environment or a
+       generated file beside the database).
+    3. Operator opens the link.
+    4. System shows first-run setup.
+    5. Operator submits a non-empty username plus an acceptable password.
+    6. System checks the token, creates the admin identity, and retires the
+       token.
+    7. System issues an admin session cookie and shows the authenticated
+       admin view.
   -  Alternate flows: GitHub OAuth login is offered when configured. Existing
     admin deployments show login instead of setup. A successful password change
     rotates admin session validity.
   -  Error/exception flows: Short passwords are rejected. Empty usernames are
-    rejected. Concurrent setup attempts leave exactly one admin. Public
-    deployment before private bootstrap is a future hardening delta, not
-    current baseline behavior.
+    rejected. Concurrent setup attempts leave exactly one admin. A missing or
+    wrong setup token is rejected. Opening the site without the link explains
+    where to find it instead of showing a setup form.
   -  Postconditions: Admin-only features are available to the authenticated
     operator.
   - Frequency/importance: Critical first-run and recovery path.
@@ -679,12 +680,10 @@ accepted behavior.
 -  NFR-SCHEMA-MIGRATION: Known additive SQLite schema changes shall start within
   1 min against an old-shape database fixture.
   - Verification method: old-shape database regression test.
--  NFR-BOOTSTRAP-PUBLIC: Future public deployments shall expose first-admin
-  setup to 0 users outside the intended operator path.
-  - Current baseline verification: private operator setup review confirms
-    public-first bootstrap hardening is deferred.
-  - Future verification method: child-spec deployment review and bootstrap
-    smoke check.
+-  NFR-BOOTSTRAP-PUBLIC: Deployments, including ones already public, shall
+  expose first-admin setup to 0 users who cannot read the server log.
+  - Verification method: setup-token tests (missing or wrong token rejected,
+    link logged at start, token retired after use).
 -  NFR-BUILD-CHECKS: The full local verification suite shall complete within 180
   s on the development workstation.
   - Verification method: documented local command run.
@@ -723,8 +722,9 @@ accepted behavior.
 ## Acceptance Tests
 
 -  AT-AUTH-BOOTSTRAP: Given a fresh database with no admin, when the operator
-  submits valid first-run credentials, then the system creates one admin, issues
-  an admin cookie, rejects a second setup attempt, and satisfies
+  submits valid first-run credentials with the one-time setup token, then the
+  system creates one admin, issues an admin cookie, rejects setup without the
+  token, rejects a second setup attempt, and satisfies
   UC-AUTH-BOOTSTRAP plus FR-AUTH-BOOTSTRAP.
 -  AT-AUTH-LOGIN: Given an initialized deployment, when an admin submits valid
   password credentials, then the system authenticates the admin and satisfies
@@ -815,7 +815,7 @@ accepted behavior.
   FR-LIVE-RECONNECT plus NFR-RELY-LIVEUPDATES.
 -  AT-OPS-CONFIG: Given a private operator deployment, when required variables
   are set, then secret key, data path, upload path, proxy trust, rate-limit,
-  OAuth behavior, and private bootstrap expectations match configuration,
+  OAuth behavior, and setup-token bootstrap match configuration,
   satisfying UC-OPS-DEPLOY plus FR-OPS-CONFIG.
 -  AT-OPS-DEPLOY: Given the documented deploy kit, when the operator follows the
   Docker path, then the service starts behind nginx and satisfies UC-OPS-DEPLOY
@@ -896,9 +896,6 @@ accepted behavior.
 
 ### Open Questions
 
--  Future delta: public or hosted bootstrap must choose a setup token, CLI
-  bootstrap, private bootstrap mode, or another operator-only flow before it
-  becomes current baseline scope.
 -  Should upload content sniffing become current baseline before less-trusted
   operators can upload images?
 -  Should server-side `image_url` validation restrict quiz image references to
@@ -978,7 +975,7 @@ accepted behavior.
   - Journey: JT-ROOM-LIVE, JT-QUIZ-HISTORY
   - Priority/Risk: High historical correctness risk
 - Need: UN-ADMIN-BOOTSTRAP
-  - Scope Boundary: Private operator bootstrap baseline
+  - Scope Boundary: First-admin setup through a one-time link in the server log
   - Features: FEAT-AUTH-ADMIN
   - Use Cases: UC-AUTH-BOOTSTRAP
   -  Requirements: FR-AUTH-BOOTSTRAP, FR-AUTH-LOGIN, FR-AUTH-GITHUB,

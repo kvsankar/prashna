@@ -6,26 +6,28 @@ self-hosted machine. It is separate from the Hetzner production configuration.
 ## Start
 
 1. Install Docker Desktop or Docker Engine with the Compose plugin.
-2. Copy `compose.env.example` to `.env`.
-3. Replace `PRASHNA_SECRET_KEY` in `.env` with output from one of:
+2. Start Prashna and wait for its health check:
 
    ```bash
-   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-   openssl rand -base64 48
-   ```
-
-4. Start Prashna and wait for its health check:
-
-   ```bash
-   docker compose pull
    docker compose up -d --wait
    ```
 
-5. Open <http://127.0.0.1:8000/> and create the first admin locally.
+3. On a fresh install, find the one-time setup link in the log:
+
+   ```bash
+   docker compose logs prashna | grep setup=
+   ```
+
+4. Open <http://127.0.0.1:8000/> plus the `/#setup=...` path from the log,
+   and choose the admin's username and password. The link works once.
+
+No `.env` is needed. The cookie-signing key is generated into the data volume
+on first start; to change ports, pin a version, or set optional values, copy
+`compose.env.example` to `.env`.
 
 The release bundle pins `PRASHNA_IMAGE_TAG` to its version. Upgrade only after
-reading the release notes, then change the tag in `.env` and run the two Docker
-commands again.
+reading the release notes, then change the tag in `.env` and run
+`docker compose pull` and `docker compose up -d --wait`.
 
 For public distribution, the `prashna` container package must be set to
 **Public** in GitHub Packages. While it is private, authorized users must first
@@ -40,8 +42,7 @@ application configuration only.
 
 ## Share temporarily with ngrok
 
-Complete first-admin setup locally. Then set
-`PRASHNA_TRUSTED_PROXY_HOPS=1` in `.env`, restart with
+Set `PRASHNA_TRUSTED_PROXY_HOPS=1` in `.env`, restart with
 `docker compose up -d`, and run:
 
 ```bash

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import secrets as pysecrets
+from pathlib import Path
 from typing import Annotated
 
 import bcrypt
@@ -16,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from . import models as m
-from .db import get_db
+from .db import DB_PATH, get_db
 
 COOKIE_NAME = "prashna_admin"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
@@ -24,21 +25,53 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 # users believing a long passphrase is fully protecting them.
 MAX_PASSWORD_BYTES = 72
 
-# Without PRASHNA_SECRET_KEY, sessions are valid only for the process lifetime.
-# Set the env var in any real deployment so sessions survive restarts.
-def _resolve_secret(env_value: str | None) -> tuple[str, bool]:
-    """Return (signing_key, is_ephemeral).
+# Operator-free state lives beside the database, so a backup of the data
+# folder carries it: the signing key (UC-X-07) and, until an admin exists,
+# the one-time setup token (UC-A-01).
+DATA_DIR = DB_PATH.parent
+SECRET_KEY_FILE = DATA_DIR / "secret-key"
+SETUP_TOKEN_FILE = DATA_DIR / "setup-token"
 
-    Ephemeral means we generated a throwaway key because the operator
-    didn't set PRASHNA_SECRET_KEY — admin sessions won't survive a
-    restart. The boolean lets startup log a warning (UC-X-07).
+
+def _write_private(path: Path, value: str) -> None:
+    """Create `path` readable only by this user; fail if it already exists."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(value + "\n")
+
+
+def _read_or_create(path: Path, make) -> str:
+    try:
+        value = path.read_text().strip()
+        if value:
+            return value
+    except FileNotFoundError:
+        pass
+    value = make()
+    try:
+        _write_private(path, value)
+    except FileExistsError:  # another start won the race; use its value
+        return path.read_text().strip()
+    return value
+
+
+def _resolve_secret(env_value: str | None, key_file: Path) -> tuple[str, bool]:
+    """Return (signing_key, is_ephemeral) (UC-X-07).
+
+    PRASHNA_SECRET_KEY wins. Otherwise the key is read from, or created in,
+    `key_file`, so sessions survive restarts with no operator step. Only if
+    that file can't be used do we fall back to a process-lifetime key
+    (ephemeral), which startup warns about.
     """
     if env_value:
         return env_value, False
-    return pysecrets.token_urlsafe(32), True
+    try:
+        return _read_or_create(key_file, lambda: pysecrets.token_urlsafe(48)), False
+    except OSError:
+        return pysecrets.token_urlsafe(32), True
 
 
-_secret, SECRET_KEY_IS_EPHEMERAL = _resolve_secret(os.environ.get("PRASHNA_SECRET_KEY"))
+_secret, SECRET_KEY_IS_EPHEMERAL = _resolve_secret(os.environ.get("PRASHNA_SECRET_KEY"), SECRET_KEY_FILE)
 _signer = TimestampSigner(_secret)
 
 
@@ -132,3 +165,30 @@ def optional_admin(
 
 def admin_exists(db: DbSession) -> bool:
     return db.scalar(select(m.User.id).limit(1)) is not None
+
+
+# ---------- one-time first-admin setup token (UC-A-01) ----------
+
+def setup_token(db: DbSession) -> str | None:
+    """The token that authorizes creating the first admin, or None once an
+    admin exists. PRASHNA_SETUP_TOKEN wins; otherwise a random token is kept
+    in SETUP_TOKEN_FILE and reused across restarts until setup completes."""
+    if admin_exists(db):
+        retire_setup_token()
+        return None
+    env_token = os.environ.get("PRASHNA_SETUP_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    return _read_or_create(SETUP_TOKEN_FILE, lambda: pysecrets.token_urlsafe(24))
+
+
+def setup_token_matches(db: DbSession, supplied: object) -> bool:
+    expected = setup_token(db)
+    return bool(expected) and isinstance(supplied, str) and pysecrets.compare_digest(supplied, expected)
+
+
+def retire_setup_token() -> None:
+    try:
+        SETUP_TOKEN_FILE.unlink()
+    except FileNotFoundError:
+        pass

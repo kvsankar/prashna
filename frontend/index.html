@@ -37,6 +37,16 @@
       <button class="primary" id="join-btn">Join</button>
     </section>
 
+    <section hidden class="card" id="setup-needed-card">
+      <div class="card-head"><h2>Finish setting up Prashna</h2></div>
+      <p class="m-0">This Prashna has no admin yet. When it started, it printed a one-time setup link in the server log. Open that link to create the admin; it ends in <code>/#setup=…</code>.</p>
+      <p class="small muted mt-2">Running with Docker? <code>docker compose logs prashna</code> shows the link.</p>
+      <div hidden class="mt-3" id="setup-github-wrap">
+        <div class="small muted mb-1">or</div>
+        <a class="ghost" id="setup-github-login" href="/api/auth/github/login">Sign in with GitHub</a>
+      </div>
+    </section>
+
     <section hidden class="card" id="setup-card">
       <div class="card-head"><h2>Set up admin account</h2></div>
       <p class="muted small">First run — create the admin who can host sessions and author quizzes.</p>

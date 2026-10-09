@@ -33,26 +33,32 @@ npm run build
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-Open <http://localhost:8000/>. The first visitor creates the admin
-account (username + password). After that, sign in to create
-sessions and author quizzes.
+On its first start the server prints a one-time setup link in its log:
+
+```text
+No admin yet. Create one by opening this one-time link on this server's address: /#setup=...
+```
+
+Open <http://localhost:8000/#setup=...> (the server's address plus that
+path) and choose a username and password. The link works once; after that,
+sign in to create sessions and author quizzes. Only someone who can see the
+server's log can create the admin, so it is safe even if the address is
+already public.
 
 ### Run locally and share through ngrok
 
 The original no-server-deployment workflow is still supported. Build the
-frontend first, start Prashna on localhost, complete admin setup locally, and
-only then expose port 8000:
+frontend, then start Prashna on localhost:
 
 ```bash
 uv sync
 npm ci
 npm run build
-export PRASHNA_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
 export PRASHNA_TRUSTED_PROXY_HOPS=1
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open <http://localhost:8000/> and complete first-run setup. In another
+Open the setup link from the log if this is the first start. In another
 terminal, start the tunnel:
 
 ```bash
@@ -72,15 +78,9 @@ installed and authenticated):
 PRASHNA_NGROK_SMOKE=1 uv run pytest tests/ops/test_ngrok_smoke.py
 ```
 
-For production, set a stable signing key:
-
-```bash
-PRASHNA_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))') \
-  uv run uvicorn app.main:app --port 8000
-```
-
-Without it, the process generates a random key on each start —
-admins must re-login after every restart.
+Admin sign-ins survive restarts without configuration: the server keeps its
+signing key in `secret-key` beside the database. Set `PRASHNA_SECRET_KEY`
+only to choose the key yourself.
 
 ## Roles
 
@@ -169,8 +169,10 @@ that map 1:1 to a pytest function.
 
 ## Environment
 
-- `PRASHNA_SECRET_KEY` — signs admin session cookies. **Set in
-  production.** Without it, sessions die on every restart.
+- `PRASHNA_SECRET_KEY` — optional cookie-signing key. Without it the
+  server creates one in `secret-key` beside the database and reuses it.
+- `PRASHNA_SETUP_TOKEN` — optional fixed first-admin setup token. Without
+  it the server generates one and prints the setup link at start.
 - `PRASHNA_DB_PATH` — override DB location (default
   `<repo>/prashna.db`). Used by Docker and tests.
 - `PRASHNA_UPLOADS_DIR` — override uploads dir.
@@ -217,13 +219,12 @@ specific to the Hetzner production service.
 For a local container installation:
 
 ```bash
-cp compose.env.example .env
-# Replace PRASHNA_SECRET_KEY in .env with a generated secret.
-docker compose pull
 docker compose up -d --wait
+docker compose logs prashna | grep setup=
 ```
 
-Open <http://127.0.0.1:8000/> and create the first admin. Database and uploads
+Open <http://127.0.0.1:8000/> plus the `/#setup=...` path from the log and
+create the first admin. A `.env` (from `compose.env.example`) is optional. Database and uploads
 live in named volumes and survive container replacement. Do not run
 `docker compose down --volumes` unless you intend to delete them.
 

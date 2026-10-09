@@ -13,6 +13,8 @@ import secrets
 import pytest
 from fastapi.testclient import TestClient
 
+from ..support import SETUP_TOKEN
+
 # ---------- session-scoped: spin up the app once ----------
 
 @pytest.fixture(scope="session", autouse=True)
@@ -62,7 +64,7 @@ def client(_live_client, app_module) -> TestClient:
 @pytest.fixture
 def admin_client(client: TestClient) -> TestClient:
     """Client with an admin set up + logged in (cookie attached)."""
-    r = client.post("/api/admin/setup", json={"username": "admin", "password": "testpass1"})
+    r = client.post("/api/admin/setup", json={"username": "admin", "password": "testpass1", "setup_token": SETUP_TOKEN})
     assert r.status_code == 200, r.text
     return client
 

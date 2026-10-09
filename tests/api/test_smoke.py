@@ -1,5 +1,7 @@
 """Sanity test that the API scaffolding works."""
 
+from ..support import SETUP_TOKEN
+
 
 def test_admin_status_starts_uninitialized(client):
     r = client.get("/api/admin/status")
@@ -8,7 +10,7 @@ def test_admin_status_starts_uninitialized(client):
 
 
 def test_admin_setup_creates_first_admin(client):
-    r = client.post("/api/admin/setup", json={"username": "u", "password": "password1"})
+    r = client.post("/api/admin/setup", json={"username": "u", "password": "password1", "setup_token": SETUP_TOKEN})
     assert r.status_code == 200
     assert r.json() == {"username": "u"}
 

@@ -1,6 +1,8 @@
 """UC-A-01, UC-A-02, UC-A-25: admin setup, login/logout, change password."""
 from __future__ import annotations
 
+from ..support import SETUP_TOKEN
+
 # ---------- UC-A-01: First-run admin setup ----------
 
 def test_uc_a_01_status_fresh_db(client):
@@ -12,7 +14,7 @@ def test_uc_a_01_status_fresh_db(client):
 
 def test_uc_a_01_setup_creates_admin_and_cookie(client):
     """UC-A-01: setup creates user and sets admin_session cookie."""
-    r = client.post("/api/admin/setup", json={"username": "alice", "password": "longenough"})
+    r = client.post("/api/admin/setup", json={"username": "alice", "password": "longenough", "setup_token": SETUP_TOKEN})
     assert r.status_code == 200
     assert r.json() == {"username": "alice"}
     # cookie name per app/auth.py is "prashna_admin"
@@ -21,30 +23,41 @@ def test_uc_a_01_setup_creates_admin_and_cookie(client):
 
 def test_uc_a_01_status_after_setup(client):
     """UC-A-01: status after setup reports authed."""
-    client.post("/api/admin/setup", json={"username": "alice", "password": "longenough"})
+    client.post("/api/admin/setup", json={"username": "alice", "password": "longenough", "setup_token": SETUP_TOKEN})
     r = client.get("/api/admin/status")
     assert r.status_code == 200
     assert r.json() == {"initialized": True, "authenticated": True, "username": "alice", "github_enabled": False}
 
 
+def test_uc_a_01_setup_requires_the_token(client):
+    """UC-A-01: no token or a wrong token → 403 and no admin is created."""
+    msg = {"detail": "Open the one-time setup link from the server log to create the first admin"}
+    for payload in ({"username": "alice", "password": "longenough"},
+                    {"username": "alice", "password": "longenough", "setup_token": "wrong"}):
+        r = client.post("/api/admin/setup", json=payload)
+        assert r.status_code == 403
+        assert r.json() == msg
+    assert client.get("/api/admin/status").json()["initialized"] is False
+
+
 def test_uc_a_01_second_setup_returns_409(client):
     """UC-A-01: second setup → 409 Admin already initialized."""
-    client.post("/api/admin/setup", json={"username": "alice", "password": "longenough"})
-    r = client.post("/api/admin/setup", json={"username": "bob", "password": "longenough"})
+    client.post("/api/admin/setup", json={"username": "alice", "password": "longenough", "setup_token": SETUP_TOKEN})
+    r = client.post("/api/admin/setup", json={"username": "bob", "password": "longenough", "setup_token": SETUP_TOKEN})
     assert r.status_code == 409
     assert r.json() == {"detail": "Admin already initialized"}
 
 
 def test_uc_a_01_setup_short_password(client):
     """UC-A-01: password < 8 chars → 400."""
-    r = client.post("/api/admin/setup", json={"username": "alice", "password": "short"})
+    r = client.post("/api/admin/setup", json={"username": "alice", "password": "short", "setup_token": SETUP_TOKEN})
     assert r.status_code == 400
     assert r.json() == {"detail": "password must be at least 8 characters"}
 
 
 def test_uc_a_01_setup_empty_username(client):
     """UC-A-01: empty username → 400."""
-    r = client.post("/api/admin/setup", json={"username": "", "password": "longenough"})
+    r = client.post("/api/admin/setup", json={"username": "", "password": "longenough", "setup_token": SETUP_TOKEN})
     assert r.status_code == 400
     assert r.json() == {"detail": "username required"}
 
@@ -68,7 +81,7 @@ def test_uc_a_01_concurrent_setup_different_usernames(app_module):
         with TestClient(app_module.app) as c:
             barrier.wait()
             r = c.post("/api/admin/setup",
-                       json={"username": username, "password": "longenough"})
+                       json={"username": username, "password": "longenough", "setup_token": SETUP_TOKEN})
             results.append(r.status_code)
 
     threads = [
@@ -91,7 +104,7 @@ def test_uc_a_01_concurrent_setup_different_usernames(app_module):
 
 def test_uc_a_02_login_valid(client, admin_creds):
     """UC-A-02: valid login → 200 + cookie."""
-    client.post("/api/admin/setup", json=admin_creds)
+    client.post("/api/admin/setup", json={**admin_creds, "setup_token": SETUP_TOKEN})
     client.cookies.clear()
     r = client.post("/api/admin/login", json=admin_creds)
     assert r.status_code == 200
@@ -101,7 +114,7 @@ def test_uc_a_02_login_valid(client, admin_creds):
 
 def test_uc_a_02_login_wrong_password(client, admin_creds):
     """UC-A-02: wrong password → 401."""
-    client.post("/api/admin/setup", json=admin_creds)
+    client.post("/api/admin/setup", json={**admin_creds, "setup_token": SETUP_TOKEN})
     client.cookies.clear()
     r = client.post("/api/admin/login", json={"username": "admin", "password": "wrongpass"})
     assert r.status_code == 401
@@ -110,7 +123,7 @@ def test_uc_a_02_login_wrong_password(client, admin_creds):
 
 def test_uc_a_02_login_unknown_user(client, admin_creds):
     """UC-A-02: unknown username → 401."""
-    client.post("/api/admin/setup", json=admin_creds)
+    client.post("/api/admin/setup", json={**admin_creds, "setup_token": SETUP_TOKEN})
     client.cookies.clear()
     r = client.post("/api/admin/login", json={"username": "nope", "password": "whatever1"})
     assert r.status_code == 401

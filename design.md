@@ -288,12 +288,12 @@ sequenceDiagram
   participant Data as SQLite Data Store
   participant Live as Live Update Hub
 
-  Operator->>Admin: Open landing page
-  Admin->>API: Check admin status
-  API->>Data: Read user count
+  API->>Data: At start, read user count
   Data-->>API: No admin exists
-  Admin->>API: Submit setup credentials
-  API->>Auth: Validate and hash password
+  API-->>Operator: Log one-time setup link
+  Operator->>Admin: Open setup link
+  Admin->>API: Submit setup credentials and token
+  API->>Auth: Check token, validate and hash password
   Auth->>Data: Create admin user
   API-->>Admin: Set signed admin cookie
   Operator->>Admin: Create and start session
@@ -636,13 +636,15 @@ Context-Driven Review/Test Recommendations:
 - RISK-BOOTSTRAP: First-Run Bootstrap Exposure
   - Impact: if the app is public before setup, the bootstrap endpoint could be
     claimed by the wrong user.
-  - Likelihood: medium for ad hoc deployments, lower for private operator setup.
-  - Mitigation: keep deployment docs explicit, set up privately before public
-    exposure, and design a token or CLI setup flow if public-first hosting is
-    approved.
-  - Owner: operator and future hosted-product design.
-  - Trigger: public deploys before admin setup.
-  - Residual risk: current baseline remains private-operator oriented.
+  - Likelihood: low; setup requires a one-time token that only appears in the
+    server log, in an operator-set `PRASHNA_SETUP_TOKEN`, or in the
+    `setup-token` file beside the database.
+  - Mitigation: setup-token check on `POST /api/admin/setup`; the token is
+    retired once an admin exists; GitHub sign-in stays allowlisted.
+  - Owner: operator.
+  - Trigger: a leaked server log or data folder before setup completes.
+  - Residual risk: anyone who can read the server's logs or data folder before
+    setup can create the admin.
 - RISK-UPLOADS: Limited Upload Validation
   - Impact: extension and size checks do not prove image content safety.
   - Likelihood: medium if untrusted admins or public authoring are introduced.

@@ -116,9 +116,18 @@ async def lifespan(_app: FastAPI):
     init_db()
     if auth.SECRET_KEY_IS_EPHEMERAL:
         logger.warning(
-            "PRASHNA_SECRET_KEY is not set — admin sessions use an ephemeral "
-            "signing key and will be invalidated on every restart. Set it to a "
-            "long, stable random string for any real deployment (UC-X-07)."
+            "PRASHNA_SECRET_KEY is not set and %s can't be written — admin "
+            "sessions use an ephemeral signing key and end on every restart. "
+            "Make the data folder writable or set PRASHNA_SECRET_KEY (UC-X-07).",
+            auth.SECRET_KEY_FILE,
+        )
+    with SessionLocal() as db:
+        token = auth.setup_token(db)
+    if token:
+        # The only place the first-admin link appears (UC-A-01).
+        logger.warning(
+            "No admin yet. Create one by opening this one-time link on this "
+            "server's address: /#setup=%s", token,
         )
     yield
 
@@ -939,6 +948,9 @@ def _create_github_admin(db: DbSession, gid: int, login: str | None) -> m.User:
     (another concurrent callback won) and a username collision with an
     existing local admin (fall back to a github-suffixed username)."""
     username = login or f"github-{gid}"
+    # A GitHub sign-in can create the first admin too; retire the setup
+    # link then (UC-A-01, UC-A-26).
+    auth.retire_setup_token()
     user = m.User(username=username, github_id=gid, password_hash="")
     db.add(user)
     try:
@@ -970,6 +982,11 @@ def admin_setup(payload: dict, request: Request, response: Response, db: DbSessi
         if auth.admin_exists(db):
             log_diagnostic("auth.setup", outcome="already_initialized")
             raise HTTPException(409, "Admin already initialized")
+        # Only someone who can read the server log (or the operator's env)
+        # holds the token, so a public install can't be claimed (UC-A-01).
+        if not auth.setup_token_matches(db, payload.get("setup_token")):
+            log_diagnostic("auth.setup", outcome="bad_token")
+            raise HTTPException(403, "Open the one-time setup link from the server log to create the first admin")
         try:
             username, password = _validate_credentials(
                 payload.get("username", ""),
@@ -989,6 +1006,7 @@ def admin_setup(payload: dict, request: Request, response: Response, db: DbSessi
             log_diagnostic("auth.setup", outcome="conflict")
             raise HTTPException(409, "Admin already initialized")
         db.refresh(user)
+        auth.retire_setup_token()
         auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
         log_diagnostic("auth.setup", outcome="success", actor_id=user.id)
         return {"username": user.username}

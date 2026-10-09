@@ -1,8 +1,7 @@
 """UI tests for the landing page in anonymous / join / first-run states.
 
 Covers:
-  - UC-A-01: First-run setup form (only on uninitialized DB → skipped because
-    fixtures bootstrap an admin).
+  - UC-A-01: First-run setup through the one-time link (fresh servers).
   - UC-A-02: Admin login / logout.
   - UC-P-01: Participant joins by code; bad code redirects show banner.
 """
@@ -14,6 +13,7 @@ import secrets
 import httpx
 from playwright.sync_api import expect
 
+from ..support import SETUP_TOKEN
 from ._helpers import ADMIN, api_login, api_make_session
 
 # ---------- UC-A-01 ----------
@@ -27,7 +27,7 @@ def test_uc_a_01_setup_card_visibility(base_url, page):
     opposite invariant instead: once initialized, the setup card is hidden.
     """
     # Force initialization.
-    httpx.post(f"{base_url}/api/admin/setup", json=ADMIN, timeout=5.0)
+    httpx.post(f"{base_url}/api/admin/setup", json={**ADMIN, "setup_token": SETUP_TOKEN}, timeout=5.0)
     page.goto(base_url + "/")
     expect(page.locator("#setup-card")).to_be_hidden()
     # Either #login-card or #sessions-card is shown (depending on cookies),
@@ -41,7 +41,7 @@ def test_uc_a_01_setup_password_mismatch_no_api_call(fresh_base_url, page):
     A fresh server keeps the first-run setup form visible for this client-side
     validation path.
     """
-    page.goto(fresh_base_url + "/")
+    page.goto(f"{fresh_base_url}/#setup={SETUP_TOKEN}")
     expect(page.locator("#setup-card")).to_be_visible(timeout=5000)
     page.fill("#su-user", "admin")
     page.fill("#su-pass", "testpass1")
@@ -50,6 +50,36 @@ def test_uc_a_01_setup_password_mismatch_no_api_call(fresh_base_url, page):
     expect(page.locator(".toast-error")).to_contain_text("Passwords don't match")
     status = httpx.get(f"{fresh_base_url}/api/admin/status", timeout=5.0).json()
     assert status["initialized"] is False
+
+
+def test_uc_a_01_without_link_explains_where_to_find_it(fresh_base_url, page):
+    """UC-A-01: no #setup= in the address → the setup-needed card, no form."""
+    page.goto(fresh_base_url + "/")
+    expect(page.locator("#setup-needed-card")).to_be_visible(timeout=5000)
+    expect(page.locator("#setup-needed-card")).to_contain_text("server log")
+    for hidden in ("#setup-card", "#login-card", "#sessions-card"):
+        expect(page.locator(hidden)).to_be_hidden()
+    expect(page.locator("#setup-github-login")).to_be_hidden()
+
+
+def test_uc_a_01_setup_link_creates_admin(fresh_base_url, page):
+    """UC-A-01: the one-time link shows the form; submitting signs the admin in."""
+    page.goto(f"{fresh_base_url}/#setup={SETUP_TOKEN}")
+    expect(page.locator("#setup-card")).to_be_visible(timeout=5000)
+    page.fill("#su-user", "admin")
+    page.fill("#su-pass", "testpass1")
+    page.fill("#su-pass2", "testpass1")
+    page.click("#su-btn")
+    expect(page.locator("#sessions-card")).to_be_visible(timeout=5000)
+    assert "setup=" not in page.url
+
+
+def test_uc_a_01_first_run_page_offers_github(fresh_github_base_url, page):
+    """UC-A-01/26: with GitHub configured, the first-run page offers GitHub sign-in."""
+    page.goto(fresh_github_base_url + "/")
+    expect(page.locator("#setup-needed-card")).to_be_visible(timeout=5000)
+    expect(page.locator("#setup-github-login")).to_be_visible()
+    expect(page.locator("#setup-github-login")).to_have_attribute("href", "/api/auth/github/login")
 
 
 # ---------- UC-A-02 ----------

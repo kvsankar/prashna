@@ -21,6 +21,8 @@ import pytest
 # override this with a per-test temp path, but this is the safety net.
 os.environ.setdefault("PRASHNA_DB_PATH", "/tmp/prashna-test-default.db")
 os.environ.setdefault("PRASHNA_SECRET_KEY", "dummy_secret_do_not_use_in_prod")
+# First-admin setup needs the one-time token (UC-A-01); fix it for tests.
+os.environ.setdefault("PRASHNA_SETUP_TOKEN", "test-setup-token")
 
 # Keep upload writes inside the tests folder when API tests need a real file path.
 TESTS_DIR = Path(__file__).resolve().parent

@@ -63,7 +63,9 @@ def _sample_db(path: Path, marker: str) -> None:
         connection.execute("INSERT INTO sessions (title) VALUES (?)", (marker,))
 
 
-def test_local_compose_requires_secret_actionably():
+def test_local_compose_runs_without_any_env_file():
+    """The laptop model needs no .env: the signing key is generated and kept
+    in the data volume (UC-X-07) and setup uses the logged link (UC-A-01)."""
     result = _run(
         [
             "docker",
@@ -76,8 +78,9 @@ def test_local_compose_requires_secret_actionably():
         ],
         env=_clean_prashna_env(),
     )
-    assert result.returncode != 0
-    assert "Copy compose.env.example to .env and set PRASHNA_SECRET_KEY" in result.stdout
+    assert result.returncode == 0, result.stdout
+    assert "ghcr.io/kvsankar/prashna:latest" in result.stdout
+    assert "target: /data" in result.stdout
 
 
 def test_local_compose_uses_named_volumes_healthcheck_and_pinned_tag(tmp_path):

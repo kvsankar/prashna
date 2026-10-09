@@ -9,17 +9,6 @@ the behavior specification.
 
 ## Current actionable follow-ups
 
-### Show GitHub login during first-run setup
-
-When GitHub OAuth is configured and the database is not initialized, the
-landing page shows the password setup card but hides the GitHub login control
-inside the normal login card. The backend already supports creating the first
-allowlisted GitHub admin.
-
-The live change needs to expose `Sign in with GitHub` in both uninitialized and
-initialized unauthenticated states, then add UI coverage for the first-run
-case. This does not block the initialized production deployment.
-
 ### Remove the legacy admin-cookie compatibility shim
 
 `app/auth.py::_parse_cookie` still accepts the old signed cookie containing
@@ -34,8 +23,6 @@ invalidation tests.
 
 These do not block the current single-process, single-operator deployment:
 
-- Replace the local/private first-admin workflow with an explicit bootstrap
-  mechanism before offering fresh publicly claimable hosted instances.
 - Add a database-enforced singleton/bootstrap invariant before introducing
   multiple workers or replicas; the current process lock is sufficient only
   for the documented single-process model.

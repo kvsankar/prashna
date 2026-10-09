@@ -8,6 +8,8 @@ import pytest
 from sqlalchemy import create_engine
 from starlette.websockets import WebSocketDisconnect
 
+from ..support import SETUP_TOKEN
+
 
 def _events(caplog):
     return {
@@ -98,7 +100,7 @@ def test_auth_session_upload_and_ws_diagnostics(client, caplog):
 
     r = client.post(
         "/api/admin/setup",
-        json={"username": "alice", "password": setup_password},
+        json={"username": "alice", "password": setup_password, "setup_token": SETUP_TOKEN},
     )
     assert r.status_code == 200
     client.cookies.clear()

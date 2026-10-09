@@ -97,6 +97,7 @@ def test_local_bootstrap_then_ngrok_http_and_websocket(tmp_path):
             "PRASHNA_DB_PATH": str(tmp_path / "prashna.db"),
             "PRASHNA_UPLOADS_DIR": str(tmp_path / "uploads"),
             "PRASHNA_SECRET_KEY": "ngrok-smoke-" + secrets.token_hex(16),
+            "PRASHNA_SETUP_TOKEN": "ngrok-smoke-setup",
             "PRASHNA_TRUSTED_PROXY_HOPS": "1",
             "PRASHNA_RATELIMIT": "off",
         }
@@ -123,12 +124,12 @@ def test_local_bootstrap_then_ngrok_http_and_websocket(tmp_path):
     try:
         assert _wait_for_http(f"{local_url}/api/admin/status").json()["initialized"] is False
 
-        # Preserve the security property of the original workflow: claim the
-        # singleton admin through localhost before creating a public endpoint.
+        # Setup needs the one-time token (UC-A-01), so the order of setup
+        # and opening the tunnel no longer matters; keep it local anyway.
         with httpx.Client(base_url=local_url, timeout=10) as local:
             setup = local.post(
                 "/api/admin/setup",
-                json={"username": "admin", "password": "testpass1"},
+                json={"username": "admin", "password": "testpass1", "setup_token": "ngrok-smoke-setup"},
             )
             assert setup.status_code == 200, setup.text
             created = local.post("/api/sessions", json={"title": "ngrok smoke"})
