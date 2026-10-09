@@ -1,74 +1,143 @@
-"""Repository documentation contracts for current architecture."""
+"""Repository documentation contracts.
+
+Each topic has one owning document. These checks pin facts to their owner
+and fail when a fact is copied into a second place or a link breaks.
+"""
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TRACE_ID = re.compile(r"\b(?:AT|JT|TEST)-[A-Z0-9]+(?:-[A-Z0-9]+)*\b")
+
+REMOVED_DOCS = (
+    "spec.md",
+    "design.md",
+    ".sdlc/approvals.yaml",
+    ".sdlc/test-traceability.yaml",
+    ".sdlc/wip.md",
+)
+# Markdown links and images: [text](target) and ![alt](target).
+MD_LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)")
+# Raw HTML attributes that also become links on PyPI.
+HTML_LINK = re.compile(r"""(?:href|src)\s*=\s*["']([^"']+)["']""")
+# An environment-variable name used as a whole string literal in Python.
+ENV_LITERAL = re.compile(r"""["'](PRASHNA_[A-Z0-9_]+)["']""")
+POLICY_MARKER = ".git/info/exclude"
 
 
 def read(path: str) -> str:
-    return (ROOT / path).read_text()
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
-def trace_ids(text: str) -> set[str]:
-    return set(TRACE_ID.findall(text))
+def live_text_files() -> list[Path]:
+    """Tracked and new, non-ignored text files that exist on disk."""
+    listing = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    suffixes = {".md", ".py", ".yml", ".yaml", ".toml", ".ts", ".html", ".sh"}
+    return [
+        ROOT / name
+        for name in listing
+        if Path(name).suffix in suffixes and (ROOT / name).is_file()
+    ]
 
 
 def test_authoritative_docs_reference_vite_frontend_paths():
-    """README/spec/UX docs should point to the current Vite source tree."""
-    readme = read("README.md")
+    """The layout, UX, and spec docs point to the current Vite source tree."""
+    development = read("docs/development.md")
     ux = read("docs/UX.md")
     specs = read("docs/specs.md")
 
-    assert "frontend/          Vite + TypeScript frontend" in readme
-    assert "static/             Vanilla JS / HTML / CSS" not in readme
+    assert re.search(r"^frontend/\s+Vite \+ TypeScript frontend", development, re.M)
+    assert "static/             Vanilla JS / HTML / CSS" not in development
     assert "frontend/src/app.css" in ux
     assert "static/app.css" not in ux
     assert "frontend/*.html" in specs
     assert "static/*.html" not in specs
 
 
-def test_authoritative_docs_describe_additive_sqlite_migrations():
-    """Operator docs should match the current additive migration bridge."""
+def test_architecture_describes_additive_sqlite_migrations():
+    """The migration mechanism is described once, in the architecture doc."""
+    architecture = read("docs/architecture.md")
     readme = read("README.md")
     claude = read("CLAUDE.md")
 
-    assert "additive SQLite migration bridge" in readme
-    assert "additive SQLite migration bridge" in claude
+    assert "additive SQLite migration bridge" in architecture
     assert "no migrations yet" not in readme
     assert "### Database migrations\nNone." not in claude
 
 
 def test_spec_describes_setup_token_bootstrap():
-    """First-admin setup through a one-time link is the current baseline
-    (UC-A-01); the SRS no longer defers public-safe bootstrap."""
-    spec = read("spec.md")
+    """First-admin setup through a one-time link is current behavior (UC-A-01),
+    and it stays safe when the address is already public."""
+    specs = read("docs/specs.md")
+    uc_a_01 = specs.split("### UC-A-01", 1)[1].split("\n### ", 1)[0]
 
-    assert "Public-first bootstrap is not current baseline scope" not in spec
-    assert "Future delta: public or hosted bootstrap" not in spec
-    assert re.search(r"NFR-BOOTSTRAP-PUBLIC: Deployments, including ones already\s+public", spec)
-    assert "one-time setup link" in spec
+    assert "Public-first bootstrap is not current baseline scope" not in specs
+    assert "Future delta: public or hosted bootstrap" not in specs
+    assert re.search(r"already\s+public", uc_a_01)
+    assert "one-time setup link" in uc_a_01
 
 
-def test_traceability_file_classifies_accepted_obligations():
-    """Traceability should classify accepted acceptance and test obligations."""
-    spec_ids = {
-        item
-        for item in trace_ids(read("spec.md"))
-        if item.startswith(("AT-", "JT-"))
-    }
-    design_test_ids = {
-        item
-        for item in trace_ids(read("design.md"))
-        if item.startswith("TEST-")
-    }
-    traceability = read(".sdlc/test-traceability.yaml")
-    classified_ids = trace_ids(traceability)
+def test_readme_uses_only_absolute_links():
+    """README.md is the PyPI long description; relative links break there."""
+    readme = read("README.md")
+    targets = MD_LINK.findall(readme) + HTML_LINK.findall(readme)
 
-    missing = sorted((spec_ids | design_test_ids) - classified_ids)
+    assert targets, "README.md should link to the documentation"
+    relative = [t for t in targets if not re.match(r"https?://", t)]
+    assert relative == []
+
+
+def test_removed_process_docs_stay_removed():
+    """The Sarathi baseline files are replaced by docs/specs.md and
+    docs/architecture.md."""
+    present = [path for path in REMOVED_DOCS if (ROOT / path).exists()]
+    assert present == []
+
+
+def test_no_live_file_references_removed_docs():
+    """No live file links to a removed document."""
+    this_file = Path(__file__).resolve()
+    patterns = [
+        re.compile(r"(?<![A-Za-z])spec\.md"),
+        re.compile(r"(?<![A-Za-z])design\.md"),
+        re.compile(r"approvals\.yaml|test-traceability\.yaml|wip\.md"),
+    ]
+    hits = []
+    for path in live_text_files():
+        if path.resolve() == this_file:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for pattern in patterns:
+            if pattern.search(text):
+                hits.append(f"{path.relative_to(ROOT)}: {pattern.pattern}")
+    assert hits == []
+
+
+def test_documentation_policy_has_one_owner():
+    """The documentation policy is stated in docs/development.md only."""
+    development = read("docs/development.md")
+
+    assert POLICY_MARKER in development
+    assert "one owner" in development
+    assert POLICY_MARKER not in read("README.md")
+    assert POLICY_MARKER not in read("CLAUDE.md")
+
+
+def test_every_environment_variable_is_documented():
+    """Every PRASHNA_* variable the app reads is in the development guide."""
+    names = set()
+    for source in (ROOT / "prashna").rglob("*.py"):
+        names.update(ENV_LITERAL.findall(source.read_text(encoding="utf-8")))
+    development = read("docs/development.md")
+
+    assert len(names) >= 10, sorted(names)
+    missing = sorted(name for name in names if f"`{name}`" not in development)
     assert missing == []
-    assert "existing_evidence:" in traceability
-    assert "planned_remediation:" in traceability
-    assert "residual_risks:" in traceability

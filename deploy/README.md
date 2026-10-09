@@ -3,9 +3,8 @@
 This directory holds everything the **Hetzner** box needs to run Prashna at
 `https://prashna.sankara.net`.
 
-It is not the end-user distribution bundle. Laptop and generic self-hosted
-installs use the root `compose.yaml`; tagged GitHub Releases contain a
-version-pinned copy with their own README and named-volume storage.
+Laptop and other self-hosted container installs use the root `compose.yaml`
+instead; see [`distribution/README.md`](../distribution/README.md).
 
 ## One-time setup
 
@@ -28,13 +27,9 @@ version-pinned copy with their own README and named-volume storage.
    present. `setup.sh` installs Docker when necessary, but it expects the nginx
    and Certbot commands to exist before configuring TLS.
 
-4. **If the GHCR package is private**, log in on the server with a token that
-   has `read:packages`. A public package can be pulled anonymously:
-
-   ```bash
-   export GHCR_TOKEN=...  # GitHub token with read:packages
-   echo "$GHCR_TOKEN" | docker login ghcr.io -u kvsankar --password-stdin
-   ```
+4. **If the GHCR package is private**, sign in to `ghcr.io` on the server
+   first, as described in
+   [Registry access](../distribution/README.md#registry-access).
 
 5. **Run the bootstrap**:
 
@@ -44,8 +39,21 @@ version-pinned copy with their own README and named-volume storage.
    CERTBOT_EMAIL=you@example.com ./deploy/setup.sh
    ```
 
-   This installs Docker, lays down `/opt/prashna/`, fetches the image, drops
-   the nginx site, requests a TLS cert via certbot, and starts the container.
+   This installs Docker when it is missing, lays down `/opt/prashna/` with a
+   generated `PRASHNA_SECRET_KEY` in `.env`, pulls the image, installs the
+   nginx site, prepares nginx for Cloudflare proxying
+   (`prepare-cloudflare-proxy.sh`), requests a TLS certificate with Certbot,
+   enables HTTP/2 (`enable-http2.sh`), and starts the container.
+
+6. **Create the first admin.** Find the one-time setup link in the log and
+   open it on `https://prashna.sankara.net`:
+
+   ```bash
+   cd /opt/prashna && docker compose logs prashna | grep setup=
+   ```
+
+   With GitHub sign-in configured, an allowlisted GitHub account can create
+   the admin instead.
 
 ## Updating
 
@@ -57,6 +65,25 @@ cd /opt/prashna && docker compose pull && docker compose up -d --wait
 
 Or wire up the optional `deploy.yml` workflow (not included by default) that
 SSHes in and runs that on every push to `main`.
+
+## Cloudflare visitor IP and HTTP/2
+
+`setup.sh` runs two idempotent nginx helpers. Each one backs up the site file,
+validates the result with `nginx -t`, and restores the backup if validation
+fails.
+
+- `prepare-cloudflare-proxy.sh` downloads Cloudflare's published IP ranges and
+  writes them to `/etc/nginx/snippets/prashna-cloudflare-realip.conf` as
+  `set_real_ip_from` lines with `real_ip_header CF-Connecting-IP`. It includes
+  that file in the site. nginx then sees the visitor's address rather than a
+  Cloudflare edge address, and passes it on in `X-Forwarded-For`, which the
+  application reads with `PRASHNA_TRUSTED_PROXY_HOPS=1`. Re-run the script to
+  refresh the ranges.
+- `enable-http2.sh` adds `http2` to the Certbot-managed TLS listeners without
+  touching the certificates.
+
+Both read `PRASHNA_DOMAIN` and `PRASHNA_NGINX_SITE_PATH` to target another
+site.
 
 ## Cloudflare HTML-shell caching
 
@@ -102,12 +129,17 @@ with `docker compose --project-name <printed-project> down --volumes
 
 ## Files
 
-- `docker-compose.yml` — service definition; bind-mounted to `/opt/prashna/`.
-- `env.example` — copy to `/opt/prashna/.env` with a real `PRASHNA_SECRET_KEY`.
-- `nginx-prashna.conf` — nginx server block; symlinked into `sites-enabled/`.
-- `setup.sh` — idempotent bootstrap script.
-- `configure-cloudflare-cache.sh` — dry-run/apply Cache Rule reconciler for
-  static HTML shells.
+- `docker-compose.yml`: the service definition, copied to `/opt/prashna/`.
+  It requires `PRASHNA_SECRET_KEY` in `.env`.
+- `env.example`: reference for `/opt/prashna/.env`. `setup.sh` writes that
+  file with a generated key when it is missing.
+- `nginx-prashna.conf`: the nginx server block, symlinked into
+  `sites-enabled/`.
+- `setup.sh`: the idempotent bootstrap script.
+- `prepare-cloudflare-proxy.sh`: Cloudflare visitor-IP configuration for nginx.
+- `enable-http2.sh`: HTTP/2 on the TLS listeners.
+- `configure-cloudflare-cache.sh`: dry-run and apply reconciler for the
+  Cloudflare Cache Rule for HTML shells.
 
 ## Persistent data
 
@@ -125,8 +157,10 @@ sudo chown -R 1001:1001 /opt/prashna/data /opt/prashna/uploads
 ```
 
 For local smoke tests only, the compose file accepts `PRASHNA_PORT`,
-`PRASHNA_DATA_DIR`, and `PRASHNA_UPLOADS_HOST_DIR` overrides. Production should
-keep the `/opt/prashna` defaults from `env.example`.
+`PRASHNA_DATA_DIR`, and `PRASHNA_UPLOADS_HOST_DIR` overrides. Here
+`PRASHNA_DATA_DIR` is the host folder mounted at `/data`; it is a Compose
+variable, unrelated to the `prashna` command's `PRASHNA_DATA_DIR`. Production
+keeps the `/opt/prashna` defaults.
 
 ## Logs and retention
 

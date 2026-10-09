@@ -98,8 +98,9 @@ and path traces.
 There is no zone setting that pins client ingress to a particular Cloudflare
 colo. Argo Smart Routing affects the edge-to-origin path, not client-to-edge
 selection. Keep the hostname proxied unless collected evidence shows the proxy
-itself is the regression. The nginx real-IP preparation and HTML-shell cache
-rule procedures are in [`deploy/README.md`](../deploy/README.md).
+itself is the regression. The nginx visitor-IP and HTTP/2 setup and the
+HTML-shell cache rule are described in
+[`deploy/README.md`](../deploy/README.md#cloudflare-visitor-ip-and-http2).
 
 ## Release verification
 

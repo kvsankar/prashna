@@ -5,8 +5,9 @@ Each use case has a stable ID (`UC-<ROLE>-NN`) so tests, PRs, and bug
 reports can cite it. Acceptance tests are Given/When/Then.
 
 **Roles** (and their UC prefixes)
-- **Admin** (`UC-A-*`) — a logged-in `User` (today: single global
-  admin per deployment). Owns sessions and quiz templates.
+- **Admin** (`UC-A-*`) — a signed-in `User`: the password admin created
+  at first-run setup (UC-A-01) or an allowlisted GitHub account (UC-A-26).
+  Owns sessions and quiz templates and sees only their own.
   **Capabilities are a strict superset of Moderator.** Authenticates
   via signed cookie; reaches all moderator routes on owned sessions
   without needing the mod_key.
@@ -24,6 +25,16 @@ reports can cite it. Acceptance tests are Given/When/Then.
 - **System** (`UC-X-*`) — cross-cutting backend invariants, broadcast
   contracts, security headers, and storage-level constraints. Not a
   user action; the substrate every other UC silently depends on.
+
+**What each role needs.** Participants need to ask and support questions
+anonymously, answer the current quiz question, optionally share a profile,
+and rate the session with little effort. Moderators need one page to run the
+room: lifecycle, Q&A triage, quiz playback, attendee profiles, and feedback.
+Admins need first-run access, session setup with owner-only controls,
+reusable quizzes, and reports that stay stable. The room needs join
+information and the live state on the projector. Operators need repeatable
+install, deployment, backup, and safe configuration. Developers need a spec
+that stays aligned with the tests.
 
 **Authorization model.** Every moderator-gated route accepts *either*
 the admin owner cookie *or* an `X-Mod-Key` header. Reads that branch
@@ -106,11 +117,11 @@ public can't be claimed by its first visitor.
 
 **Tests (API)**
 - `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null, github_enabled: false}` (`github_enabled` reflects whether GitHub OAuth is configured — see UC-A-26). Auth: none.
-- `POST /api/admin/setup` with `{"username": "alice", "password": "longenough", "setup_token": <token>}` → `200 {username: "alice"}` and sets `admin_session` cookie. Auth: the setup token.
+- `POST /api/admin/setup` with `{"username": "alice", "password": "longenough", "setup_token": <token>}` → `200 {username: "alice"}` and sets the `prashna_admin` cookie. Auth: the setup token.
 - The same request without `setup_token`, or with a wrong one → `403 "Open the one-time setup link from the server log to create the first admin"`; no user is created.
 - `GET /api/admin/status` immediately after setup (with cookie) → `200 {initialized: true, authenticated: true, username: "alice"}`.
 - `POST /api/admin/setup` a second time → `409 "Admin already initialized"`.
-- Race: two concurrent setup calls with **different usernames** — exactly one returns `200`, the other returns `409`. Serialized by a process-wide `threading.Lock` around the check+insert (Prashna is single-process per CLAUDE.md, so this is a real invariant). Test: `test_uc_a_01_concurrent_setup_different_usernames`.
+- Race: two concurrent setup calls with **different usernames** — exactly one returns `200`, the other returns `409`. Serialized by a process-wide `threading.Lock` around the check+insert (Prashna is single-process, see `docs/architecture.md`, so this is a real invariant). Test: `test_uc_a_01_concurrent_setup_different_usernames`.
 - Same-username conflict path is also caught via `try/except IntegrityError` and surfaces as `409`.
 - `POST /api/admin/setup` with `{"username": "alice", "password": "short", ...}` → `400 "password must be at least 8 characters"`.
 - `POST /api/admin/setup` with `{"username": "", "password": "longenough", ...}` → `400 "username required"`.
@@ -136,10 +147,10 @@ public can't be claimed by its first visitor.
 - **And** Enter on the password field submits the form
 
 **Tests (API)**
-- `POST /api/admin/login` with valid `{username, password}` → `200 {username}` and sets `admin_session` cookie. Auth: none.
+- `POST /api/admin/login` with valid `{username, password}` → `200 {username}` and sets the `prashna_admin` cookie. Auth: none.
 - `POST /api/admin/login` with wrong password → `401 "Invalid username or password"`.
 - `POST /api/admin/login` with unknown username → `401 "Invalid username or password"`.
-- `POST /api/admin/logout` → `200 {ok: true}` and clears the `admin_session` cookie.
+- `POST /api/admin/logout` → `200 {ok: true}` and clears the `prashna_admin` cookie.
 - `GET /api/admin/status` after logout → `200 {initialized: true, authenticated: false}`.
 
 **Tests (UI)**
@@ -162,7 +173,8 @@ public can't be claimed by its first visitor.
   mod_key, and `participant_base_url = null`
 - **And** an empty or whitespace-only title returns `400 Session title
   is required`
-- **And** the new row appears in the list with a `Planning` badge
+- **And** the new row appears in the list with a "Not started" badge
+  (class `badge-planning`)
 
 **Tests (API)**
 - `POST /api/sessions` with `{"title": "Test"}` → `200 {code, title: "Test", mod_key, status: "planning"}`. Auth: admin cookie.
@@ -755,11 +767,11 @@ Used by question and answer editors to set `image_url`.
 - **And** Escape closes the card without saving
 
 **Tests (API)**
-- `POST /api/admin/change_password` with valid `{current_password, new_password}` (≥ 8 chars) → `200 {ok: true}`; re-issues `admin_session` cookie; bcrypt-verifies new password. Auth: admin cookie.
+- `POST /api/admin/change_password` with valid `{current_password, new_password}` (≥ 8 chars) → `200 {ok: true}`; re-issues the `prashna_admin` cookie; bcrypt-verifies new password. Auth: admin cookie.
 - With wrong `current_password` (but valid cookie) → `401 "Current password is incorrect"`.
 - With `new_password` shorter than 8 chars → `400 "new password must be at least 8 characters"`.
 - With no cookie at all → `401 "Not authenticated"` (from `auth.current_admin`, before the handler runs). Two distinct 401 paths.
-- **Old cookies are invalidated**: after a successful change_password call, the prior `admin_session` cookie no longer authenticates. Verified by capturing the pre-change cookie, changing password, then issuing an admin-only call with the captured cookie → `401`. (Implementation: signed cookies carry a `session_version`, bumped on each password change; `current_admin` rejects mismatched versions.)
+- **Old cookies are invalidated**: after a successful change_password call, the prior `prashna_admin` cookie no longer authenticates. Verified by capturing the pre-change cookie, changing password, then issuing an admin-only call with the captured cookie → `401`. (Implementation: signed cookies carry a `session_version`, bumped on each password change; `current_admin` rejects mismatched versions.)
 
 **Tests (UI)**
 - On `/` (authed), clicking Change password opens `#change-pw-card`.
@@ -1186,7 +1198,19 @@ by default while the session is `planning`.
 - Clicking `#base-url-clear` (owner view) clears the override; the QR/URL fall back to `location.origin`.
 - Clicking `#invite-copy` copies `#invite-url` text to clipboard.
 
-### UC-M-12: View session feedback
+### UC-M-12: Open rating and view session feedback
+
+- **Given** a moderator (delegate or admin owner) is on the moderator page
+- **Then** the Lifecycle card (`#lifecycle-actions`) shows **Open rating**
+  while rating is closed and **Close rating** while it is open, in every
+  session status
+- **When** they click it → `POST /api/sessions/{code}/feedback_enabled`
+  with `{"enabled": true|false}` (mod-or-owner auth) sets the session's
+  `feedback_enabled` flag, returns `{feedback_enabled}`, and broadcasts
+  `{type: "feedback_state"}`, so participant pages show or hide the
+  rating card (UC-P-13)
+- **And** rating starts closed on a new session (`feedback_enabled:
+  false`)
 
 - **Given** a moderator (delegate or admin owner) is on the moderator page
 - **Then** a **Feedback** panel (`#feedback-card`) shows the aggregate of
@@ -1202,6 +1226,9 @@ by default while the session is `planning`.
   [{rating, went_well, to_improve, author_name, updated_at}, ...]}`.
 
 **Tests (API)**
+- A new session reports `feedback_enabled: false`.
+- `POST /api/sessions/{code}/feedback_enabled` with `{"enabled": true}` and the mod-key → `200 {feedback_enabled: true}`; a participant `POST .../feedback` then succeeds; with `{"enabled": false}` → `200 {feedback_enabled: false}` and the next participant `POST .../feedback` → `403` (`test_uc_m_12_feedback_toggle_by_moderator`).
+- The toggle broadcasts `{"type": "feedback_state"}` (`test_uc_m_12_feedback_toggle_broadcasts_feedback_state`).
 - `GET /api/sessions/{code}/feedback/summary` with two participants'
   ratings (5 and 3) → `200 {count: 2, average: 4.0, distribution: {"5":1,
   "3":1, ...}, items: [...]}`. Auth: mod-key OR admin cookie.
@@ -1211,9 +1238,34 @@ by default while the session is `planning`.
   `average: null`.
 
 **Tests (UI)**
+- A participant page hides `#feedback-card` while rating is closed; after the moderator clicks **Open rating** in `#lifecycle-actions`, the button reads **Close rating** and the participant page shows `#feedback-card` (`test_uc_m_12_moderator_controls_rating_widget`).
 - After a participant submits feedback, on `/m/<code>` the `#feedback-card`
   is visible, `#feedback-summary` shows the average, and `#feedback-list`
   contains the comment text.
+
+### UC-M-13: View attendee profiles
+
+- **Given** a moderator (delegate or admin owner) is on the moderator page
+- **Then** an **Attendee profiles** card (`#profiles-card`) lists every
+  participant who has submitted any profile field or a photograph
+  (UC-P-03), most recently seen first; `#profiles-summary` shows the count
+  ("1 profile", "N profiles") and `#profiles-list` shows each profile's
+  photograph, name ("Anonymous attendee" when blank), email, contact
+  number, organization, role, LinkedIn link, current work, and learning
+  goal; participants with no profile data are left out
+- **And** with no profiles the card reads "No attendee profiles yet."
+- **And** the card refreshes on the `participant` WebSocket broadcast
+- **Backend route**: `GET /api/sessions/{code}/participants`
+  (mod-or-owner auth) → `{count, items: [{id, name, email,
+  contact_number, organization, role, linkedin_url, photo_url,
+  current_work, learning_goal}, ...]}`
+
+**Tests (API)**
+- With one participant who submitted every field and a photograph, and a second participant with no profile data, `GET /api/sessions/{code}/participants` with the mod-key → `200 {count: 1, items: [...]}` carrying every field and the photograph URL (`test_uc_m_13_participant_profiles_summary`).
+- With no auth → `403` (`test_uc_m_13_participant_profiles_requires_moderator`).
+
+**Tests (UI)**
+- After a participant submits a full profile with a photograph, `/m/<code>` as the admin owner shows `#profiles-card`; `#profiles-summary` contains "1 profile" and `#profiles-list` contains each field and an `img.profile-photo-preview` with the photograph URL (`test_uc_m_13_profiles_panel_shows_attendee_details`).
 
 ---
 
@@ -1272,24 +1324,60 @@ by default while the session is `planning`.
 - Loading `/s/<CODE>` in a fresh browser context sets a `voter_token` cookie (readable in JS — non-HttpOnly).
 - Reloading the page keeps the same `voter_token`; subsequent calls flag the participant's own questions with `mine: true`.
 
-### UC-P-03: Set display name
+### UC-P-03: Set display name and attendee profile
 
-- **Given** the participant types in the name input in the header
-- **When** they blur the input
-- **Then** `PATCH /api/sessions/{code}/me` saves it on the
-  Participant row; their name appears beside every question / vote /
-  response of theirs going forward
-- **And** name is optional; blank = anonymous
+The participant page starts with a **Profile** card (`#profile-card`, a
+`<details>`), collapsed by default. Its header reads "Add your profile" with
+an **Add details** call to action, or "Your profile" with **Edit details**
+once something is saved. Every field is optional:
+
+| Field | API key | Max length |
+| --- | --- | --- |
+| Display name | `name` | 80 |
+| Email | `email` | 254 |
+| Contact number | `contact_number` | 40 |
+| Organization | `organization` | 120 |
+| Role/title | `role` | 120 |
+| LinkedIn profile | `linkedin_url` | 500 |
+| What are you working on now? | `current_work` | 500 |
+| Learning goal | `learning_goal` | 500 |
+| Photograph | `photo_url` (upload only) | — |
+
+- **Given** the participant opens the Profile card and fills in any fields
+- **When** they click **Submit profile** (`#profile-submit`)
+- **Then** `PATCH /api/sessions/{code}/me` saves the text fields on their
+  Participant row; when a photograph was chosen, the page then uploads it
+  with `POST /api/sessions/{code}/me/photo`
+- **And** a toast confirms ("Profile submitted", naming the display name
+  when there is one), and the button changes to **Resubmit profile**
+- **And** the display name appears beside the participant's questions from
+  then on; a blank name means anonymous
+- **And** text is trimmed and cut to the field's maximum length; a blank
+  field is stored as `null`
+- **And** the photograph upload follows the image constraints of UC-X-04,
+  needs no admin login, and returns the stored `/uploads/...` URL as
+  `photo_url`; **Clear** beside the photograph (`#my-photo-clear`) sends
+  `{"photo_url": null}`, and any other `photo_url` value in the `PATCH`
+  returns `400 "photo must be uploaded"`
+- **And** reloading the page prefills every saved field and the photograph
+- **And** each successful `PATCH` or photo upload broadcasts
+  `{type: "participant"}`
+- **And** moderators see submitted profiles on the session page (UC-M-13);
+  other participants and the projector never see them
 
 **Tests (API)**
-- `PATCH /api/sessions/{code}/me` with `{"name": "Alice"}` → `200 {id, name: "Alice"}`. Auth: none (cookie issued on first call).
-- With `{"name": ""}` → `200 {id, name: null}` (blank = anonymous).
+- `PATCH /api/sessions/{code}/me` with `{"name": "Alice"}` → `200` with `name: "Alice"`. Auth: none (cookie issued on first call).
+- With `{"name": ""}` → `200` with `name: null` (blank = anonymous).
 - With a name > 80 chars → name is truncated to 80 chars.
 - Broadcasts `{type: "participant"}` on success.
+- All eight text fields round-trip through `PATCH` and `GET .../me` with surrounding whitespace trimmed; blank values become `null` (`test_uc_p_03_profile_fields_round_trip`, `test_uc_p_03_profile_blank_fields_become_null`).
+- `POST .../me/photo` with a PNG → `200` with `photo_url` under `/uploads/`; `GET .../me` returns it; `PATCH` with `{"photo_url": null}` clears it (`test_uc_p_03_profile_photo_upload_and_clear`).
+- `POST .../me/photo` with an `.svg` file → `400 "unsupported image type"` (`test_uc_p_03_profile_photo_rejects_unsupported_type`).
+- `PATCH` with `{"photo_url": "https://example.com/avatar.png"}` → `400 "photo must be uploaded"` (`test_uc_p_03_profile_photo_url_cannot_be_set_directly`).
 
 **Tests (UI)**
-- On `/s/<CODE>`, typing into `#my-name` and blurring PATCHes and persists the name.
-- After saving a name, a query the participant asks shows that name beside it; with blank name, queries show as anonymous.
+- On `/s/<CODE>`, opening `#profile-card`, typing into `#my-name`, and clicking `#profile-submit` shows a toast with the name; a question the participant then asks shows that name beside it (`test_uc_p_03_set_display_name_persists`).
+- The Profile card starts closed with the closed-state title and call to action; after filling every field, choosing a photograph (`#my-photo`, previewed in `#my-photo-preview`), and submitting, the toast reads "Profile submitted" and the button reads **Resubmit profile**; after a reload every field and the photograph are prefilled; `#my-photo-clear` hides the photograph (`test_uc_p_03_attendee_profile_persists`).
 
 ### UC-P-04: Ask
 
@@ -1498,9 +1586,12 @@ Participant-side counterpart of UC-D-08.
 
 ### UC-P-13: Rate the session (feedback)
 
-A participant can rate the session and leave course feedback once the
-moderator opens rating (**Open rating** on the session page,
-`feedback_enabled`; any session status). The control is a **collapsible
+A participant can rate the session and leave course feedback while the
+moderator has rating open (**Open rating** on the session page, UC-M-12;
+`feedback_enabled`; any session status, including `ended`). While rating is
+closed the rating card is hidden, and `POST` or `DELETE
+/api/sessions/{code}/feedback` returns `403 "feedback is not enabled"`. The
+control is a **collapsible
 card** (`#feedback-card`, a `<details>`) placed right after the Profile
 card. It is **open** until the participant submits; after a submit, and
 on later visits, it **collapses** to a one-line summary in its header
@@ -1543,13 +1634,17 @@ when the run is no longer live.
   shows **Resubmit feedback**
 - **And** comments are optional — a bare rating is valid; `rating` must be
   an integer 1–5 or the POST returns `400`
+- **And** each comment is trimmed and cut to 2000 characters; a blank
+  comment is stored as `null`
+- **And** feedback submissions are rate-limited per client IP (UC-X-08)
 - **And** submitting broadcasts `{type: "feedback"}` (UC-X-01) so the
   host's view (UC-M-12) updates live
 
 **Tests (API)**
 - `POST /api/sessions/{code}/feedback` with `{"rating": 4, "went_well": "...", "to_improve": "..."}` → `200 {rating, went_well, to_improve, updated_at}`. Auth: none (cookie issued on first call).
 - A bare `{"rating": 5}` → `200` with null comment fields.
-- Allowed on an `ended` session (the card is always available).
+- With rating closed (the default for a new session) → `403 "feedback is not enabled"` (`test_uc_p_13_feedback_disabled_by_default`).
+- Allowed on an `ended` session once the moderator opens rating (`test_uc_p_13_allowed_when_ended`).
 - Resubmitting is allowed any number of times: each call appends a `SessionFeedbackVersion` (history retained), while the current view stays one row per participant — `summary.count` stays 1 and the latest values win.
 - `rating` of `0`, `6`, missing, a string, a float, or a bool → `400 "rating must be an integer from 1 to 5"`.
 - `GET .../feedback/mine` → `null` before submitting, then the row.
@@ -1741,7 +1836,7 @@ are the rules every user-facing UC silently relies on.
   `session_state`, `participant`, `query_new`, `query_vote`,
   `query_responded`, `query_removed`, `query_deleted`,
   `quiz_run_new`, `quiz_run_update`, `quiz_run_deleted`,
-  `quiz_submission`, `feedback`); each frontend treats the message as a
+  `quiz_submission`, `feedback`, `feedback_state`); each frontend treats the message as a
   refresh hint and re-fetches the data it cares about
 - **And** the client auto-reconnects with exponential backoff if the
   socket drops; **on every reconnect after the first**, the client
@@ -1749,7 +1844,7 @@ are the rules every user-facing UC silently relies on.
   message so the page resyncs any state it may have missed while
   disconnected.
 - **And** delivery is fanned out concurrently with a per-send timeout
-  (~2 s). A slow or stalled receiver does not block the API
+  (2 s by default, `PRASHNA_WS_SEND_TIMEOUT_SECS`). A slow or stalled receiver does not block the API
   response; failed sockets are evicted from the room.
 
 **Tests (API)**
@@ -1765,6 +1860,7 @@ are the rules every user-facing UC silently relies on.
 - `POST .../quiz_runs/{id}/submit` → frame `{"type": "quiz_submission"}`.
 - `PATCH .../me` → frame `{"type": "participant"}`.
 - `POST .../feedback` → frame `{"type": "feedback"}`.
+- `POST .../feedback_enabled` → frame `{"type": "feedback_state"}` (UC-M-12).
 
 ### UC-X-02: WebSocket upgrade rejections
 
@@ -1787,10 +1883,8 @@ Two tiers, applied by one middleware:
   - `X-Content-Type-Options: nosniff`
   - `X-Frame-Options: DENY`
   - `Content-Security-Policy: frame-ancestors 'none'` — blocks
-    clickjacking of the admin / moderator UI. A stricter `script-src`
-    CSP is intentionally **not** set: the no-build pages rely on
-    inline `<script type="module">` blocks, and `frame-ancestors` is
-    the high-value directive that doesn't break them.
+    clickjacking of the admin / moderator UI. No `script-src` directive
+    is set.
   - `Referrer-Policy: no-referrer` — session codes and `?bad_code=`
     never leak to third parties via the `Referer` header.
 - **Uploaded files (`/uploads/*`)** carry a stricter isolation set
@@ -1809,14 +1903,16 @@ Two tiers, applied by one middleware:
 
 ### UC-X-04: Image upload constraints
 
-- **Given** the admin uploads an image
-- **Then** `POST /api/uploads` accepts only `.png`, `.jpg`, `.jpeg`,
-  `.gif`, `.webp` (SVG is explicitly excluded); enforces 5 MB caps
-  on both Content-Length and streaming; stores under a fresh UUID
-  filename
+- **Given** an admin uploads a quiz image (`POST /api/uploads`, UC-A-20)
+  or a participant uploads a profile photograph
+  (`POST /api/sessions/{code}/me/photo`, UC-P-03; no admin login needed)
+- **Then** both routes accept only `.png`, `.jpg`, `.jpeg`, `.gif`,
+  `.webp` (SVG is explicitly excluded); enforce 5 MB caps on both
+  Content-Length and streaming; and store the file under a fresh UUID
+  filename served from `/uploads/`
 
 **Tests (API)**
-- See UC-A-20 tests; in addition:
+- See UC-A-20 and UC-P-03 tests; in addition:
 - `POST /api/uploads` with `.svg` → `400 "unsupported image type"`.
 - `POST /api/uploads` two times with the same source file → two distinct UUID filenames on disk.
 - Stored filename matches `^[0-9a-f]{32}\.(png|jpg|jpeg|gif|webp)$`.
@@ -1890,8 +1986,9 @@ capacity is the allowed burst and refill is the sustained rate.
 
 - **Given** the limiter is enabled (default; disable with
   `PRASHNA_RATELIMIT=off`)
-- **Then** the following per-IP buckets apply, returning `429` with a
-  human-readable `detail` when exhausted:
+- **Then** the following per-IP buckets apply. An exhausted bucket returns
+  `429` with a human-readable `detail`, except the performance beacon,
+  which drops the sample and still returns `204`:
 
   | Route | Burst | Sustained | Notes |
   | --- | --- | --- | --- |
@@ -1900,6 +1997,8 @@ capacity is the allowed burst and refill is the sustained rate.
   | `POST .../queries` | 6 | 1 / 10s | |
   | `POST .../queries/{id}/vote` | 30 | 2 / s | |
   | `POST .../quiz_runs/{id}/submit` | 20 | 1 / 2s | |
+  | `POST .../feedback` | 10 | 1 / 2s | Checked after the rating-open check (UC-P-13) |
+  | `POST /api/diagnostics/performance` | 10 | 1 / 5s | Excess samples are dropped silently (UC-X-11) |
 
 - **Client IP** is the socket peer by default. Behind a reverse proxy
   set `PRASHNA_TRUSTED_PROXY_HOPS=N` (N = number of trusted hops; `1`
@@ -1952,8 +2051,10 @@ capacity is the allowed burst and refill is the sustained rate.
 - **Given** a user installs Prashna from a versioned distribution bundle
 - **Then** its root `compose.yaml` runs the published GHCR image on localhost
   with separate named volumes for `/data` and `/app/uploads`
-- **And** it requires a stable `PRASHNA_SECRET_KEY`, exposes a health check,
-  and remains independent of the Hetzner-only `/opt/prashna` configuration
+- **And** it needs no `.env` and no `PRASHNA_SECRET_KEY`: unset, the server
+  creates `secret-key` in the data volume and reuses it (UC-X-07)
+- **And** it exposes a health check and stays independent of the
+  Hetzner-only `/opt/prashna` configuration
 - **And** tagged bundles pin the image tag to the matching release rather than
   silently following `latest`
 - **And** published images cover `linux/amd64` and `linux/arm64`
@@ -1963,9 +2064,12 @@ capacity is the allowed burst and refill is the sustained rate.
   before replacing current data.
 
 **Tests (Ops)**
-- Root Compose config without `PRASHNA_SECRET_KEY` fails with an actionable
-  message; with a test env it resolves the requested image tag and port, health
-  endpoint, and named-volume mounts without `/opt/prashna` host paths.
+- Root Compose config resolves with no env file and no `PRASHNA_SECRET_KEY`
+  (`test_local_compose_runs_without_any_env_file`); with a test env it
+  resolves the requested image tag and port, health endpoint, and named-volume
+  mounts without `/opt/prashna` host paths.
+- The Hetzner `deploy/docker-compose.yml` without `PRASHNA_SECRET_KEY` fails
+  with an actionable message (`test_compose_config_reports_missing_secret_actionably`).
 - Backup/restore round-trip restores the original SQLite contents and uploads;
   restore refuses without `--confirm` and rejects archive path traversal.
 - Release-bundle build for `1.2.3` emits `.tar.gz`, `.zip`, and `SHA256SUMS`;
@@ -2020,16 +2124,10 @@ capacity is the allowed burst and refill is the sustained rate.
 Most participants use phones, and admins and moderators sometimes do.
 Every surface works at a 390 px wide viewport.
 
-- **Given** a viewport 390 px wide
-- **Then** no page scrolls sideways; wide tables scroll inside their own
-  `.table-scroll` box, and row headers (quiz-run controls, editor rows)
-  wrap instead of widening the page
-- **And** text inputs, text areas, and selects use at least a 16 px font
-  on narrow screens, so iOS Safari does not zoom in when one is focused
-- **And** on touch devices (`pointer: coarse`) buttons, menu toggles, and
-  section links are at least 32 px tall
-- **And** a detail card opened from a list (quiz editor, run results)
-  scrolls into view
+- **Given** a viewport 390 px or 360 px wide, with or without touch input
+- **Then** every page follows the phone and touch rules in
+  [UX.md §16a](UX.md#16a-phones-and-touch); the sweep below checks the
+  measurable ones
 
 **Tests (UI)** — one sweep (`tests/ui/test_layout.py`) seeds a live
 session (questions, a live and a queued run), a not-started session, and
@@ -2046,16 +2144,10 @@ out and signed in, `/quizzes` (list, editor open, run results open),
 
 ### UC-X-13: One button size scale
 
-Buttons come in three sizes (UX.md §10), and all of a card's own actions
-use the same one, so a page never mixes large and small versions of the
-same kind of action.
-
 - **Given** any page at desktop width
-- **Then** default buttons use 14 px text and are about 34 px tall
-- **And** custom call-to-action elements (the participant profile's
-  "Add details") match the default button size and weight
-- **And** `.small` (card headers, dense lists) and `.xsmall` (table rows)
-  are the only smaller sizes
+- **Then** buttons and custom call-to-action elements use the three-size
+  scale in [UX.md §10](UX.md#10-buttons), and all of a card's own actions
+  use one size
 
 **Tests (UI)**
 - At 1280×800 on `/s/<code>` with rating open, `.profile-cta`, `#fb-submit`, and `#ask-btn` have the same height (within 1 px), at most 36 px, and a 14 px font.
@@ -2064,8 +2156,9 @@ same kind of action.
 ### UC-X-14: One answer-option component
 
 The participant page, the session page, and the projector draw answer
-options with one shared renderer (`answerOption()` in `common.ts`), so
-a fix or style change reaches all three. Surfaces differ only in what
+options with one shared renderer (`answerOption()` in `common.ts`,
+[UX.md §4](UX.md#answer-options)), so a fix or style change reaches all
+three. Surfaces differ only in what
 they pass: whether the viewer can pick, whether counts show, and whether
 correctness is revealed.
 
@@ -2128,6 +2221,45 @@ one command, on macOS, Linux, or Windows.
 
 **Tests (packaging, CI)**
 - `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT` and includes `LICENSE`.
+
+---
+
+## Quality targets
+
+| Target | Value | How it is checked |
+| --- | --- | --- |
+| Room size | 100 participants in one live room on the single-process deployment | No automated load test (see `todo.md`) |
+| Interaction latency | Participant, moderator, admin, and projector interactions complete within 1000 ms at the 95th percentile with 100 participants in the room | No automated test. `performance/measure.py` measures page loads against `performance/budgets.json` (`performance/README.md`) |
+| Reconnect recovery | A page refetches its state within 5 s after its WebSocket reconnects | `test_uc_d_05_reconnect_refetches_after_close` (UC-D-05) |
+| Persistence | The database and uploads survive a container restart | `tests/ops/test_compose_smoke.py` (opt-in locally, run in CI) |
+| Test-suite time | `uv run pytest` completes within 180 s on a development workstation | Not enforced |
+
+## End-to-end journeys
+
+These journeys chain use cases in the order a real session uses them. No
+single automated test runs a whole journey; each step is covered by its
+use case's tests.
+
+- **Live room.** First-run setup (UC-A-01) → create a session (UC-A-03) →
+  start it (UC-M-02) → a delegate opens the moderator link (UC-M-01) →
+  participants join, submit profiles, ask, and vote (UC-P-01 to UC-P-05) →
+  the moderator responds (UC-M-08) → the moderator queues, starts, walks
+  through, reveals, and closes a quiz (UC-M-03 to UC-M-06) while
+  participants answer (UC-P-07 to UC-P-09) and the projector follows
+  (UC-D-01, UC-D-06) → the moderator opens rating and participants rate
+  the session (UC-M-12, UC-P-13) → the moderator ends the session
+  (UC-M-02). Final check: the ended session's Q&A, quiz results, projector
+  view, and feedback summary agree.
+- **Quiz history.** Author a quiz with an image (UC-A-09 to UC-A-20) →
+  publish it (UC-A-21) → run it in a session with submissions and reveals
+  (UC-M-03 to UC-M-06, UC-P-08) → edit the template → the run's report
+  (UC-A-24) still shows the launched content (UC-X-06).
+- **Release.** Configure an instance (UC-X-07, UC-X-08) → run the checks →
+  start against an old-shape database (additive migration bridge) → deploy
+  the container (UC-X-10) → create the first admin and sign in (UC-A-01,
+  UC-A-02) → live pages receive broadcasts and recover after a reconnect
+  (UC-X-01, UC-D-05). `tests/ops/test_compose_smoke.py` covers setup,
+  upload, restart, and persistence for this journey.
 
 ---
 

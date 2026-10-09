@@ -22,16 +22,37 @@ self-hosted machine. It is separate from the Hetzner production configuration.
    and choose the admin's username and password. The link works once.
 
 No `.env` is needed. The cookie-signing key is generated into the data volume
-on first start; to change ports, pin a version, or set optional values, copy
-`compose.env.example` to `.env`.
+on first start. To change the port or bind address, pin a version, or set
+optional values, copy `compose.env.example` to `.env`; the file describes each
+setting.
+
+The database and uploads live in the Compose named volumes `prashna-data`
+(mounted at `/data`) and `prashna-uploads` (mounted at `/app/uploads`). They
+survive container replacement.
+
+## Start without Compose
+
+The image also runs on its own:
+
+```bash
+docker run -d --name prashna -p 127.0.0.1:8000:8000 \
+  -v prashna-data:/data -v prashna-uploads:/app/uploads \
+  ghcr.io/kvsankar/prashna
+docker logs prashna 2>&1 | grep setup=
+```
+
+## Upgrade
 
 The release bundle pins `PRASHNA_IMAGE_TAG` to its version. Upgrade only after
 reading the release notes, then change the tag in `.env` and run
 `docker compose pull` and `docker compose up -d --wait`.
 
-For public distribution, the `prashna` container package must be set to
-**Public** in GitHub Packages. While it is private, authorized users must first
-authenticate with a GitHub token carrying `read:packages`:
+## Registry access
+
+Anonymous pulls work only while the `prashna` container package is set to
+**Public** in GitHub Packages. That setting belongs to the GitHub account, not
+to the repository workflow. While the package is private, authorized users
+first sign in with a GitHub token that has `read:packages`:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_LOGIN --password-stdin

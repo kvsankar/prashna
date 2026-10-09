@@ -416,13 +416,13 @@ create affordance.
 | Blocking failure     | Banner on the page; no modal                                 |
 | Auth expired         | Redirect to `/` (handled in `api()`)                         |
 
-**Never** raw `alert()` for new code. (Legacy uses it; migrate as
-touched.)
+Never use `alert()` or `prompt()`.
 
 ### Info / lifecycle hint
 
-`.info-banner` inside the detail pane, e.g., "This quiz is Ready —
-editing will revert it to Draft."
+`.info-banner` inside the detail pane, for a sticky, non-error note about
+the entity's state, e.g., "This quiz is Ready. Edits apply to the next
+launch; past runs keep the version they used."
 
 ---
 
@@ -458,7 +458,7 @@ editing will revert it to Draft."
 | --------- | ----- | ------ | ------------------------------------------------ |
 | default   | 14 px | ~34 px | A card's own actions (Submit, Ask, Join, Log in) |
 | `.small`  | 13 px | ~26 px | `card-tools`, dense lists                        |
-| `.xsmall` | 11 px | ~19 px | Row actions in `.ctable`                         |
+| `.xsmall` | 11 px | ~20 px | Row actions in `.ctable`                         |
 
 - All of a card's own actions share one size; never mix default and
   `.small` for the same kind of action on a page.
@@ -472,7 +472,7 @@ editing will revert it to Draft."
 - **Mutating buttons are guarded against double-submit.** Any button whose
   handler performs a *non-idempotent* server mutation (create / append /
   delete / advance) must be wired through `guardClick(button, handler)`
-  from `common.js` — it disables the button while the async handler runs
+  from `common.ts` — it disables the button while the async handler runs
   and ignores repeat clicks, so a slow request can't be fired twice
   (duplicate rows, double-advance, etc.). Idempotent actions (login,
   lifecycle start/end, toggles, set-value, copy, navigation) don't need
@@ -538,8 +538,9 @@ When we add one:
 Every entity with state must show that state in three places:
 1. **Its row** in the parent list (badge column).
 2. **Its detail header** in the drill-down.
-3. **Anywhere it's referenced** (e.g., the moderator's quiz dropdown
-   says "Q1 (5 q)" — but won't list drafts at all, applying §17).
+3. **Anywhere it's referenced** (e.g., the session page's quiz picker
+   says "Q1 (5 questions) (draft)" for a draft; delegates see only
+   `ready` quizzes, applying §16).
 
 ---
 
