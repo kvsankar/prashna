@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 import pytest
 from websockets.sync.client import connect
+from websockets.typing import Origin
 
 ROOT = Path(__file__).resolve().parents[2]
 RUN_LIVE_SMOKE = os.environ.get("PRASHNA_NGROK_SMOKE") == "1"
@@ -167,7 +168,7 @@ def test_local_bootstrap_then_ngrok_http_and_websocket(tmp_path):
 
             ws_url = public_url.replace("https://", "wss://", 1)
             ws_url += f"/ws/sessions/{session['code']}"
-            with connect(ws_url, origin=public_url, open_timeout=15) as websocket:
+            with connect(ws_url, origin=Origin(public_url), open_timeout=15) as websocket:
                 changed = local.patch(
                     f"/api/sessions/{session['code']}",
                     json={"title": "ngrok smoke updated"},

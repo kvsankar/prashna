@@ -491,7 +491,7 @@ def test_uc_x_05_two_quiz_submissions(admin_client, make_quiz, make_session):
         sess = db.query(m.Session).filter_by(code=s["code"]).one()
         p = m.Participant(session_id=sess.id, voter_token="qq1")
         db.add(p); db.commit(); db.refresh(p)
-        runobj = db.get(m.QuizRun, run["id"])
+        runobj = db.get_one(m.QuizRun, run["id"])
         vq = runobj.quiz_version.questions[0]
         a = vq.answers[0]
         s1 = m.QuizSubmission(quiz_run_id=run["id"], question_id=vq.id,

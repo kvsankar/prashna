@@ -147,7 +147,7 @@ def test_uc_a_11_non_owner_404(admin_client, make_quiz):
         db.add(other)
         db.commit()
         db.refresh(other)
-        qz = db.get(m.Quiz, q["id"])
+        qz = db.get_one(m.Quiz, q["id"])
         qz.owner_user_id = other.id
         db.commit()
     r = admin_client.get(f"/api/quizzes/{q['id']}")
@@ -215,7 +215,7 @@ def test_uc_a_12_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="other_ren", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.patch(f"/api/quizzes/{q['id']}", json={"title": "x"})
     assert r.status_code == 404
@@ -250,7 +250,7 @@ def test_uc_a_13_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="other_del", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.request("DELETE", f"/api/quizzes/{q['id']}")
     assert r.status_code == 404
@@ -362,7 +362,7 @@ def test_uc_a_27_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="other_dup", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.post(f"/api/quizzes/{q['id']}/duplicate")
     assert r.status_code == 404
@@ -436,7 +436,7 @@ def test_uc_a_14_non_owner_404(admin_client):
     with SessionLocal() as db:
         other = m.User(username="oth14", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, qz["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, qz["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.post(f"/api/quizzes/{qz['id']}/questions", json={})
     assert r.status_code == 404
@@ -501,7 +501,7 @@ def test_uc_a_15_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="oth15", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.patch(f"/api/quiz_questions/{q['question_id']}", json={"text": "x"})
     assert r.status_code == 404
@@ -526,7 +526,7 @@ def test_uc_a_16_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="oth16", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.request("DELETE", f"/api/quiz_questions/{q['question_id']}")
     assert r.status_code == 404
@@ -551,7 +551,7 @@ def test_uc_a_17_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="oth17", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.post(f"/api/quiz_questions/{q['question_id']}/answers", json={})
     assert r.status_code == 404
@@ -608,7 +608,7 @@ def test_uc_a_18_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="oth18", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.patch(f"/api/quiz_answers/{aid}", json={"text": "x"})
     assert r.status_code == 404
@@ -635,7 +635,7 @@ def test_uc_a_19_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="oth19", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.request("DELETE", f"/api/quiz_answers/{aid}")
     assert r.status_code == 404
@@ -662,7 +662,7 @@ def _last_edited(quiz_id: int):
     from app import models as m
     from app.db import SessionLocal
     with SessionLocal() as db:
-        return db.get(m.Quiz, quiz_id).last_edited_at
+        return db.get_one(m.Quiz, quiz_id).last_edited_at
 
 
 def test_uc_a_28_question_order(admin_client):
@@ -699,7 +699,7 @@ def test_uc_a_28_question_order_non_owner_404(admin_client):
     with SessionLocal() as db:
         other = m.User(username="other_ord", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, qid).owner_user_id = other.id
+        db.get_one(m.Quiz, qid).owner_user_id = other.id
         db.commit()
     r = admin_client.put(f"/api/quizzes/{qid}/question_order", json={"question_ids": ids})
     assert r.status_code == 404
@@ -748,7 +748,7 @@ def test_uc_a_28_answer_order_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="other_aord", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, quiz["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, quiz["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.put(f"/api/quiz_questions/{quiz['question_id']}/answer_order",
                          json={"answer_ids": []})
@@ -960,7 +960,7 @@ def test_uc_a_21_publish_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="oth21", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.post(f"/api/quizzes/{q['id']}/publish")
     assert r.status_code == 404
@@ -1000,7 +1000,7 @@ def test_uc_a_22_non_owner_404(admin_client, make_quiz):
     with SessionLocal() as db:
         other = m.User(username="oth22", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.post(f"/api/quizzes/{q['id']}/unpublish")
     assert r.status_code == 404

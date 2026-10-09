@@ -11,6 +11,13 @@ repos:
         types: [python]
         require_serial: true
 
+      - id: pyrefly
+        name: pyrefly (python typecheck)
+        entry: uv run pyrefly check
+        language: system
+        types: [python]
+        pass_filenames: false
+
       - id: tsc
         name: tsc (typecheck frontend)
         entry: npm run --silent typecheck

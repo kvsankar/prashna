@@ -29,6 +29,8 @@ jobs:
       - run: uv sync
       - name: Ruff (lint)
         run: uv run ruff check .
+      - name: Pyrefly (type check)
+        run: uv run pyrefly check
       - name: Install Playwright browser
         run: uv run playwright install --with-deps chromium
       - name: Pytest (with coverage)

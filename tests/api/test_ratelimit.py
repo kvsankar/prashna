@@ -8,6 +8,10 @@ Two layers of coverage:
 """
 from __future__ import annotations
 
+from typing import cast
+
+from fastapi import Request
+
 from app.ratelimit import TokenBucketLimiter, enabled_from_env
 
 # ---------- unit: token bucket ----------
@@ -74,22 +78,27 @@ class _FakeReq:
         self.client = type("C", (), {"host": peer})()
 
 
+def _fake_req(xff=None, peer="9.9.9.9") -> Request:
+    """A stand-in with only the attributes _client_ip reads."""
+    return cast(Request, _FakeReq(xff=xff, peer=peer))
+
+
 def test_client_ip_proxy_hops(app_module, monkeypatch):
     import app.main as main
     # hops=0 → socket peer, XFF ignored
     monkeypatch.setattr(main, "TRUSTED_PROXY_HOPS", 0)
-    assert main._client_ip(_FakeReq(xff="1.1.1.1, 2.2.2.2")) == "9.9.9.9"
+    assert main._client_ip(_fake_req(xff="1.1.1.1, 2.2.2.2")) == "9.9.9.9"
     # hops=1 → entry the single trusted proxy recorded (rightmost)
     monkeypatch.setattr(main, "TRUSTED_PROXY_HOPS", 1)
-    assert main._client_ip(_FakeReq(xff="1.1.1.1, 2.2.2.2")) == "2.2.2.2"
+    assert main._client_ip(_fake_req(xff="1.1.1.1, 2.2.2.2")) == "2.2.2.2"
     # spoofed prefix is ignored — proxy-recorded tail wins
-    assert main._client_ip(_FakeReq(xff="evil-spoof, 2.2.2.2")) == "2.2.2.2"
+    assert main._client_ip(_fake_req(xff="evil-spoof, 2.2.2.2")) == "2.2.2.2"
     # hops=2 → second from the right
     monkeypatch.setattr(main, "TRUSTED_PROXY_HOPS", 2)
-    assert main._client_ip(_FakeReq(xff="1.1.1.1, 2.2.2.2")) == "1.1.1.1"
+    assert main._client_ip(_fake_req(xff="1.1.1.1, 2.2.2.2")) == "1.1.1.1"
     # hops>0 but no XFF → fall back to socket peer
     monkeypatch.setattr(main, "TRUSTED_PROXY_HOPS", 1)
-    assert main._client_ip(_FakeReq(xff=None)) == "9.9.9.9"
+    assert main._client_ip(_fake_req(xff=None)) == "9.9.9.9"
 
 
 # ---------- endpoint integration ----------

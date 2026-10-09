@@ -240,9 +240,11 @@ if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1" or PUBLISHED_IMAGE:
                 )
                 assert upload.status_code == 200, upload.text
                 uploaded_name = Path(upload.json()["url"]).name
+                uploaded: Path | None = None
                 if build_local_image:
-                    uploaded = uploads_dir / uploaded_name
-                    assert uploaded.is_file()
+                    local_upload = uploads_dir / uploaded_name
+                    assert local_upload.is_file()
+                    uploaded = local_upload
                 else:
                     backup = _run(
                         cmd
@@ -272,7 +274,7 @@ if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1" or PUBLISHED_IMAGE:
                 assert status.json()["authenticated"] is True
             if build_local_image:
                 assert (data_dir / "prashna.db").is_file()
-                assert uploaded.is_file()
+                assert uploaded is not None and uploaded.is_file()
             else:
                 persisted = _run(
                     cmd

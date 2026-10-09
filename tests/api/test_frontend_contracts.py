@@ -53,7 +53,9 @@ def test_landing_shell_is_visible_before_auth_reconciliation():
     assert 'id="join-card" style="display:none;"' not in html
     assert 'id="login-card" style="display:none;"' not in html
     for card in ("join-card", "login-card"):
-        tag = re.search(rf'<section[^>]*id="{card}"[^>]*>', html).group(0)
+        match = re.search(rf'<section[^>]*id="{card}"[^>]*>', html)
+        assert match, card
+        tag = match.group(0)
         assert not re.search(r"\shidden(\s|>|=)", tag), tag
 
     src = (ROOT / "frontend/src/index.ts").read_text()

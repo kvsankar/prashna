@@ -12,7 +12,7 @@ from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import (
@@ -505,7 +505,7 @@ def serialize_quiz_run(
     current = questions[run.current_question_idx] if 0 <= run.current_question_idx < len(questions) else None
     show_correct = is_mod or (run.status == "closed") or run.reveal_current
     show_results = show_correct or run.show_live_counts
-    payload = {
+    payload: dict[str, Any] = {
         "id": run.id,
         "session_id": run.session_id,
         "quiz_version_id": version.id,
@@ -2175,8 +2175,7 @@ def update_quiz_answer(
             a.order_index = int(payload["order_index"])
         except (TypeError, ValueError):
             raise HTTPException(400, "order_index must be an integer")
-    qq = db.get(m.Question, a.question_id)
-    _mark_quiz_edited(qq.quiz)
+    _mark_quiz_edited(a.question.quiz)
     db.commit()
     return {"ok": True}
 
@@ -2188,8 +2187,7 @@ def delete_quiz_answer(
     me: m.User = Depends(auth.current_admin),
 ):
     a = _owned_quiz_answer_or_404(db, answer_id, me)
-    qq = db.get(m.Question, a.question_id)
-    quiz = qq.quiz
+    quiz = a.question.quiz
     db.delete(a)
     _mark_quiz_edited(quiz)
     db.commit()

@@ -1,6 +1,11 @@
 """Diagnostics contracts for incident-useful, secret-safe event logs."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from fastapi import WebSocket
+
 import asyncio
 import logging
 
@@ -224,7 +229,7 @@ def test_websocket_send_failure_logs_safely(caplog):
     caplog.set_level(logging.INFO, logger="prashna")
 
     ok = asyncio.run(
-        hub._safe_send(BrokenSocket(), {"type": "secret-message"})
+        hub._safe_send(cast("WebSocket", BrokenSocket()), {"type": "secret-message"})
     )
 
     assert ok is False
@@ -245,7 +250,7 @@ def test_websocket_send_timeout_logs_safely(monkeypatch, caplog):
     caplog.set_level(logging.INFO, logger="prashna")
 
     ok = asyncio.run(
-        hub._safe_send(StalledSocket(), {"type": "secret-message"})
+        hub._safe_send(cast("WebSocket", StalledSocket()), {"type": "secret-message"})
     )
 
     assert ok is False

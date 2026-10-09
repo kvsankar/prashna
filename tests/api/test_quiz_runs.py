@@ -31,7 +31,7 @@ def test_uc_a_23_aggregate_respondent_count(admin_client, make_quiz, make_sessio
     from app import models as m
     from app.db import SessionLocal
     with SessionLocal() as db:
-        quiz_run = db.get(m.QuizRun, run["id"])
+        quiz_run = db.get_one(m.QuizRun, run["id"])
         question = quiz_run.quiz_version.questions[0]
         answer = question.answers[0]
         participants = [
@@ -221,7 +221,7 @@ def test_uc_m_03_quiz_other_owner_404(admin_client, make_quiz, make_session):
     with SessionLocal() as db:
         other = m.User(username="othM03", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
-        db.get(m.Quiz, q["id"]).owner_user_id = other.id
+        db.get_one(m.Quiz, q["id"]).owner_user_id = other.id
         db.commit()
     r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                           json={"quiz_id": q["id"]})

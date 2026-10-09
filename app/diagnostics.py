@@ -30,8 +30,8 @@ def _unsafe_diag_key(key: str) -> bool:
 
 def log_diagnostic(event: str, **fields) -> None:
     """Emit a best-effort, secret-safe structured diagnostic event."""
-    extra = {"diag_event": event}
-    payload = {"event": event}
+    extra: dict[str, object] = {"diag_event": event}
+    payload: dict[str, object] = {"event": event}
     for key, value in fields.items():
         if _unsafe_diag_key(key):
             continue
