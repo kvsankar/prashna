@@ -82,6 +82,9 @@ ignore = ["E501", "E701", "E702", "E731"]
 [tool.coverage.run]
 source = ["prashna"]
 omit = ["tests/*"]
+# The CLI tests run the real `prashna` command in a child process; measure it.
+patch = ["subprocess"]
+sigterm = true
 
 [tool.coverage.report]
 show_missing = true
