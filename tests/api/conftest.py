@@ -33,7 +33,7 @@ def _env(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def app_module(_env):
-    from app import main
+    from prashna import main
     return main
 
 
@@ -47,7 +47,7 @@ def _live_client(app_module):
 @pytest.fixture
 def client(_live_client, app_module) -> TestClient:
     """Per-test client: same underlying app, but all tables truncated before each test."""
-    from app import db as _db
+    from prashna import db as _db
     # Truncate every ORM table. Order: children before parents matters under FKs;
     # SQLAlchemy's `metadata.sorted_tables` returns them in dependency order, so
     # iterating in reverse deletes children first.

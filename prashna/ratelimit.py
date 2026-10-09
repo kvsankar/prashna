@@ -1,7 +1,7 @@
 """In-process token-bucket rate limiting.
 
-Single-process only — like the WebSocket hub (`app/ws.py`) and the
-first-run setup lock (`app/main.py`). No external store, no new deps.
+Single-process only — like the WebSocket hub (`prashna/ws.py`) and the
+first-run setup lock (`prashna/main.py`). No external store, no new deps.
 
 Each bucket is identified by an arbitrary string key; the caller passes
 the capacity (burst size) and refill rate (tokens per second) for that

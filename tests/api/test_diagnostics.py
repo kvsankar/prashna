@@ -39,7 +39,7 @@ def _assert_not_logged(caplog, values):
 
 def test_diagnostic_message_includes_safe_payload(caplog):
     """Production log format should carry safe fields, not just logger extras."""
-    from app.diagnostics import log_diagnostic
+    from prashna.diagnostics import log_diagnostic
 
     caplog.set_level(logging.INFO, logger="prashna")
     log_diagnostic(
@@ -220,7 +220,7 @@ def test_qna_quiz_feedback_diagnostics(
 
 def test_websocket_send_failure_logs_safely(caplog):
     """A failed broadcast send should log the failure without payload data."""
-    from app.ws import hub
+    from prashna.ws import hub
 
     class BrokenSocket:
         async def send_json(self, _message):
@@ -239,8 +239,8 @@ def test_websocket_send_failure_logs_safely(caplog):
 
 def test_websocket_send_timeout_logs_safely(monkeypatch, caplog):
     """A stalled socket send should timeout quickly and log safely."""
-    from app import ws as ws_module
-    from app.ws import hub
+    from prashna import ws as ws_module
+    from prashna.ws import hub
 
     class StalledSocket:
         async def send_json(self, _message):
@@ -260,8 +260,8 @@ def test_websocket_send_timeout_logs_safely(monkeypatch, caplog):
 
 def test_diagnostic_helpers_filter_unsafe_field_names(caplog):
     """Local diagnostic helpers should share the secret-name filter."""
-    from app.db import _log_diagnostic as log_db
-    from app.ws import _log_diagnostic as log_ws
+    from prashna.db import _log_diagnostic as log_db
+    from prashna.ws import _log_diagnostic as log_ws
 
     caplog.set_level(logging.INFO, logger="prashna")
 
@@ -274,7 +274,7 @@ def test_diagnostic_helpers_filter_unsafe_field_names(caplog):
 
 def test_sqlite_additive_migration_logs_execution(tmp_path, caplog):
     """Startup migrations should log each additive schema change."""
-    from app.db import _apply_additive_migrations
+    from prashna.db import _apply_additive_migrations
 
     engine = create_engine(f"sqlite:///{tmp_path / 'diag.db'}")
     with engine.begin() as conn:

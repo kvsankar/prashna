@@ -43,7 +43,7 @@ def _start_uvicorn(db_path: Path, upload_dir: Path, extra_env: dict[str, str] | 
     root = Path(__file__).resolve().parents[2]
     # The frontend is built once per session by tests/conftest.py.
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port), "--log-level", "warning"],
+        [sys.executable, "-m", "uvicorn", "prashna.main:app", "--port", str(port), "--log-level", "warning"],
         cwd=root,
         env=env,
     )

@@ -44,7 +44,7 @@ def _start_app(db_path: Path, upload_dir: Path, secret: str | None, *, setup_tok
             sys.executable,
             "-m",
             "uvicorn",
-            "app.main:app",
+            "prashna.main:app",
             "--port",
             str(port),
             "--log-level",

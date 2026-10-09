@@ -6,7 +6,7 @@ signing, allowlist, find-or-create, cookie issuance — runs for real.
 """
 from __future__ import annotations
 
-# NB: do NOT import app.* at module top — that runs at collection time, before
+# NB: do NOT import prashna.* at module top — that runs at collection time, before
 # the session `_env` fixture overrides PRASHNA_DB_PATH, pinning the engine to
 # the root conftest's default path. Import app modules inside the functions.
 
@@ -25,7 +25,7 @@ def _mock_github(monkeypatch, app_module, gid, login, token="tok"):
 # ---------- unit ----------
 
 def test_uc_a_26_enabled_and_allowlist(monkeypatch, app_module):
-    from app import oauth
+    from prashna import oauth
     assert oauth.enabled() is False
     _enable_github(monkeypatch, "kvsankar, Alice")
     assert oauth.enabled() is True
@@ -36,7 +36,7 @@ def test_uc_a_26_enabled_and_allowlist(monkeypatch, app_module):
 
 
 def test_uc_a_26_state_roundtrip(monkeypatch, app_module):
-    from app import oauth
+    from prashna import oauth
     _enable_github(monkeypatch)
     state = oauth.sign_state()
     assert oauth.check_state(state) is True
@@ -85,8 +85,8 @@ def test_uc_a_26_callback_allowed_logs_in(client, monkeypatch, app_module):
     assert st["username"] == "kvsankar"
     from sqlalchemy import select
 
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         u = db.scalar(select(m.User).where(m.User.github_id == 4242))
         assert u is not None
@@ -102,8 +102,8 @@ def test_uc_a_26_callback_not_allowed(client, monkeypatch, app_module):
     assert r.status_code == 303
     assert "auth_error" in r.headers["location"]
     assert "prashna_admin" not in r.headers.get("set-cookie", "")
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         assert db.query(m.User).count() == 0
 
@@ -118,8 +118,8 @@ def test_uc_a_26_find_or_create_idempotent(client, monkeypatch, app_module):
     r2 = client.get(f"/api/auth/github/callback?code=b&state={app_module.oauth.sign_state()}",
                     follow_redirects=False)
     assert r2.status_code == 303
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         assert db.query(m.User).filter(m.User.github_id == 4242).count() == 1
 

@@ -7,7 +7,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY vite.config.ts tsconfig.json ./
 COPY frontend ./frontend
-RUN npm run build          # → /fe/frontend/dist
+RUN npm run build          # → /fe/prashna/static
 
 # ----- builder: resolve deps with uv into a venv -----
 FROM python:3.12-slim AS builder
@@ -26,7 +26,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Now bring in the app code.
-COPY app ./app
+COPY prashna ./prashna
 
 # ----- runtime: slim image with just python + the venv -----
 FROM python:3.12-slim AS runtime
@@ -41,11 +41,12 @@ RUN groupadd --system --gid 1001 prashna \
 
 WORKDIR /app
 COPY --from=builder --chown=prashna:prashna /app /app
-# The built frontend (served by FastAPI from frontend/dist at /static).
-COPY --from=frontend --chown=prashna:prashna /fe/frontend/dist /app/frontend/dist
+# The built frontend (served by FastAPI from prashna/static at /static).
+COPY --from=frontend --chown=prashna:prashna /fe/prashna/static /app/prashna/static
 
 # SQLite DB lives on a volume; uploads on another.
 ENV PRASHNA_DB_PATH=/data/prashna.db \
+    PRASHNA_UPLOADS_DIR=/app/uploads \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
@@ -59,4 +60,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8000/api/admin/status >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["uvicorn", "prashna.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

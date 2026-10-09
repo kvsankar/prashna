@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from app.backup import create_archive, restore_archive
+from prashna.backup import create_archive, restore_archive
 from scripts.build_release_bundle import build_bundle
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -209,3 +209,16 @@ def test_release_workflow_contract():
     assert "needs: build-and-push" in workflow
     assert "scripts/build_release_bundle.py" in workflow
     assert "gh release upload" in workflow
+
+
+def test_pypi_publish_contract():
+    """UC-X-15: tags publish the wheel to PyPI with trusted publishing, after
+    building the frontend into the package and checking the version."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    job = workflow[workflow.index("  pypi-publish:"):]
+    assert "if: startsWith(github.ref, 'refs/tags/v')" in job
+    assert "id-token: write" in job
+    assert "environment: pypi" in job
+    assert job.index("npm run build") < job.index("uv build") < job.index("uv publish")
+    assert "--trusted-publishing always" in job
+    assert 'test "${GITHUB_REF_NAME#v}" = "$version"' in job

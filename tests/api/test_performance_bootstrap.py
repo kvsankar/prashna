@@ -9,8 +9,8 @@ PAGE_CDN_CACHE = "public, s-maxage=300, stale-while-revalidate=60"
 
 
 def _participant_count() -> int:
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
 
     with SessionLocal() as db:
         return db.scalar(select(func.count(m.Participant.id))) or 0

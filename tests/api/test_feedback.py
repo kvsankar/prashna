@@ -139,8 +139,8 @@ def test_uc_p_13_every_submission_is_versioned(client, admin_client, make_sessio
     from sqlalchemy import func
     from sqlalchemy import select as _select
 
-    from app import db as _db
-    from app import models as _m
+    from prashna import db as _db
+    from prashna import models as _m
 
     s = make_session()
     _enable_feedback(admin_client, s["code"])
@@ -179,8 +179,8 @@ def test_uc_p_13_delete_retracts_feedback(client, admin_client, make_session, mo
     from sqlalchemy import func
     from sqlalchemy import select as _select
 
-    from app import db as _db
-    from app import models as _m
+    from prashna import db as _db
+    from prashna import models as _m
 
     s = make_session()
     _enable_feedback(admin_client, s["code"])

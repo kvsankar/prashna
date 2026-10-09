@@ -78,9 +78,9 @@ def test_uc_a_10_sessions_holding_each_quiz(admin_client, make_quiz, make_sessio
 def test_uc_a_10_other_admins_quiz_excluded(admin_client, make_quiz):
     """UC-A-10: another admin's quiz not in response."""
     make_quiz("mine")
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other_q", password_hash=auth.hash_password("longenough"))
         db.add(other)
@@ -139,9 +139,9 @@ def test_uc_a_11_get_quiz_default_omits_correct(admin_client, make_quiz):
 def test_uc_a_11_non_owner_404(admin_client, make_quiz):
     """UC-A-11: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other_open", password_hash=auth.hash_password("longenough"))
         db.add(other)
@@ -209,9 +209,9 @@ def test_uc_a_12_ready_stays_ready(admin_client, make_quiz):
 def test_uc_a_12_non_owner_404(admin_client, make_quiz):
     """UC-A-12: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other_ren", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -244,9 +244,9 @@ def test_uc_a_13_delete_used_400(admin_client, make_quiz, make_session):
 def test_uc_a_13_non_owner_404(admin_client, make_quiz):
     """UC-A-13: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other_del", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -356,9 +356,9 @@ def test_uc_a_27_long_title_truncated(admin_client):
 def test_uc_a_27_non_owner_404(admin_client, make_quiz):
     """UC-A-27: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other_dup", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -430,9 +430,9 @@ def test_uc_a_14_bad_qtype_400(admin_client):
 def test_uc_a_14_non_owner_404(admin_client):
     """UC-A-14: non-owner → 404."""
     qz = admin_client.post("/api/quizzes", json={"title": "Q"}).json()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth14", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -495,9 +495,9 @@ def test_uc_a_15_image_url_set_clear(admin_client, make_quiz):
 def test_uc_a_15_non_owner_404(admin_client, make_quiz):
     """UC-A-15: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth15", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -520,9 +520,9 @@ def test_uc_a_16_delete_question(admin_client, make_quiz):
 def test_uc_a_16_non_owner_404(admin_client, make_quiz):
     """UC-A-16: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth16", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -545,9 +545,9 @@ def test_uc_a_17_add_answer(admin_client, make_quiz):
 def test_uc_a_17_non_owner_404(admin_client, make_quiz):
     """UC-A-17: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth17", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -602,9 +602,9 @@ def test_uc_a_18_non_owner_404(admin_client, make_quiz):
     """UC-A-18: non-owner → 404."""
     q = make_quiz()
     aid = _first_answer_id(admin_client, q["id"])
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth18", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -629,9 +629,9 @@ def test_uc_a_19_non_owner_404(admin_client, make_quiz):
     """UC-A-19: non-owner → 404."""
     q = make_quiz()
     aid = _first_answer_id(admin_client, q["id"])
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth19", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -659,8 +659,8 @@ def _question_texts(admin_client, quiz_id: int) -> list[str]:
 
 
 def _last_edited(quiz_id: int):
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         return db.get_one(m.Quiz, quiz_id).last_edited_at
 
@@ -693,9 +693,9 @@ def test_uc_a_28_question_order_bad_lists_400(admin_client):
 def test_uc_a_28_question_order_non_owner_404(admin_client):
     """UC-A-28: non-owner quiz → 404."""
     qid, ids = _three_question_quiz(admin_client)
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other_ord", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -742,9 +742,9 @@ def test_uc_a_28_answer_order_bad_list_400(admin_client):
 def test_uc_a_28_answer_order_non_owner_404(admin_client, make_quiz):
     """UC-A-28: answer_order for a non-owner question → 404."""
     quiz = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="other_aord", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -954,9 +954,9 @@ def test_uc_a_21_empty_answer_400(admin_client):
 def test_uc_a_21_publish_non_owner_404(admin_client, make_quiz):
     """UC-A-21: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth21", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -981,8 +981,8 @@ def test_uc_a_22_versions_unchanged(admin_client, make_quiz, make_session):
     q = make_quiz()
     s = make_session()
     admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]})
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         before = db.query(m.QuizVersion).filter_by(quiz_id=q["id"]).count()
     admin_client.post(f"/api/quizzes/{q['id']}/unpublish")
@@ -994,9 +994,9 @@ def test_uc_a_22_versions_unchanged(admin_client, make_quiz, make_session):
 def test_uc_a_22_non_owner_404(admin_client, make_quiz):
     """UC-A-22: non-owner → 404."""
     q = make_quiz()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth22", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)

@@ -17,7 +17,7 @@ def test_uc_a_01_setup_creates_admin_and_cookie(client):
     r = client.post("/api/admin/setup", json={"username": "alice", "password": "longenough", "setup_token": SETUP_TOKEN})
     assert r.status_code == 200
     assert r.json() == {"username": "alice"}
-    # cookie name per app/auth.py is "prashna_admin"
+    # cookie name per prashna/auth.py is "prashna_admin"
     assert "prashna_admin" in client.cookies
 
 
@@ -94,8 +94,8 @@ def test_uc_a_01_concurrent_setup_different_usernames(app_module):
     # Exactly one 200 and one 409 — no double-admin outcome.
     assert sorted(results) == [200, 409]
     # And exactly one User row exists.
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         assert db.query(m.User).count() == 1
 

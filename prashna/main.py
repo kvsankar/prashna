@@ -39,17 +39,18 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from . import auth, oauth
 from . import models as m
-from .db import SessionLocal, get_db, init_db
+from .db import SessionLocal, default_data_dir, get_db, init_db
 from .diagnostics import log_diagnostic
 from .ratelimit import TokenBucketLimiter, enabled_from_env
 from .ws import hub
 
-BASE = Path(__file__).resolve().parent.parent
 # Vite build output (the TypeScript frontend). Produced by `npm run build`
 # (and by the Docker build stage in prod). Pages 404 until it exists — in
 # dev use the Vite dev server (`npm run dev`) which proxies the API here.
-STATIC = BASE / "frontend" / "dist"
-UPLOADS = Path(os.environ.get("PRASHNA_UPLOADS_DIR") or (BASE / "uploads"))
+# The Vite build lives inside the package (vite.config.ts outDir), so a
+# source checkout, the Docker image, and the installed wheel all serve it.
+STATIC = Path(__file__).resolve().parent / "static"
+UPLOADS = Path(os.environ.get("PRASHNA_UPLOADS_DIR") or (default_data_dir() / "uploads"))
 UPLOADS.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -57,7 +58,7 @@ PRESENCE_WINDOW = timedelta(seconds=30)
 LAST_SEEN_THROTTLE = timedelta(seconds=5)
 
 # ---------- rate limiting (UC-X-08) ----------
-# Single-process in-memory limiter. Keyed by client IP. See app/ratelimit.py.
+# Single-process in-memory limiter. Keyed by client IP. See prashna/ratelimit.py.
 limiter = TokenBucketLimiter(enabled=enabled_from_env(os.environ.get("PRASHNA_RATELIMIT")))
 
 # Number of trusted reverse-proxy hops in front of the app. 0 (default) =
@@ -833,6 +834,23 @@ def projector_page(code: str, db: DbSession = Depends(get_db)):
 @app.get("/quizzes")
 def quizzes_page():
     return _page("quizzes")
+
+
+# One-command installers (UC-X-15). Every Prashna server serves them, so the
+# public instance hosts `curl -LsSf https://prashna.sankara.net/install.sh | sh`.
+INSTALLERS = Path(__file__).resolve().parent / "installers"
+
+
+@app.get("/install.sh", include_in_schema=False)
+def install_sh():
+    return FileResponse(INSTALLERS / "install.sh", media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/install.ps1", include_in_schema=False)
+def install_ps1():
+    return FileResponse(INSTALLERS / "install.ps1", media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
 
 
 # ---------- routes: admin auth ----------

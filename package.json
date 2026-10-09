@@ -2,7 +2,7 @@
   "name": "prashna-frontend",
   "private": true,
   "type": "module",
-  "description": "Vite + TypeScript frontend. `npm run dev` (HMR) proxies /api, /ws, /uploads to the FastAPI backend on :8000; `npm run build` emits to frontend/dist which FastAPI serves in prod.",
+  "description": "Vite + TypeScript frontend. `npm run dev` (HMR) proxies /api, /ws, /uploads to the FastAPI backend on :8000; `npm run build` emits to prashna/static, which FastAPI serves and the Python wheel ships.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -57,7 +57,7 @@ from source sets rather than invented as a new product.
 - `tests/api` and `tests/ui`
   - Classification: adopted source
   - Use In This SRS: Executable evidence for current API and browser behavior.
-- `app/`, `frontend/`, deploy files, CI config
+- `prashna/`, `frontend/`, deploy files, CI config
   - Classification: adapted source
   -  Use In This SRS: Observed behavior and externally visible constraints,
     filtered to requirements rather than design.
@@ -714,7 +714,7 @@ accepted behavior.
   Current baseline verifies extension, size, naming, auth, and serving behavior;
   content sniffing is deferred.
 -  IFACE-STATIC: Role pages are Vite TypeScript multi-page frontend
-  entries. Production serves built assets from `frontend/dist`.
+  entries. Production serves built assets from `prashna/static`.
 -  IFACE-DOCKER: Server deployment uses a Docker image published to GHCR
   and run behind nginx on the current Hetzner deployment path. Pull credentials
   and persistent paths are operational concerns.

@@ -30,11 +30,12 @@ function cleanUrls(): Plugin {
 
 export default defineConfig({
   root: "frontend",
-  // Built assets are served by FastAPI under /static/ (app.mount → dist).
+  // Built assets are served by FastAPI under /static/. They are written
+  // into the Python package so the installed wheel ships them.
   base: "/static/",
   plugins: [cleanUrls()],
   build: {
-    outDir: "dist",
+    outDir: resolve(import.meta.dirname, "prashna", "static"),
     emptyOutDir: true,
     rollupOptions: {
       input: {

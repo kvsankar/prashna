@@ -5,7 +5,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["frontend/dist/**", "node_modules/**", "static/**"] },
+  { ignores: ["prashna/static/**", "node_modules/**", "static/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -53,7 +53,7 @@ contract in `docs/specs.md`, the UX rules in `docs/UX.md`, or their tests.
   live broadcast.
 - **Frontend:** TypeScript ES modules, built with **Vite** (multi-page,
   one entry per role). Plain HTML + CSS, no framework. FastAPI serves the
-  Vite build output (`frontend/dist`) under `/static`. Dev uses the Vite
+  Vite build output (`prashna/static`) under `/static`. Dev uses the Vite
   dev server (`npm run dev`) with HMR, proxying `/api`, `/ws`, `/uploads`
   to the backend.
 - **Auth:** bcrypt password hashing + `itsdangerous`-signed session
@@ -66,7 +66,7 @@ contract in `docs/specs.md`, the UX rules in `docs/UX.md`, or their tests.
 ## Layout
 
 ```
-app/
+prashna/         # the Python package (installed as `prashna`)
   main.py        # all FastAPI routes + WebSocket endpoint
   models.py      # SQLAlchemy models
   auth.py        # password hashing + signed cookie helpers
@@ -84,7 +84,6 @@ frontend/        # Vite + TypeScript frontend (source)
     {index,participant,moderator,projector,quizzes}.ts  # per-page entries
     app.css      # shared styles (imported by common.ts)
   public/vendor/qrcode.js  # vendored QR generator (MIT, Kazuhiko Arase)
-  dist/          # build output (gitignored) — FastAPI serves this at /static
 vite.config.ts, tsconfig.json, package.json   # frontend build config
 docs/
   specs.md       # use cases + AT bullets — authoritative
@@ -107,12 +106,13 @@ prashna.db       # SQLite database (gitignored, created on first run)
 ```bash
 uv sync                 # backend deps
 npm install             # frontend dev/build deps
-uv run uvicorn app.main:app --reload --port 8000   # backend (API + WS)
+uv run uvicorn prashna.main:app --reload --port 8000   # backend (API + WS)
+uv run prashna                                     # same, the way users run it (UC-X-15)
 npm run dev             # Vite dev server (HMR) — proxies /api,/ws,/uploads → :8000
 ```
 
 Open the Vite dev server URL for development (HMR). For a production-like
-run, `npm run build` then hit uvicorn directly (it serves `frontend/dist`
+run, `npm run build` then hit uvicorn directly (it serves `prashna/static`
 at `/static`). The Docker image builds the frontend in a Node stage. The
 UI tests build the frontend automatically (see `tests/ui/conftest.py`).
 Frontend checks: `npm run typecheck`, `npm run lint`.
@@ -204,7 +204,7 @@ Don't conflate `QuizRun` (playthrough) with `Session` (the gathering).
   `PRASHNA_SETUP_TOKEN`); it creates the only admin row, retires the
   token, and `POST /api/admin/setup` returns 409 thereafter (UC-A-01).
 - **Admin via GitHub OAuth** — optional, allowlisted sign-in for
-  hosted deploys (UC-A-26, `app/oauth.py`). Enabled when
+  hosted deploys (UC-A-26, `prashna/oauth.py`). Enabled when
   `PRASHNA_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_ADMINS` are set.
   Runs **alongside** password login (fallback). The callback
   find-or-creates a `User` keyed by `User.github_id`; such users have
@@ -242,14 +242,14 @@ stays `ready` across edits (does not auto-revert).
 ### Database migrations
 `init_db()` calls `create_all` at startup (via the FastAPI lifespan
 context manager), then runs the additive SQLite migration bridge in
-`app/db.py` for known post-deploy columns and indexes. When adding a
+`prashna/db.py` for known post-deploy columns and indexes. When adding a
 column or storage invariant to an existing table, update that bridge and
 add an old-shape SQLite regression test. Truly breaking schema changes
 still need an explicit release/reset plan or Alembic before real user
 data matters.
 
 ### Routes file
-`app/main.py` is intentionally one file. If it grows past ~1500
+`prashna/main.py` is intentionally one file. If it grows past ~1500
 lines and needs splitting, split by resource (sessions, queries,
 quizzes, quiz_runs, uploads, admin) rather than by HTTP method.
 

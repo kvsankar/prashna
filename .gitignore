@@ -36,7 +36,7 @@ coverage.xml
 htmlcov/
 
 # Vite build output (produced by `npm run build`)
-frontend/dist/
+prashna/static/
 
 # Local release archives (published artifacts are attached in GitHub Releases)
 dist/

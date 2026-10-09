@@ -11,7 +11,7 @@ the behavior specification.
 
 ### Remove the legacy admin-cookie compatibility shim
 
-`app/auth.py::_parse_cookie` still accepts the old signed cookie containing
+`prashna/auth.py::_parse_cookie` still accepts the old signed cookie containing
 only a user id and treats it as session version 1. Current cookies contain both
 the user id and session version.
 

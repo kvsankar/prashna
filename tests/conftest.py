@@ -50,7 +50,7 @@ def _selected_only_ops_tests(args: list[str]) -> bool:
 @pytest.fixture(scope="session", autouse=True)
 def _build_frontend(request: pytest.FixtureRequest) -> None:
     """Build the Vite frontend once before any test. The page routes (and a
-    few API tests that fetch them) serve frontend/dist, so it must exist.
+    few API tests that fetch them) serve prashna/static, so it must exist.
     Requires Node + `npm install` (devDependencies) on the machine."""
     if _selected_only_ops_tests(request.config.args):
         return

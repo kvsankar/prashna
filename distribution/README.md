@@ -60,7 +60,7 @@ uploads:
 ```bash
 mkdir -p backups
 name="prashna-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
-docker compose exec -T prashna python -m app.backup create "/data/$name"
+docker compose exec -T prashna python -m prashna.backup create "/data/$name"
 docker compose cp "prashna:/data/$name" "backups/$name"
 docker compose exec -T prashna rm "/data/$name"
 ```
@@ -77,7 +77,7 @@ archive=prashna-YYYYMMDDTHHMMSSZ.tar.gz
 docker compose cp "backups/$archive" "prashna:/data/$archive"
 docker compose stop prashna
 docker compose run --rm --no-deps prashna \
-  python -m app.backup restore "/data/$archive" --confirm
+  python -m prashna.backup restore "/data/$archive" --confirm
 docker compose start prashna
 docker compose exec -T prashna rm "/data/$archive"
 ```

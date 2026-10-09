@@ -109,7 +109,7 @@ def test_local_bootstrap_then_ngrok_http_and_websocket(tmp_path):
             sys.executable,
             "-m",
             "uvicorn",
-            "app.main:app",
+            "prashna.main:app",
             "--host",
             "127.0.0.1",
             "--port",

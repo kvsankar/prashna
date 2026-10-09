@@ -28,8 +28,8 @@ def test_uc_a_23_aggregate_respondent_count(admin_client, make_quiz, make_sessio
         f"/api/sessions/{s['code']}/quiz_runs",
         json={"quiz_id": q["id"]},
     ).json()
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         quiz_run = db.get_one(m.QuizRun, run["id"])
         question = quiz_run.quiz_version.questions[0]
@@ -75,8 +75,8 @@ def test_projector_display_reads_do_not_create_participants(
     assert "voter_token" not in queries.cookies
     assert "voter_token" not in runs.cookies
 
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         assert db.query(m.Participant).count() == 0
 
@@ -87,9 +87,9 @@ def test_uc_a_23_other_admin_runs_excluded(admin_client, make_quiz, make_session
     s = make_session()
     admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]})
     # Re-own the session to another user
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth23", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -139,9 +139,9 @@ def test_uc_a_24_other_admin_404(admin_client, make_quiz, make_session):
     s = make_session()
     run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                             json={"quiz_id": q["id"]}).json()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="oth24", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -215,9 +215,9 @@ def test_uc_m_03_quiz_other_owner_404(admin_client, make_quiz, make_session):
     """UC-M-03: quiz owned by other admin → 404."""
     q = make_quiz()
     s = make_session()
-    from app import auth
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         other = m.User(username="othM03", password_hash=auth.hash_password("longenough"))
         db.add(other); db.commit(); db.refresh(other)
@@ -398,8 +398,8 @@ def test_uc_m_04_start_already_live_400(admin_client, make_quiz, make_session):
 def test_uc_m_04_start_queued_in_ended_session_400(admin_client, make_quiz, make_session):
     """UC-M-04: legacy queued runs cannot be started after session end."""
     s, q, run = _queue_run(admin_client, make_quiz, make_session)
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         session = db.query(m.Session).filter_by(code=s["code"]).one()
         session.status = "ended"
@@ -572,8 +572,8 @@ def test_uc_m_07_delete_legacy_queued_from_ended_session(
 ):
     """UC-M-07: an orphaned queued run remains removable after session end."""
     s, q, run = _queue_run(admin_client, make_quiz, make_session)
-    from app import models as m
-    from app.db import SessionLocal
+    from prashna import models as m
+    from prashna.db import SessionLocal
     with SessionLocal() as db:
         session = db.query(m.Session).filter_by(code=s["code"]).one()
         session.status = "ended"

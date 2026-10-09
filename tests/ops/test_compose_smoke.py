@@ -254,7 +254,7 @@ if os.environ.get("PRASHNA_COMPOSE_SMOKE") == "1" or PUBLISHED_IMAGE:
                             "prashna",
                             "python",
                             "-m",
-                            "app.backup",
+                            "prashna.backup",
                             "create",
                             "/data/smoke-backup.tar.gz",
                         ],

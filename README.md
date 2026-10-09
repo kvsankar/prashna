@@ -24,13 +24,34 @@ room: join code, scannable QR for the participant URL (admin can
 override the base URL per session), top queries, and the current
 quiz in lockstep with the moderator.
 
-## Quick start
+## Install
+
+One command, on macOS, Linux, or Windows:
+
+```bash
+curl -LsSf https://prashna.sankara.net/install.sh | sh                  # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://prashna.sankara.net/install.ps1 | iex"   # Windows
+```
+
+Then start it:
+
+```bash
+prashna
+```
+
+It opens your browser on a one-time page to create your admin account, and
+keeps its data in your app-data folder. If you already have
+[uv](https://docs.astral.sh/uv/), `uvx prashna` installs and starts it in one
+step. `prashna --help` lists the options (port, data folder, backups); update
+with `uv tool upgrade prashna`.
+
+## Develop
 
 ```bash
 uv sync
 npm ci
 npm run build
-uv run uvicorn app.main:app --reload --port 8000
+uv run prashna                 # or: uv run uvicorn prashna.main:app --reload --port 8000
 ```
 
 On its first start the server prints a one-time setup link in its log:
@@ -55,7 +76,7 @@ uv sync
 npm ci
 npm run build
 export PRASHNA_TRUSTED_PROXY_HOPS=1
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+uv run uvicorn prashna.main:app --host 127.0.0.1 --port 8000
 ```
 
 Open the setup link from the log if this is the first start. In another
@@ -192,7 +213,7 @@ log shipper; Prashna does not store diagnostic logs in the SQLite database.
 ## Project layout
 
 ```
-app/                FastAPI app — routes, models, auth, db, websocket hub
+prashna/            FastAPI app — routes, models, auth, db, websocket hub
 frontend/          Vite + TypeScript frontend, one page per role
   src/              shared TS helpers, page entries, and app.css tokens
   public/vendor/    vendored QR lib
@@ -216,7 +237,14 @@ The canonical runnable artifact is the multi-architecture image at
 laptop/small-host distribution; the separate `deploy/` configuration remains
 specific to the Hetzner production service.
 
-For a local container installation:
+For a container installation, one line is enough:
+
+```bash
+docker run -d --name prashna -p 127.0.0.1:8000:8000 -v prashna-data:/data -v prashna-uploads:/app/uploads ghcr.io/kvsankar/prashna
+docker logs prashna 2>&1 | grep setup=
+```
+
+With this repository's [`compose.yaml`](compose.yaml) instead:
 
 ```bash
 docker compose up -d --wait

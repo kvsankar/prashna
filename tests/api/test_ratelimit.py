@@ -12,7 +12,7 @@ from typing import cast
 
 from fastapi import Request
 
-from app.ratelimit import TokenBucketLimiter, enabled_from_env
+from prashna.ratelimit import TokenBucketLimiter, enabled_from_env
 
 # ---------- unit: token bucket ----------
 
@@ -84,7 +84,7 @@ def _fake_req(xff=None, peer="192.0.2.9") -> Request:
 
 
 def test_client_ip_proxy_hops(app_module, monkeypatch):
-    import app.main as main
+    import prashna.main as main
     # hops=0 → socket peer, XFF ignored
     monkeypatch.setattr(main, "TRUSTED_PROXY_HOPS", 0)
     assert main._client_ip(_fake_req(xff="203.0.113.1, 198.51.100.2")) == "192.0.2.9"

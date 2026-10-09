@@ -1884,7 +1884,7 @@ chosen once at process start.
 
 ### UC-X-08: Rate limiting
 
-A single-process, in-memory token-bucket limiter (`app/ratelimit.py`)
+A single-process, in-memory token-bucket limiter (`prashna/ratelimit.py`)
 throttles abuse-prone routes. Each bucket is keyed by client IP; the
 capacity is the allowed burst and refill is the sustained rate.
 
@@ -2080,6 +2080,49 @@ correctness is revealed.
 
 **Tests (static)**
 - `frontend/src/participant.ts`, `moderator.ts`, and `projector.ts` don't build `.option` elements themselves; they call `answerOption()`.
+
+### UC-X-15: Install and run with one command
+
+A presenter with no Docker and no Python setup gets Prashna running with
+one command, on macOS, Linux, or Windows.
+
+- **Given** a machine with a shell and internet access
+- **When** the presenter runs one of
+  - `uvx prashna` (if `uv` is installed)
+  - `curl -LsSf https://prashna.sankara.net/install.sh | sh` (macOS, Linux)
+  - `powershell -ExecutionPolicy ByPass -c "irm https://prashna.sankara.net/install.ps1 | iex"` (Windows)
+- **Then** the install scripts install `uv` if it is missing (Astral's
+  installer), then run `uv tool install --upgrade prashna`, and print how
+  to start it
+- **When** the presenter runs `prashna`
+- **Then** it serves on `http://127.0.0.1:8000`, keeps its database and
+  uploads in the per-user app-data folder (`~/.local/share/prashna`,
+  `~/Library/Application Support/prashna`, `%LOCALAPPDATA%\prashna`),
+  prints the address and the data folder, and opens the browser — on the
+  one-time setup page (`/#setup=<token>`, UC-A-01) while no admin exists,
+  otherwise on `/`
+- **And** `--port`, `--host`, `--data-dir` (or `PRASHNA_DATA_DIR`), and
+  `--no-browser` change those defaults; a port already in use exits with
+  status 1 and suggests `--port`
+- **And** `prashna backup create|restore …` runs the backup tool
+  (UC-X-10) against the same data folder; `prashna --version` prints the
+  version
+- **And** every Prashna server serves the scripts at `/install.sh` and
+  `/install.ps1` (`text/plain`), so `prashna.sankara.net` hosts them
+- **And** the wheel published to PyPI as `prashna` contains the built
+  frontend, so the installed command needs no Node or build step
+
+**Tests (API)**
+- `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
+- `prashna.db.default_data_dir()` returns the repository for a source checkout, and the per-platform folder otherwise (`XDG_DATA_HOME` honoured on Linux, `LOCALAPPDATA` on Windows).
+- The CLI resolves the data folder from `--data-dir`, then `PRASHNA_DATA_DIR`, then the default, and sets `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` inside it.
+- On a fresh data folder the CLI opens the browser at `http://127.0.0.1:<port>/#setup=<token>` with the token the server will accept; once an admin exists it opens `/`; `--no-browser` opens nothing.
+- With the port already bound, `prashna --port <it>` exits 1 and prints a message naming `--port`.
+- `prashna backup create <file>` writes an archive of that data folder.
+- `prashna --version` prints the installed version.
+
+**Tests (packaging, CI)**
+- `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package.
 
 ---
 

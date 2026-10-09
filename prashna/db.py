@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
@@ -7,9 +8,26 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .diagnostics import log_diagnostic as _log_diagnostic
 
+_CHECKOUT = Path(__file__).resolve().parent.parent
+
+
+def default_data_dir() -> Path:
+    """Where data lives when PRASHNA_DB_PATH / PRASHNA_UPLOADS_DIR are unset.
+
+    A source checkout keeps its data in the repository (development). An
+    installed package uses the platform's per-user app-data folder.
+    """
+    if (_CHECKOUT / "pyproject.toml").exists() and (_CHECKOUT / "frontend").is_dir():
+        return _CHECKOUT
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "prashna"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "prashna"
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "prashna"
+
+
 # Allow the DB location to be overridden via env (Docker volume in prod).
-DB_PATH = Path(os.environ.get("PRASHNA_DB_PATH") or
-               Path(__file__).resolve().parent.parent / "prashna.db")
+DB_PATH = Path(os.environ.get("PRASHNA_DB_PATH") or default_data_dir() / "prashna.db")
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
