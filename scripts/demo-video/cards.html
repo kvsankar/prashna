@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cards</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; background: #ffffff; color: #1f2328;
+               font-family: Inter, system-ui, sans-serif; }
+  .card { display: none; position: absolute; inset: 0; padding: 0 200px; box-sizing: border-box;
+          flex-direction: column; justify-content: center; }
+  body[data-card="title"] #title, body[data-card="why"] #why, body[data-card="end"] #end { display: flex; }
+  .brand { font-size: 128px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .tag { font-size: 44px; font-weight: 400; color: #444c56; margin: 24px 0 0; }
+  h2 { font-size: 56px; font-weight: 600; margin: 0 0 36px; }
+  p, li { font-size: 40px; line-height: 1.4; margin: 0; }
+  .block { margin-bottom: 56px; }
+  .label { font-size: 30px; color: #6b7480; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 14px; }
+  ul { margin: 0; padding-left: 48px; }
+  code { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size: 36px; background: #f1f3f5; padding: 10px 18px; border-radius: 8px; }
+  .small { font-size: 32px; color: #6b7480; margin-top: 48px; }
+</style>
+</head>
+<body data-card="title">
+  <section class="card" id="title">
+    <h1 class="brand">prashna</h1>
+    <p class="tag">Live Q&amp;A and quizzes for any session with an audience</p>
+  </section>
+
+  <section class="card" id="why">
+    <h2>For trainers, teachers, workshop and meetup hosts</h2>
+    <div class="block">
+      <div class="label">The problem</div>
+      <p>Many people will not ask a question out loud.</p>
+      <p>A presenter cannot easily see who is following.</p>
+    </div>
+    <div class="block">
+      <div class="label">What Prashna gives</div>
+      <ul>
+        <li>Anonymous questions with upvotes</li>
+        <li>Short quizzes</li>
+        <li>One shared screen</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card" id="end">
+    <h2>Try it</h2>
+    <div class="block">
+      <div class="label">Install</div>
+      <p><code>curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh</code></p>
+    </div>
+    <div class="block">
+      <div class="label">Source</div>
+      <p>github.com/kvsankar/prashna &middot; MIT licence</p>
+    </div>
+  </section>
+</body>
+</html>
