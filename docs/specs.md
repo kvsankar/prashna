@@ -2185,8 +2185,8 @@ one command, on macOS, Linux, or Windows.
 - **Given** a machine with a shell and internet access
 - **When** the presenter runs one of
   - `uvx prashna` (if `uv` is installed)
-  - `curl -LsSf https://prashna.sankara.net/install.sh | sh` (macOS, Linux)
-  - `powershell -ExecutionPolicy ByPass -c "irm https://prashna.sankara.net/install.ps1 | iex"` (Windows)
+  - `curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh` (macOS, Linux)
+  - `powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"` (Windows)
 - **Then** the install scripts install `uv` if it is missing (Astral's
   installer), then run `uv tool install --upgrade prashna`, and print how
   to start it
@@ -2210,8 +2210,13 @@ one command, on macOS, Linux, or Windows.
 - **And** `prashna backup create|restore …` runs the backup tool
   (UC-X-10) against the same data folder; `prashna --version` prints the
   version
-- **And** every Prashna server serves the scripts at `/install.sh` and
-  `/install.ps1` (`text/plain`), so `prashna.sankara.net` hosts them
+- **And** each version tag publishes the two scripts and a one-page
+  landing page to GitHub Pages (`https://kvsankar.github.io/prashna/`),
+  built by `scripts/build_pages_site.py`, after the PyPI package of that
+  version is published, so the hosted script never points at a package
+  that does not exist yet
+- **And** every Prashna server also serves the scripts at `/install.sh`
+  and `/install.ps1` (`text/plain`), so a self-hosted server can offer them
 - **And** the wheel published to PyPI as `prashna` contains the built
   frontend, so the installed command needs no Node or build step
 
@@ -2227,6 +2232,8 @@ one command, on macOS, Linux, or Windows.
 
 **Tests (packaging, CI)**
 - `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT` and includes `LICENSE`.
+- `scripts/build_pages_site.py <dir>` writes `install.sh` and `install.ps1` byte-for-byte equal to `prashna/installers/`, and an `index.html` showing both one-liners with the `kvsankar.github.io/prashna` URLs.
+- The CI workflow has a `pages` job that runs only on `v*` tags, needs the PyPI job, builds the site with that script, and deploys it with `actions/upload-pages-artifact` and `actions/deploy-pages` under the `github-pages` environment with `pages: write` and `id-token: write`.
 
 ---
 

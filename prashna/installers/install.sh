@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install Prashna (macOS and Linux):
-#   curl -LsSf https://prashna.sankara.net/install.sh | sh
+#   curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh
 # Installs uv (Astral's Python package manager) if it is missing, then
 # installs the `prashna` command with `uv tool install`.
 set -eu

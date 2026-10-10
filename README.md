@@ -28,8 +28,8 @@ quiz question in step with the moderator.
 One command, on macOS, Linux, or Windows:
 
 ```bash
-curl -LsSf https://prashna.sankara.net/install.sh | sh                  # macOS / Linux
-powershell -ExecutionPolicy ByPass -c "irm https://prashna.sankara.net/install.ps1 | iex"   # Windows
+curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh                  # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"   # Windows
 ```
 
 Then start it:

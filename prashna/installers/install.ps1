@@ -1,5 +1,5 @@
 # Install Prashna (Windows):
-#   powershell -ExecutionPolicy ByPass -c "irm https://prashna.sankara.net/install.ps1 | iex"
+#   powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"
 # Installs uv (Astral's Python package manager) if it is missing, then
 # installs the `prashna` command with `uv tool install`.
 $ErrorActionPreference = "Stop"

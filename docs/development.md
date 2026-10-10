@@ -222,7 +222,15 @@ The tag starts the CI workflow, which:
   GitHub Release, creating the release if needed;
 - builds the frontend, the wheel, and the sdist, and publishes them to PyPI
   through trusted publishing in the GitHub environment `pypi`. This job fails
-  if the tag does not match the version in `pyproject.toml`.
+  if the tag does not match the version in `pyproject.toml`;
+- after the PyPI job, builds the install-script site with
+  `scripts/build_pages_site.py` and deploys it to GitHub Pages at
+  `https://kvsankar.github.io/prashna/`, which serves the README's
+  one-line installers.
+
+Two one-time settings make the publishing jobs work: a trusted publisher on
+PyPI for project `prashna` (workflow `docker.yml`, environment `pypi`), and
+**Settings → Pages → Source: GitHub Actions** in the repository.
 
 Anonymous image pulls need the GHCR package to be public; see
 [`distribution/README.md`](../distribution/README.md).

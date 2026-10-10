@@ -180,3 +180,27 @@ jobs:
         run: uv build
       - name: Publish
         run: uv publish --trusted-publishing always
+
+  pages:
+    name: Publish install scripts to GitHub Pages
+    # After PyPI, so the hosted script never installs a version that is not
+    # published yet. Needs Settings > Pages > Source: GitHub Actions.
+    needs: [pypi-publish]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the site
+        run: python3 scripts/build_pages_site.py _site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v5

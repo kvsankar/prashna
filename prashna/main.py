@@ -836,8 +836,8 @@ def quizzes_page():
     return _page("quizzes")
 
 
-# One-command installers (UC-X-15). Every Prashna server serves them, so the
-# public instance hosts `curl -LsSf https://prashna.sankara.net/install.sh | sh`.
+# One-command installers (UC-X-15). The published copies are on GitHub Pages;
+# every Prashna server also serves them, so a self-hosted server can offer them.
 INSTALLERS = Path(__file__).resolve().parent / "installers"
 
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import html
 import io
 import os
 import sqlite3
 import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -222,3 +224,38 @@ def test_pypi_publish_contract():
     assert job.index("npm run build") < job.index("uv build") < job.index("uv publish")
     assert "--trusted-publishing always" in job
     assert 'test "${GITHUB_REF_NAME#v}" = "$version"' in job
+
+
+PAGES_URL = "https://kvsankar.github.io/prashna"
+ONE_LINERS = (
+    f"curl -LsSf {PAGES_URL}/install.sh | sh",
+    f'powershell -ExecutionPolicy ByPass -c "irm {PAGES_URL}/install.ps1 | iex"',
+)
+
+
+def test_pages_site_serves_the_packaged_installers(tmp_path):
+    """UC-X-15: the GitHub Pages site carries the same install scripts as the
+    package, and a landing page with the one-liners the README shows."""
+    site = tmp_path / "site"
+    subprocess.run([sys.executable, "scripts/build_pages_site.py", str(site)], cwd=ROOT, check=True)
+    for name in ("install.sh", "install.ps1"):
+        assert (site / name).read_bytes() == (ROOT / "prashna" / "installers" / name).read_bytes()
+    index = (site / "index.html").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for line in ONE_LINERS:
+        assert html.escape(line, quote=False) in index
+        assert line in readme
+    assert "prashna.sankara.net/install" not in readme
+
+
+def test_pages_publish_contract():
+    """UC-X-15: tags publish the install scripts to GitHub Pages only after the
+    PyPI package of that version is published."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    job = workflow[workflow.index("\n  pages:"):]
+    assert "if: startsWith(github.ref, 'refs/tags/v')" in job
+    assert "needs: [pypi-publish]" in job
+    assert "pages: write" in job and "id-token: write" in job
+    assert "name: github-pages" in job
+    assert job.index("scripts/build_pages_site.py") < job.index("actions/upload-pages-artifact@v5") \
+        < job.index("actions/deploy-pages@v5")
