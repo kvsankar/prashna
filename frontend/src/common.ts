@@ -424,6 +424,27 @@ export function guardClick<B extends HTMLButtonElement>(button: B, handler: (ev:
   return button;
 }
 
+/** JSON and Excel download links for an export URL (UC-A-30). Links, not
+ *  buttons: the admin cookie authenticates the download, and the server's
+ *  attachment header names the file. */
+export function exportLinks(url: string, prefix = ""): HTMLAnchorElement[] {
+  const sep = url.includes("?") ? "&" : "?";
+  return ([["JSON", "json"], ["Excel", "xlsx"]] as const).map(([label, format]) =>
+    el("a", { class: "menu-link", href: `${url}${sep}format=${format}`, download: true }, prefix + label) as HTMLAnchorElement);
+}
+
+/** A quiet "Export ▾" menu offering JSON and Excel (UC-A-30). Picking a
+ *  format closes the menu, so one click starts one download. */
+export function exportMenu(id: string, url: string, title: string): HTMLDetailsElement {
+  const details = el("details", { class: "menu export-menu", id },
+    el("summary", { title, "aria-label": title }, "Export ▾"),
+    el("div", { class: "menu-panel" }, exportLinks(url))) as HTMLDetailsElement;
+  details.addEventListener("click", (e) => {
+    if ((e.target as Element).closest("a")) details.open = false;
+  });
+  return details;
+}
+
 /** Close open `details.menu` disclosures on outside click and Esc (UX.md
  *  §4). Native `<details>` only toggles on its own summary. Bind once per
  *  page; an Esc that closed a menu is marked `defaultPrevented` so page-level

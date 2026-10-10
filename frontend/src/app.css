@@ -278,6 +278,17 @@ details.menu > .menu-panel {
 details.menu > .menu-panel button { width: 100%; text-align: left; white-space: nowrap; }
 details.menu > .menu-panel label { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding: 2px 0; }
 details.menu > .menu-panel .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+/* Download links in a menu (UC-A-30) read like the menu's ghost buttons. */
+details.menu > .menu-panel a.menu-link {
+  display: block; padding: 4px 10px; border-radius: 6px; text-align: left;
+  font-size: var(--text-md); font-weight: 500; color: var(--text); text-decoration: none; white-space: nowrap;
+}
+details.menu > .menu-panel a.menu-link:hover, details.menu > .menu-panel a.menu-link:focus-visible { background: var(--panel-2); }
+/* "Export ▾" sits in card tools: small, like the other tools there. */
+details.menu.export-menu > summary { padding: 4px 10px; font-size: var(--text-md); }
+details.menu.export-menu > .menu-panel { min-width: 140px; }
+/* In a left-aligned settings row the panel opens rightwards, onto the card. */
+.field > details.menu > .menu-panel { left: 0; right: auto; }
 input.inline, select.inline { width: auto; padding: 5px 8px; font-size: var(--text-md); }
 select.inline.narrow { min-width: 100px; }
 button.small { font-size: var(--text-md); padding: calc((var(--control-h-sm) - 1.3em - 2px) / 2) 10px; }

@@ -206,9 +206,15 @@ disclosure (not a custom popover) for keyboard/no-JS robustness.
   An ended session never offers Start for a legacy queued row, but keeps
   **Remove from session** available so the orphan can be cleaned up.
 - The quiz library row keeps Publish/Unpublish and **Add to session**
-  inline; Duplicate and Delete live in its ⋯ menu. **Add to session** is
-  itself a `<details class="menu">` whose panel lists the open sessions
-  as verb buttons — a menu, not a modal, because it is one click deep.
+  inline; Duplicate, Export JSON, Export Excel, and Delete live in its ⋯
+  menu. **Add to session** is itself a `<details class="menu">` whose
+  panel lists the open sessions as verb buttons — a menu, not a modal,
+  because it is one click deep.
+- **Export ▾** (UC-A-30) is a small `details.menu.export-menu` in a card's
+  tools (or a settings row) whose panel holds two download links, JSON and
+  Excel (`exportMenu()` in `common.ts`). Downloads are links (`<a download>`),
+  not buttons: they change nothing, and the admin cookie authenticates them.
+  Picking one closes the menu. Show it only to the owner (§16).
 
 ---
 

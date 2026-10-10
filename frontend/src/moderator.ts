@@ -1,4 +1,4 @@
-import { $, answerOption, api, bindMenuDismiss, el, errorToast, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, statusLabel, toast, type LiveMessage } from "./common";
+import { $, answerOption, api, bindMenuDismiss, el, errorToast, exportMenu, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, statusLabel, toast, type LiveMessage } from "./common";
 import type {
   FeedbackSummary,
   ModeratorBootstrap,
@@ -34,12 +34,26 @@ let latestPresenceSeq = 0;
 let latestFeedbackSeq = 0;
 let latestProfilesSeq = 0;
 
+// Owner-only exports (UC-A-30): they include attendees' contact details, so
+// delegates never see them.
+const exportBase = `/api/sessions/${CODE}/export`;
+const ownerExports = [
+  exportMenu("session-export", exportBase, "Export this session"),
+  exportMenu("profiles-export", `${exportBase}?part=profiles`, "Export attendee profiles"),
+  exportMenu("feedback-export", `${exportBase}?part=feedback`, "Export feedback"),
+];
+for (const menu of ownerExports) setVisible(menu, false);
+$("#set-export-row label").after(ownerExports[0]);
+$("#profiles-tools").appendChild(ownerExports[1]);
+$("#feedback-tools").appendChild(ownerExports[2]);
+
 function showWorkSurfaces(visible: boolean): void {
   for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "profiles-card", "feedback-card"]) {
     setVisible($("#" + id), visible);
   }
   // Owner-only controls (UC-A-08); delegates never see them.
   setVisible($("#settings-card"), visible && isOwner);
+  for (const menu of ownerExports) setVisible(menu, visible && isOwner);
 }
 function showKeyGate(): void {
   $("#modkey-code").textContent = CODE;

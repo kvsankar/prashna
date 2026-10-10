@@ -323,7 +323,8 @@ owner-only controls; a delegate sees the same page without them.
   gate (admin owners authenticate via cookie)
 - **And** the owner sees a **Session settings** card (`#settings-card`)
   inside Set up, with the Title input (UC-A-05), a "Share moderator
-  URL" copy button for delegation, and **Delete session…** (UC-A-07)
+  URL" copy button for delegation, **Export ▾** (UC-A-30), and
+  **Delete session…** (UC-A-07)
 - **And** the owner sees the Base URL field in the Invite card (UC-A-06)
 - **And** a delegate (mod_key, no admin cookie) sees neither the
   Session settings card nor the Base URL field
@@ -819,6 +820,102 @@ Used by question and answer editors to set `image_url`.
 - A new password shorter than 8 chars shows a `400` toast.
 - Pressing Escape inside `#change-pw-card` closes it without submitting.
 - `#cp-close` closes the card without submitting.
+
+### UC-A-30: Export data
+
+The admin downloads their data to keep it, analyse it, or move it
+elsewhere. Several tables don't fit one CSV file, so an export is either
+one nested JSON document or one Excel workbook.
+
+- **Given** the admin is signed in and owns the data
+- **When** they choose **Export ▾ → JSON** or **Export ▾ → Excel** in one
+  of the places below
+- **Then** the browser downloads one file holding that scope's data
+
+**Scopes.** Each scope is one endpoint and one place in the UI. A session
+scope narrows with `part`.
+
+| Scope | Contains | Endpoint | Where in the UI |
+| --- | --- | --- | --- |
+| All sessions | Every session the admin owns, each with all of its data (as "One session") | `GET /api/export/sessions` | `/`, Your sessions card (`#sessions-export`) |
+| One session | The session's details, every participant, its Q&A questions, its quiz runs with each participant's answers, and its feedback | `GET /api/sessions/{code}/export` (`part=all`, the default) | Session page, Session settings card (`#session-export`) |
+| One session's attendee profiles | The participants who gave any profile field or a photograph (UC-M-13) | `…/export?part=profiles` | Session page, Attendee profiles card (`#profiles-export`) |
+| One session's feedback | Each participant's current rating and comments (UC-P-13) | `…/export?part=feedback` | Session page, Feedback card (`#feedback-export`) |
+| One session's Q&A | The session's questions, including removed ones, with votes, status and response | `…/export?part=qna` | Included in the whole-session export; API only on its own |
+| One session's quiz runs | The session's quiz runs, per-question results, and each participant's answers | `…/export?part=quiz_runs` | Included in the whole-session export; API only on its own |
+| One quiz run | The run, its frozen quiz version, per-question answer counts, and each participant's answers | `GET /api/quiz_runs/{id}/export` | `/quizzes`, run report card (`#results-export`) |
+| One quiz template | The quiz, its questions and answers with correctness, and its versions with their run counts | `GET /api/quizzes/{id}/export` | `/quizzes`, the quiz row's ⋯ menu (Export JSON, Export Excel) |
+
+**Formats.** `format=json` (the default) or `format=xlsx`.
+
+- **JSON** is one document. Its `export` object says what was exported:
+  `scope`, `part` (session scopes), the identifiers, `exported_at`,
+  `prashna_version`, and `contains_personal_data`. The data follows as
+  `sessions` (a list), `session`, `quiz_run`, or `quiz` (one object), with
+  child lists nested inside (`participants`, `questions`, `quiz_runs`,
+  `feedback`; a run's `questions` and `responses`; a quiz's `questions`
+  and `versions`).
+- **Excel** is one workbook with one sheet per table and one header row
+  per sheet in plain words ("Asked at", "Votes", "Responded"). The first
+  sheet, **About**, lists what was exported (scope and identifiers), when
+  (UTC), the Prashna version, and, when the file holds participants'
+  names or contact details, a note that it contains personal data.
+  Sheets for one session: About, Session, Participants, Questions, Quiz
+  runs, Quiz answers (one row per participant and question, with the
+  chosen answers and whether they were correct), Feedback. All sessions
+  uses the same tables with a Sessions sheet and a Session code column
+  on each. A part export has About, Session, and that part's sheets
+  (Participants; Feedback; Questions; or Quiz runs and Quiz answers). A
+  quiz run has About, Quiz run, Results, Quiz answers. A quiz template
+  has About, Quiz, Questions, Answers, Versions.
+- In both formats, timestamps are ISO 8601 in UTC with a `Z` suffix;
+  participants are identified by an export-local participant ID (their
+  row id) and their name when given; the Participants table, present only
+  in the all-sessions, one-session and profiles exports, adds the other
+  profile fields; uploaded images appear
+  as their `/uploads/…` URL path. Excel cells hold text as text: a
+  participant's entry that starts with `=` is never a formula.
+
+**Access.** Only the signed-in admin who owns the data can export it.
+Delegate moderators (mod_key) cannot, because exports include
+participants' contact details. Session scopes follow the owner-only
+convention (`401` without a cookie, `403 "Not your session"` for another
+admin's session); quiz and quiz-run scopes return `404` for another
+admin's data, as their other reads do.
+
+**Never exported.** Participants' voter tokens, the admin's password
+hash or any other secret, and moderator keys.
+
+**Downloads.** Each response is an attachment named
+`prashna-<scope>-<identifier>-<YYYYMMDD>.<ext>` (UTC date): for example
+`prashna-all-sessions-20261011.json`,
+`prashna-session-ABC123-20261011.xlsx`,
+`prashna-profiles-ABC123-20261011.xlsx`,
+`prashna-quiz-run-17-20261011.json`, `prashna-quiz-5-20261011.xlsx`
+(scopes `session`, `profiles`, `feedback`, `qna`, `quiz-runs`,
+`quiz-run`, `quiz`). Content types are `application/json` and
+`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`;
+`Cache-Control` is `no-store`. An unknown `format` returns
+`400 "format must be json or xlsx"`; an unknown `part` returns
+`400 "part must be one of all, profiles, feedback, qna, quiz_runs"`.
+
+**Tests (API)**
+- `GET /api/sessions/{code}/export?format=json` → `200`, `Content-Type: application/json`, `Content-Disposition: attachment; filename="prashna-session-<code>-<YYYYMMDD>.json"`, `Cache-Control: no-store`; the body has `export` (`scope: "session"`, `part: "all"`, `session_code`, `exported_at`, `prashna_version`, `contains_personal_data: true`) and `session` with `participants`, `questions`, `quiz_runs` (each with `questions` and `responses`), and `feedback`. Auth: admin cookie.
+- The same with `format=xlsx` → a workbook that openpyxl opens, with sheets About, Session, Participants, Questions, Quiz runs, Quiz answers, Feedback in that order, the documented header rows, and the session's data (a question's votes, a participant's chosen answer and correctness, a rating).
+- `part=profiles`, `part=feedback`, `part=qna`, `part=quiz_runs` each return only that part (JSON keys and Excel sheets), named `prashna-<part>-<code>-<YYYYMMDD>.<ext>` (`quiz-runs` for `quiz_runs`); `part=profiles` lists only participants with profile data.
+- `GET /api/export/sessions` in both formats covers every owned session, not another admin's, and each Excel table carries a Session code column; the file is `prashna-all-sessions-<YYYYMMDD>.<ext>`.
+- `GET /api/quiz_runs/{id}/export` in both formats holds the frozen quiz title and version, per-answer counts with correctness, and each participant's chosen answers; another admin's run → `404`.
+- `GET /api/quizzes/{id}/export` in both formats holds the questions, the answers with correctness, and the versions with run counts; another admin's quiz → `404`; the About sheet carries no personal-data note.
+- No export, in either format, contains a participant's voter token, the admin's password hash, or the session's mod_key (searched in the JSON text and in every Excel cell).
+- A participant's question starting with `=` is a text cell in the workbook, not a formula.
+- With only the mod_key header (no admin cookie) → `401`; with no auth → `401`; another admin's session → `403 "Not your session"`.
+- `format=csv` → `400 "format must be json or xlsx"`; `part=everything` → `400 "part must be one of all, profiles, feedback, qna, quiz_runs"`.
+
+**Tests (UI)**
+- On `/` (authed), `#sessions-export` offers JSON and Excel; choosing Excel downloads `prashna-all-sessions-<YYYYMMDD>.xlsx`.
+- On `/m/<code>` as the owner, `#session-export` (Session settings), `#profiles-export` (Attendee profiles) and `#feedback-export` (Feedback) are visible; choosing JSON in each downloads `prashna-session-<code>-…json`, `prashna-profiles-<code>-…json`, and `prashna-feedback-<code>-…json`.
+- On `/m/<code>#k=<mod_key>` as a delegate, none of the export menus are shown.
+- On `/quizzes`, a quiz row's ⋯ menu Export Excel downloads `prashna-quiz-<id>-<YYYYMMDD>.xlsx`, and the open run report's `#results-export` JSON downloads `prashna-quiz-run-<id>-<YYYYMMDD>.json`.
 
 ---
 

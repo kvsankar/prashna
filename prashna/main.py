@@ -37,6 +37,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from . import auth
+from . import export as data_export
 from . import models as m
 from .db import SessionLocal, default_data_dir, get_db, init_db
 from .diagnostics import log_diagnostic
@@ -2713,6 +2714,82 @@ async def submit_quiz_run(
     db.commit()
     await broadcast_session(s, "quiz_submission")
     return {"ok": True}
+
+
+# ---------- routes: data export (UC-A-30) ----------
+# Owner-only: exports include participants' contact details, so the mod_key
+# delegation path never reaches them.
+
+
+def _export_format(value: str) -> str:
+    if value not in data_export.FORMATS:
+        raise HTTPException(400, data_export.FORMAT_ERROR)
+    return value
+
+
+def _export_response(result: data_export.Export, scope: str) -> Response:
+    log_diagnostic("export.download", outcome="success", scope=scope,
+                   format=result.filename.rsplit(".", 1)[-1], size_bytes=len(result.content))
+    return Response(
+        content=result.content,
+        media_type=result.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{result.filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/api/export/sessions")
+def export_all_sessions(
+    format: str = "json",
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    fmt = _export_format(format)
+    return _export_response(data_export.export_sessions(db, me, fmt), "sessions")
+
+
+@app.get("/api/sessions/{code}/export")
+def export_session(
+    code: str,
+    format: str = "json",
+    part: str = "all",
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    s = get_session_by_code(db, code)
+    require_session_owner(s, me)
+    fmt = _export_format(format)
+    if part not in data_export.PARTS:
+        raise HTTPException(400, data_export.PART_ERROR)
+    return _export_response(data_export.export_session(db, s, fmt, part), f"session:{part}")
+
+
+@app.get("/api/quiz_runs/{run_id}/export")
+def export_quiz_run(
+    run_id: int,
+    format: str = "json",
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    run = db.get(m.QuizRun, run_id)
+    if not run or run.session.owner_user_id != me.id:
+        raise HTTPException(404)
+    fmt = _export_format(format)
+    return _export_response(data_export.export_quiz_run(db, run, fmt), "quiz_run")
+
+
+@app.get("/api/quizzes/{quiz_id}/export")
+def export_quiz(
+    quiz_id: int,
+    format: str = "json",
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    quiz = _owned_quiz_or_404(db, quiz_id, me)
+    fmt = _export_format(format)
+    return _export_response(data_export.export_quiz(db, quiz, fmt), "quiz")
 
 
 # ---------- websocket ----------

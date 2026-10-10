@@ -126,6 +126,9 @@ flowchart TB
   publishing, and run reports.
 - **Application API** (`prashna/main.py`): routes, validation, commits,
   serialization, and update hints.
+- **Data export** (`prashna/export.py`): builds owner-only downloads of
+  sessions, quiz runs, and quiz templates as one JSON document or one Excel
+  workbook (XlsxWriter) with one sheet per table.
 - **Authentication boundary** (`prashna/auth.py`, `prashna/ratelimit.py`):
   admin cookies, moderator keys, participant tokens, password checks, and
   throttling.
@@ -155,6 +158,10 @@ flowchart TB
   `POST /api/sessions/{code}/me/photo` without an admin login. Both paths use
   one helper with the same extension allowlist and 5 MB cap, and both return
   a `/uploads/<uuid>.<ext>` URL.
+- **Data export.** `GET /api/export/sessions`, `/api/sessions/{code}/export`,
+  `/api/quiz_runs/{id}/export`, and `/api/quizzes/{id}/export` take
+  `format=json|xlsx` (and `part` for a session) and return an attachment.
+  They need the owner's admin cookie; the moderator key never reaches them.
 - **Static assets and media.** FastAPI serves the built Vite output from
   `prashna/static` at `/static`, and uploaded files at `/uploads`.
 

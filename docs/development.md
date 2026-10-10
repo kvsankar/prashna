@@ -120,6 +120,8 @@ Test layers:
   documentation contracts.
 - `tests/ui/`: Playwright tests against a real uvicorn process with an
   isolated database.
+- Export tests read the generated Excel workbooks with `openpyxl`, a
+  dev-only dependency; the application writes them with `XlsxWriter`.
 - `tests/ops/`: packaging, distribution, nginx, Cloudflare, and performance
   tooling. Some of them need Docker or network access. Two are opt-in:
   - `PRASHNA_COMPOSE_SMOKE=1 uv run pytest tests/ops/test_compose_smoke.py`
@@ -181,6 +183,7 @@ prashna/             Python package
   ratelimit.py       token-bucket rate limiter
   ws.py              in-memory WebSocket hub
   diagnostics.py     structured, secret-safe diagnostic logging
+  export.py          data export as JSON or an Excel workbook (XlsxWriter)
   backup.py          backup and restore (python -m prashna.backup)
   cli.py             the `prashna` command
   tunnel.py          --tunnel: run cloudflared or ngrok and read its address

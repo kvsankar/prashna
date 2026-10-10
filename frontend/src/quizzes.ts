@@ -1,4 +1,4 @@
-import { $, api, bindMenuDismiss, el, errorToast, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
+import { $, api, bindMenuDismiss, el, errorToast, exportLinks, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type {
   EditorAnswer, EditorQuestion, QuizEditor, QuizRun, QuizRunResults, QuizRunRow, QuizSummary, SessionRow,
 } from "./types";
@@ -54,6 +54,11 @@ function rowMoreMenu(q: QuizSummary): HTMLElement {
     guardClick(
       el("button", { class: "ghost small", title: "Make an editable copy of this quiz" }, "Duplicate") as HTMLButtonElement,
       () => duplicateQuiz(q.id)),
+    // Downloads of the template (UC-A-30); picking one closes the menu.
+    ...exportLinks(`/api/quizzes/${q.id}/export`, "Export ").map((a) => {
+      a.addEventListener("click", () => { (a.closest("details") as HTMLDetailsElement).open = false; });
+      return a;
+    }),
     el("div", { class: "menu-sep" }),
     guardClick(
       el("button", { class: "danger ghost small" }, "Delete") as HTMLButtonElement,
@@ -649,6 +654,9 @@ async function openQSDetail(id: number): Promise<void> {
     const opening = resultsId !== id;
     const r = await api<QuizRunResults>(`/api/quiz_runs/${id}/results`);
     resultsId = id;
+    // The run's own export (UC-A-30), rebuilt for whichever run is open.
+    document.getElementById("results-export")?.remove();
+    $("#results-tools").prepend(exportMenu("results-export", `/api/quiz_runs/${id}/export`, "Export this quiz run"));
     showResults(`Quiz session: ${r.quiz_title} in ${r.session_code}`);
     renderResults(r);
     if (opening) revealCard($("#results-card"));

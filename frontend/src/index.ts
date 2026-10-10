@@ -1,4 +1,4 @@
-import { $, api, el, errorToast, escapeHtml, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
+import { $, api, bindMenuDismiss, el, errorToast, escapeHtml, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type { AdminStatus, SessionRow } from "./types";
 
 // `?session=<code>` is an older link to a session; the session page is now
@@ -23,6 +23,11 @@ if (bad) {
   history.replaceState({}, "", "/");
 }
 $("#join-code").addEventListener("input", () => { setVisible($("#bad-code-msg"), false); });
+
+// ----- export every owned session (UC-A-30) -----
+$("#sessions-card .card-tools").appendChild(
+  exportMenu("sessions-export", "/api/export/sessions", "Export all your sessions"));
+bindMenuDismiss();
 
 // ----- visibility helpers -----
 const cards: Record<string, HTMLElement> = {
@@ -272,7 +277,7 @@ $("#cp-new2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key 
 
 // Escape closes whichever drill-down is open.
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
+  if (e.key !== "Escape" || e.defaultPrevented) return;
   if (!$("#change-pw-card").hidden) { closeChangePassword(); return; }
   if (!$("#confirm-delete-card").hidden) hideConfirmCard();
 });

@@ -91,6 +91,10 @@
           <button id="set-share-mod" class="ghost small">Share moderator URL</button>
           <span class="small muted">Lets someone without an admin account moderate this session.</span>
         </div>
+        <div class="field row gap" id="set-export-row">
+          <label class="small muted label-col">Export</label>
+          <span class="small muted">All of this session's data, including attendees' contact details.</span>
+        </div>
         <div class="field row gap">
           <label class="small muted label-col">Delete</label>
           <button id="set-delete" class="danger ghost small">Delete session…</button>
@@ -116,12 +120,12 @@
     </section>
 
     <section hidden class="card" id="profiles-card">
-      <div class="card-head"><h2>Attendee profiles</h2><div class="card-tools" id="profiles-summary"></div></div>
+      <div class="card-head"><h2>Attendee profiles</h2><div class="card-tools" id="profiles-tools"><span id="profiles-summary"></span></div></div>
       <div id="profiles-list"></div>
     </section>
 
     <section hidden class="card" id="feedback-card">
-      <div class="card-head"><h2>Feedback</h2><div class="card-tools" id="feedback-summary"></div></div>
+      <div class="card-head"><h2>Feedback</h2><div class="card-tools" id="feedback-tools"><span id="feedback-summary"></span></div></div>
       <div id="feedback-list"></div>
     </section>
   </main>
