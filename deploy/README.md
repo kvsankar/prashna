@@ -167,6 +167,13 @@ For local smoke tests only, the compose file accepts `PRASHNA_PORT`,
 variable, unrelated to the `prashna` command's `PRASHNA_DATA_DIR`. Production
 keeps the `/opt/prashna` defaults.
 
+## File permissions
+
+`/opt/prashna/data` holds the SQLite database (the admin's password hash and
+participants' profiles) and its copies. It is owned by the container's user
+(uid 1001) with mode `700`, so no other account on the host can read it;
+`setup.sh` sets this. `/opt/prashna/.env` is mode `600`.
+
 ## Logs and retention
 
 The app writes operator diagnostics to the container log stream. The compose

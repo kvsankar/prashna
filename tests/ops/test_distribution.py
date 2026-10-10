@@ -271,3 +271,11 @@ def test_production_compose_logs_to_the_journal():
     import yaml
     service = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text())["services"]["prashna"]
     assert service["logging"] == {"driver": "journald", "options": {"tag": "prashna"}}
+
+
+def test_setup_keeps_the_data_folder_private():
+    """The data folder holds the database (admin password hash, participant
+    profiles) and the signing key; only the container's user may read it."""
+    setup = (ROOT / "deploy" / "setup.sh").read_text()
+    assert 'sudo chmod 700 "$APP_DIR/data"' in setup
+    assert setup.index('sudo chown -R "$APP_UID:$APP_GID"') < setup.index('sudo chmod 700 "$APP_DIR/data"')

@@ -60,6 +60,8 @@ sudo install -d -o "$USER" -g "$USER" "$APP_DIR"
 sudo install -d -o "$APP_UID" -g "$APP_GID" \
   "$APP_DIR/data" "$APP_DIR/uploads"
 sudo chown -R "$APP_UID:$APP_GID" "$APP_DIR/data" "$APP_DIR/uploads"
+# The data folder holds the database and signing key: container user only.
+sudo chmod 700 "$APP_DIR/data"
 sudo cp "$REPO_DIR/deploy/docker-compose.yml" "$APP_DIR/docker-compose.yml"
 sudo chown "$USER:$USER" "$APP_DIR/docker-compose.yml"
 
