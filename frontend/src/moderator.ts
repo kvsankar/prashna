@@ -1,7 +1,4 @@
-import {
-  $, answerOption, api, bindMenuDismiss, el, errorToast, guardClick, type LiveMessage, modHeaders, modKey,
-  markUsable, openLiveSocket, pathCode, renderQR, setModKey, setVisible, statusLabel, toast,
-} from "./common";
+import { $, answerOption, api, bindMenuDismiss, el, errorToast, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, statusLabel, toast, type LiveMessage } from "./common";
 import type {
   FeedbackSummary,
   ModeratorBootstrap,
@@ -85,8 +82,7 @@ function applySession(loaded: Session, seq = latestSessionSeq): void {
 }
 
 function participantUrlFor(s: Session): string {
-  const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
-  return `${base}/s/${s.code}`;
+  return `${publicBase(s)}/s/${s.code}`;
 }
 
 async function renderInvite(seq = latestSessionSeq): Promise<void> {
@@ -136,7 +132,8 @@ $("#set-share-mod").addEventListener("click", async () => {
     const rows = await api<SessionRow[]>("/api/sessions");
     const row = rows.find((r) => r.code === CODE);
     if (!row) throw new Error("Session not found");
-    await navigator.clipboard.writeText(`${location.origin}/m/${CODE}#k=${row.mod_key}`);
+    const base = sessionState ? publicBase(sessionState) : location.origin;
+    await navigator.clipboard.writeText(`${base}/m/${CODE}#k=${row.mod_key}`);
     toast("Moderator URL copied — share with delegates only.");
   } catch {
     errorToast("Couldn't copy — load over HTTPS for clipboard access.");

@@ -4,6 +4,7 @@
     prashna --port 8080        use another port
     prashna --data-dir DIR     keep the database and uploads in DIR
     prashna backup create F    archive the data folder (see `prashna backup --help`)
+    prashna --tunnel cloudflare  also reach it from the internet (or: --tunnel ngrok)
 
 Data lives in the per-user app-data folder unless --data-dir or
 PRASHNA_DATA_DIR says otherwise. On the first run the browser opens the
@@ -14,6 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import signal
 import socket
 import subprocess
 import sys
@@ -40,6 +42,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-dir", help="folder for the database and uploads "
                         "(default: PRASHNA_DATA_DIR or your app-data folder)")
     parser.add_argument("--no-browser", action="store_true", help="don't open the browser")
+    parser.add_argument("--tunnel", choices=["cloudflare", "ngrok"],
+                        help="also make Prashna reachable from the internet: a Cloudflare quick "
+                             "tunnel (needs cloudflared, no account) or ngrok (needs a signed-in ngrok)")
     parser.add_argument("--version", action="version", version=f"prashna {_version()}")
     commands = parser.add_subparsers(dest="command")
     backup = commands.add_parser("backup", add_help=False, help="create or restore a backup of the data folder")
@@ -115,7 +120,30 @@ def main(argv: list[str] | None = None) -> int:
     address = f"http://{shown_host}:{args.port}"
     url = f"{address}/#setup={token}" if token else f"{address}/"
 
+    tunnel = None
+    public_url = None
+    if args.tunnel:
+        from .tunnel import PROGRAMS, Tunnel, TunnelError
+        print(f"Starting the {PROGRAMS[args.tunnel]} tunnel...", flush=True)
+        try:
+            tunnel = Tunnel(args.tunnel, args.port, shown_host)
+            public_url = tunnel.wait_for_url()
+        except TunnelError as error:
+            print(error, file=sys.stderr)
+            return 1
+        if args.tunnel == "cloudflare":
+            from .tunnel import wait_until_resolvable
+            print("Waiting for the public address to come online (about 15 seconds)...", flush=True)
+            wait = float(os.environ.get("PRASHNA_TUNNEL_DNS_WAIT_SECS") or 60)
+            if not wait_until_resolvable(public_url, wait):
+                print("The public address may need a little longer before it works.", flush=True)
+        tunnel.on_unexpected_exit = lambda: print(
+            "\nThe tunnel stopped. Participants can no longer reach Prashna; "
+            "restart Prashna to get a new address.", file=sys.stderr, flush=True)
+
     print(f"\nPrashna is running at {address}")
+    if public_url:
+        print(f"Participants join at: {public_url}")
     print(f"Data folder: {data_dir}")
     if token:
         if args.no_browser:
@@ -130,7 +158,23 @@ def main(argv: list[str] | None = None) -> int:
 
     from . import main as server
     server.ANNOUNCE_SETUP_LINK = False
-    uvicorn.run(server.app, host=args.host, port=args.port, log_level="warning")
+    server.PUBLIC_URL = public_url
+    if tunnel:
+        # uvicorn re-raises SIGINT/SIGTERM after shutting down, which ends the
+        # process before `finally` runs; it calls these handlers when it does.
+        def stop_tunnel_then_exit(signum: int, _frame: object) -> None:
+            assert tunnel is not None
+            tunnel.stop()
+            signal.signal(signum, signal.SIG_DFL)
+            signal.raise_signal(signum)
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, stop_tunnel_then_exit)
+    try:
+        uvicorn.run(server.app, host=args.host, port=args.port, log_level="warning")
+    finally:
+        if tunnel:
+            tunnel.stop()
     return 0
 
 

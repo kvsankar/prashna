@@ -1,4 +1,4 @@
-import { $, answerOption, api, el, markUsable, openLiveSocket, pathCode, renderQR, setVisible } from "./common";
+import { $, answerOption, api, el, markUsable, openLiveSocket, pathCode, publicBase, renderQR, setVisible } from "./common";
 import type { DisplayBootstrap, Query, QuizRun } from "./types";
 
 const CODE = pathCode();
@@ -17,7 +17,7 @@ async function loadAll(): Promise<void> {
   if (seq !== latestLoadSeq) return;
   const { session: s, queries: qs, quiz_runs: runs } = state;
   $("#title").textContent = s.title;
-  const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
+  const base = publicBase(s);
   const url = `${base}/s/${s.code}`;
   $("#origin").textContent = base.replace(/^https?:\/\//, "");
   if (url !== lastQrUrl) {

@@ -246,7 +246,12 @@ public can't be claimed by its first visitor.
 - **And** a URL not starting with `http://` or `https://` returns
   `400`
 - **And** an empty submission (or Use default click) sets the field to
-  `null` and the frontend falls back to `location.origin`
+  `null` and the frontend falls back to the default address
+- **And** every page builds participant links, QR codes, and the copied
+  moderator URL from the first of: the session's base URL; the server's
+  default public address (`default_base_url` in each serialized session,
+  set while `prashna --tunnel …` runs, otherwise `null`; UC-X-15); the
+  page's own `location.origin`
 
 **Tests (API)**
 - `POST /api/sessions/{code}/participant_base_url` with `{"url": "https://example.com/"}` → `200 {participant_base_url: "https://example.com"}` (trailing slash stripped). Auth: **admin cookie only** (owner-only).
@@ -256,10 +261,12 @@ public can't be claimed by its first visitor.
 - `POST /api/sessions/{code}/participant_base_url` with no auth → `401`.
 - With a valid `mod_key` but no admin cookie → `401`.
 - After success, broadcasts `{type: "session_state"}`.
+- A serialized session carries `default_base_url: null` normally, and the tunnel address while one is running (`test_uc_a_06_default_base_url_follows_the_tunnel`).
 
 **Tests (UI)**
 - On `/m/<code>` as the admin owner, typing into `#base-url` and blurring updates `#invite-url` text and re-renders `#invite-qr`.
 - Clicking `#base-url-clear` clears `#base-url`, and the page falls back to `location.origin` for the QR/URL widgets.
+- With no session base URL and a `default_base_url` in the session payload, `/m/<code>` shows `#invite-url` and `/p/<code>` shows `#origin` with that address, not `location.origin` (`test_uc_a_06_pages_use_the_default_base_url`).
 - Entering an invalid URL (no `http(s)://`) shows an error toast.
 
 ### UC-A-07: Delete a session
@@ -2050,6 +2057,10 @@ capacity is the allowed burst and refill is the sustained rate.
   buckets use the client address ngrok recorded rather than the tunnel peer
 - **And** the frontend derives `wss://<public-host>/ws/sessions/{CODE}` from
   the public HTTPS page origin.
+- **And** with the `prashna` command, `prashna --tunnel ngrok` or
+  `--tunnel cloudflare` performs these steps itself (UC-X-15); the manual
+  steps remain for the container and for a source checkout run with
+  Uvicorn.
 
 **Tests (API)**
 - A WebSocket request with matching public `Origin:
@@ -2228,6 +2239,30 @@ one command, on macOS, Linux, or Windows.
 - **And** `--port`, `--host`, `--data-dir` (or `PRASHNA_DATA_DIR`), and
   `--no-browser` change those defaults; a port already in use exits with
   status 1 and suggests `--port`
+- **And** `prashna --tunnel cloudflare` or `prashna --tunnel ngrok` makes
+  the server reachable from the internet with nothing else to set: it
+  starts a Cloudflare quick tunnel (`cloudflared tunnel --url …`, no
+  account) or an ngrok tunnel (`ngrok http …`, the user's signed-in ngrok)
+  to the local port, reads the tunnel's public `https://` address, makes it
+  the default address for participant links, QR codes, and the copied
+  moderator URL in every session (UC-A-06), and prints `Participants join
+  at: <address>`. Rate limits (UC-X-08) still apply per visitor, not to
+  the tunnel as a whole: uvicorn takes the visitor's address from the
+  tunnel's `X-Forwarded-For`, which it trusts from the local machine. The
+  presenter keeps using the local address. Stopping Prashna stops the
+  tunnel; if the tunnel stops on its own, the terminal says participants
+  can no longer reach the server
+- **And** if the tunnel program is not installed, or prints no address
+  within 45 seconds, `prashna --tunnel …` exits with status 1, showing the
+  install command or the tunnel's last output lines
+- **And** a Cloudflare quick-tunnel hostname appears in DNS about 15 s after
+  `cloudflared` prints it; a lookup before then gets a "no such name"
+  answer that resolvers cache, so the address would fail for a while.
+  Prashna therefore prints the address only once the name resolves in
+  public DNS, checked over DNS over HTTPS (`cloudflare-dns.com`) so the
+  local resolver is never asked early. It waits at most 60 s
+  (`PRASHNA_TUNNEL_DNS_WAIT_SECS`), then prints the address with a note
+  that it may need a little longer
 - **And** behind a reverse proxy on the same machine (nginx proxying to
   `127.0.0.1`), the forwarded scheme is honoured: uvicorn trusts
   `X-Forwarded-*` from `127.0.0.1` by default, so sign-in cookies are
@@ -2257,6 +2292,11 @@ one command, on macOS, Linux, or Windows.
 - A request from `127.0.0.1` carrying `X-Forwarded-Proto: https` gets a `Secure` session cookie; the same request without the header doesn't.
 - `prashna backup create <file>` writes an archive of that data folder.
 - `prashna --version` prints the installed version.
+- With a stub `cloudflared` (and, separately, a stub `ngrok`) on `PATH` that prints a known address, `prashna --tunnel …` prints `Participants join at: <address>`, sessions report it as `default_base_url`, and stopping Prashna stops the stub (`test_uc_x_15_tunnel_wires_the_public_address`).
+- Through that tunnel, a visitor who exhausts the login rate limit (`X-Forwarded-For: <visitor A>`) gets `429` while another visitor (`<visitor B>`) still gets `401` for a wrong password (`test_uc_x_15_tunnel_rate_limits_each_visitor`).
+- Without the tunnel program on `PATH`, `prashna --tunnel cloudflare` exits 1 and names `cloudflared` and how to install it; a stub that exits without an address makes it exit 1 showing the stub's output (`test_uc_x_15_tunnel_reports_missing_or_failed_programs`).
+- `prashna.tunnel.wait_until_resolvable` returns once a DNS-over-HTTPS answer lists an address, returns `False` after its timeout, and returns at once for a timeout of 0 (`test_uc_x_15_tunnel_waits_for_public_dns`).
+- Opt-in: `PRASHNA_CLOUDFLARE_SMOKE=1 uv run pytest tests/ops/test_cloudflare_smoke.py` runs `prashna --tunnel cloudflare` with the real `cloudflared` and checks the health API, a participant page, and a WebSocket ping through the public address, querying it only after Prashna prints it.
 
 **Tests (packaging, CI)**
 - `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT`, includes `LICENSE`, and links Homepage to `https://kvsankar.github.io/prashna/` and Source to the GitHub repository.

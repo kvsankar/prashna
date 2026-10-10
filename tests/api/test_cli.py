@@ -225,3 +225,141 @@ def test_uc_x_15_installer_stops_when_uv_cannot_be_installed(tmp_path):
     assert result.returncode == 1
     assert "https://docs.astral.sh/uv/" in result.stderr
     assert "uv: not found" not in result.stderr
+
+
+# ---------- --tunnel (UC-X-15) ----------
+
+STUB_URLS = {"cloudflare": "https://stub-tunnel.trycloudflare.com", "ngrok": "https://stub-tunnel.ngrok-free.app"}
+
+_STUB = '''#!{python}
+import json, os, sys, time
+d = os.environ["STUB_DIR"]
+open(os.path.join(d, "{name}.pid"), "w").write(str(os.getpid()))
+open(os.path.join(d, "{name}.args"), "w").write(json.dumps(sys.argv[1:]))
+{body}
+while True:
+    time.sleep(0.2)
+'''
+_BODIES = {
+    # cloudflared logs its quick-tunnel address in a box on stderr.
+    "cloudflared": 'print("INF +----------------------------------------+", file=sys.stderr, flush=True)\n'
+                   'print("INF |  https://stub-tunnel.trycloudflare.com  |", file=sys.stderr, flush=True)',
+    # ngrok with --log stdout --log-format json writes one JSON object per line.
+    "ngrok": 'print(json.dumps({"lvl": "info", "msg": "started tunnel", "url": "https://stub-tunnel.ngrok-free.app"}), flush=True)',
+}
+
+
+def _stub_dir(tmp_path: Path, body_overrides: dict[str, str] | None = None) -> Path:
+    stubs = tmp_path / "stubs"
+    stubs.mkdir(exist_ok=True)
+    for name, body in {**_BODIES, **(body_overrides or {})}.items():
+        script = stubs / name
+        script.write_text(_STUB.format(python=sys.executable, name=name, body=body))
+        script.chmod(0o755)
+    return stubs
+
+
+def _setup_admin_and_session(base: str) -> tuple[httpx.Client, dict]:
+    c = httpx.Client(base_url=base, timeout=10)
+    c.post("/api/admin/setup", json={"username": "me", "password": "longenough", "setup_token": "t"}).raise_for_status()
+    session = c.post("/api/sessions", json={"title": "Tunnel"}).json()
+    return c, session
+
+
+@pytest.mark.parametrize("kind", ["cloudflare", "ngrok"])
+def test_uc_x_15_tunnel_wires_the_public_address(tmp_path, kind):
+    """UC-X-15: --tunnel starts the tunnel, prints its address, makes it every
+    session's default address, and stops the tunnel with Prashna."""
+    stubs = _stub_dir(tmp_path)
+    port = _free_port()
+    env = _cli_env(PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}", STUB_DIR=str(stubs), PRASHNA_SETUP_TOKEN="t",
+                   PRASHNA_TUNNEL_DNS_WAIT_SECS="0")
+    proc = _start_cli(["--data-dir", str(tmp_path / "d"), "--port", str(port), "--no-browser", "--tunnel", kind], env)
+    program = "cloudflared" if kind == "cloudflare" else "ngrok"
+    try:
+        _wait_up(port)
+        c, session = _setup_admin_and_session(f"http://127.0.0.1:{port}")
+        assert c.get(f"/api/sessions/{session['code']}").json()["default_base_url"] == STUB_URLS[kind]
+        c.close()
+        args = (stubs / f"{program}.args").read_text()
+        assert str(port) in args
+    finally:
+        out = _stop(proc)
+    assert f"Participants join at: {STUB_URLS[kind]}" in out
+    pid = int((stubs / f"{program}.pid").read_text())
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        os.kill(pid, 9)
+        raise AssertionError("the tunnel kept running after Prashna stopped")
+
+
+def test_uc_x_15_tunnel_rate_limits_each_visitor(tmp_path):
+    """UC-X-15: behind the tunnel, rate limits apply per visitor, not per tunnel."""
+    stubs = _stub_dir(tmp_path)
+    port = _free_port()
+    env = _cli_env(PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}", STUB_DIR=str(stubs), PRASHNA_SETUP_TOKEN="t",
+                   PRASHNA_TUNNEL_DNS_WAIT_SECS="0")
+    env["PRASHNA_RATELIMIT"] = "on"  # the test configuration turns limiting off
+    proc = _start_cli(["--data-dir", str(tmp_path / "d"), "--port", str(port), "--no-browser", "--tunnel", "cloudflare"], env)
+    try:
+        _wait_up(port)
+        c, _session = _setup_admin_and_session(f"http://127.0.0.1:{port}")
+        c.close()
+        wrong = {"username": "me", "password": "wrong-password"}  # pragma: allowlist secret
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10) as visitor:
+            codes = [visitor.post("/api/admin/login", json=wrong,
+                                  headers={"X-Forwarded-For": "203.0.113.5"}).status_code for _ in range(9)]
+            assert codes[-1] == 429, codes
+            other = visitor.post("/api/admin/login", json=wrong, headers={"X-Forwarded-For": "203.0.113.6"})
+            assert other.status_code == 401, other.text
+    finally:
+        _stop(proc)
+
+
+def test_uc_x_15_tunnel_reports_missing_or_failed_programs(tmp_path):
+    """UC-X-15: a missing tunnel program, or one that exits without an address,
+    stops Prashna with status 1 and says why."""
+    import shutil
+    if shutil.which("cloudflared", path="/usr/bin:/bin"):
+        pytest.skip("cloudflared is installed system-wide")
+    missing = subprocess.run(
+        [sys.executable, "-m", "prashna.cli", "--data-dir", str(tmp_path / "d1"), "--port", str(_free_port()),
+         "--no-browser", "--tunnel", "cloudflare"],
+        cwd=ROOT, env=_cli_env(PATH="/usr/bin:/bin"), capture_output=True, text=True, timeout=30)
+    assert missing.returncode == 1
+    assert "cloudflared" in missing.stderr and "install" in missing.stderr.lower()
+
+    stubs = _stub_dir(tmp_path, {"cloudflared": 'print("ERR failed to reach the edge: test failure", file=sys.stderr, flush=True)\nsys.exit(1)'})
+    failed = subprocess.run(
+        [sys.executable, "-m", "prashna.cli", "--data-dir", str(tmp_path / "d2"), "--port", str(_free_port()),
+         "--no-browser", "--tunnel", "cloudflare"],
+        cwd=ROOT, env=_cli_env(PATH=f"{stubs}{os.pathsep}/usr/bin:/bin", STUB_DIR=str(stubs)),
+        capture_output=True, text=True, timeout=60)
+    assert failed.returncode == 1
+    assert "test failure" in failed.stderr
+
+
+def test_uc_x_15_tunnel_waits_for_public_dns(monkeypatch):
+    """UC-X-15: the quick-tunnel address is reported only once public DNS has it."""
+    from prashna import tunnel
+
+    answers = iter([{"Status": 3}, {"Status": 3}, {"Status": 0, "Answer": [{"data": "198.51.100.7"}]}])
+    asked = []
+    monkeypatch.setattr(tunnel, "_doh_query", lambda host: (asked.append(host), next(answers))[1])
+    monkeypatch.setattr(tunnel.time, "sleep", lambda _s: None)
+    assert tunnel.wait_until_resolvable("https://new-name.trycloudflare.com", timeout=30) is True
+    assert asked == ["new-name.trycloudflare.com"] * 3
+
+    monkeypatch.setattr(tunnel, "_doh_query", lambda host: {"Status": 3})
+    clock = iter(range(0, 1000, 5))
+    monkeypatch.setattr(tunnel.time, "monotonic", lambda: next(clock))
+    assert tunnel.wait_until_resolvable("https://never.trycloudflare.com", timeout=30) is False
+
+    monkeypatch.setattr(tunnel, "_doh_query", lambda host: (_ for _ in ()).throw(AssertionError("asked")))
+    assert tunnel.wait_until_resolvable("https://x.trycloudflare.com", timeout=0) is True

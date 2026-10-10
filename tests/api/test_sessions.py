@@ -186,6 +186,16 @@ def test_uc_a_06_set_base_url_strips_slash(admin_client, make_session):
     assert r.json() == {"participant_base_url": "https://example.com"}
 
 
+def test_uc_a_06_default_base_url_follows_the_tunnel(admin_client, make_session, app_module, monkeypatch):
+    """UC-A-06: sessions carry the running tunnel's address as default_base_url."""
+    s = make_session()
+    assert admin_client.get(f"/api/sessions/{s['code']}").json()["default_base_url"] is None
+    monkeypatch.setattr(app_module, "PUBLIC_URL", "https://stub-tunnel.trycloudflare.com", raising=False)
+    body = admin_client.get(f"/api/sessions/{s['code']}").json()
+    assert body["default_base_url"] == "https://stub-tunnel.trycloudflare.com"
+    assert body["participant_base_url"] is None
+
+
 def test_uc_a_06_invalid_scheme_400(admin_client, make_session):
     """UC-A-06: non-http(s) URL → 400."""
     s = make_session()

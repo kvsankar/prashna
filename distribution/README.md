@@ -61,16 +61,20 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_LOGIN --password-stdin
 Do not put the token in `.env`; that file is passed to Compose and is for
 application configuration only.
 
-## Share temporarily with ngrok
+## Share temporarily over the internet
 
 Set `PRASHNA_TRUSTED_PROXY_HOPS=1` in `.env`, restart with
-`docker compose up -d`, and run:
+`docker compose up -d`, and run one of these on the same machine:
 
 ```bash
-ngrok http 8000
+cloudflared tunnel --url http://127.0.0.1:8000    # Cloudflare quick tunnel, no account
+ngrok http 8000                                   # ngrok, signed in
 ```
 
-The ngrok URL is public. Stop ngrok when the session is over.
+Copy the `https://` address it prints. On each session's page, paste it into
+**Base URL** in the Invite card, so the participant link and the projector's
+QR code use it. The address is public; stop the tunnel when the session is
+over.
 
 ## Backup
 

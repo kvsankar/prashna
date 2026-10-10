@@ -5,6 +5,8 @@ export interface Session {
   title: string;
   status: string; // planning | live | ended
   participant_base_url: string | null;
+  /** The running tunnel's public address (`prashna --tunnel`), else null. */
+  default_base_url?: string | null;
   feedback_enabled: boolean;
   started_at?: string | null;
   ended_at?: string | null;

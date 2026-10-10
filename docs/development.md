@@ -55,10 +55,14 @@ reject a generated secret or a SQLite database wherever it is staged (see
 To load settings from a file, copy `.env.example` to `.env` and pass
 `--env-file .env` to uvicorn.
 
-### Share a local server through ngrok
+### Share a local server over the internet
 
-A local server can serve a live audience through an ngrok tunnel without a
-remote deployment:
+`uv run prashna --tunnel cloudflare` (or `--tunnel ngrok`) works from a
+source checkout exactly as for an installed copy; see
+[Share over the internet](../README.md#share-over-the-internet).
+
+To run Uvicorn directly instead (UC-X-09), build the frontend, start it on
+localhost, and run the tunnel yourself:
 
 ```bash
 uv sync
@@ -66,19 +70,14 @@ npm ci
 npm run build
 export PRASHNA_TRUSTED_PROXY_HOPS=1
 uv run uvicorn prashna.main:app --host 127.0.0.1 --port 8000
+cloudflared tunnel --url http://127.0.0.1:8000    # or: ngrok http 8000
 ```
 
-Complete first-run setup on localhost before sharing the address. Then, in
-another terminal:
-
-```bash
-ngrok http 8000
-```
-
-Share the HTTPS URL that ngrok prints. One endpoint carries both HTTP and
+Then set each session's Base URL (UC-A-06) to the tunnel's address, so its
+participant link and QR code use it. One endpoint carries both HTTP and
 secure WebSocket traffic, so live updates need no second tunnel. Run one
-uvicorn worker only: the WebSocket hub is in memory. The ngrok URL is public;
-stop ngrok when the session ends. The behaviour is specified in UC-X-09.
+Uvicorn worker only: the WebSocket hub is in memory. The address is public;
+stop the tunnel when the session ends.
 
 ## Environment variables
 
@@ -96,6 +95,7 @@ These are all the variables the application reads. Each one is optional.
 | `PRASHNA_GITHUB_CLIENT_ID` | Unset. | GitHub OAuth app client id. GitHub sign-in is enabled only when all three GitHub variables are set (UC-A-26). |
 | `PRASHNA_GITHUB_CLIENT_SECRET` | Unset. | GitHub OAuth app client secret. |
 | `PRASHNA_GITHUB_ADMINS` | Unset. | Comma-separated allowlist of GitHub logins, matched case-insensitively. The OAuth app's callback URL is `https://<host>/api/auth/github/callback`. |
+| `PRASHNA_TUNNEL_DNS_WAIT_SECS` | `60` seconds. | How long `prashna --tunnel cloudflare` waits for the new address to appear in public DNS before printing it anyway (UC-X-15). `0` skips the wait; the stub-tunnel tests use that. |
 | `PRASHNA_WS_SEND_TIMEOUT_SECS` | `2.0` seconds. | Per-send timeout for WebSocket hints; a socket that times out is removed from its room. |
 
 The Compose files read further variables for image tags, ports, and host
@@ -187,6 +187,7 @@ prashna/             Python package
   diagnostics.py     structured, secret-safe diagnostic logging
   backup.py          backup and restore (python -m prashna.backup)
   cli.py             the `prashna` command
+  tunnel.py          --tunnel: run cloudflared or ngrok and read its address
   installers/        install.sh and install.ps1, served at /install.sh and /install.ps1
   static/            Vite build output (generated, ignored by Git)
 frontend/            Vite + TypeScript frontend, one HTML entry per role

@@ -170,6 +170,31 @@ def test_uc_a_06_base_url_save_and_clear(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_a_06_pages_use_the_default_base_url(base_url, admin_setup, page):
+    """UC-A-06: with no session base URL, links and QR use default_base_url
+    (the tunnel's address) instead of the page's own origin."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A06d {secrets.token_hex(3)}")
+    tunnel = "https://stub-tunnel.trycloudflare.com"
+
+    def with_default(route):
+        response = route.fetch()
+        body = response.json()
+        session = body["session"] if "session" in body else body
+        session["default_base_url"] = tunnel
+        route.fulfill(response=response, json=body)
+
+    try:
+        for pattern in (f"**/api/sessions/{s['code']}", "**/moderator-bootstrap", "**/display-bootstrap"):
+            page.route(pattern, with_default)
+        _goto_session_page(page, base_url, s)
+        expect(page.locator("#invite-url")).to_have_text(f"{tunnel}/s/{s['code']}", timeout=5000)
+        page.goto(f"{base_url}/p/{s['code']}")
+        expect(page.locator("#origin")).to_have_text("stub-tunnel.trycloudflare.com", timeout=5000)
+    finally:
+        c.close()
+
+
 def test_uc_a_06_base_url_invalid_toasts(base_url, admin_setup, page):
     """UC-A-06: invalid (non-http) URL shows error toast."""
     c = api_login(base_url)

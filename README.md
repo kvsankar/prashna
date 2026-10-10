@@ -73,6 +73,47 @@ one-time page where you choose the admin's username and password. The page
 works once. After that, sign in to create sessions and write quizzes.
 Prashna keeps its data in your app-data folder.
 
+## Share over the internet
+
+To let people join from their own phones over the internet, start Prashna
+with a tunnel:
+
+```bash
+prashna --tunnel cloudflare      # Cloudflare quick tunnel: no account needed
+prashna --tunnel ngrok           # ngrok: uses your signed-in ngrok
+```
+
+Prashna starts the tunnel, waits until its public address works, and prints
+it (`Participants join at: https://…`). Participant links and the projector's
+QR code use that address automatically, while you keep using
+`http://127.0.0.1:8000` yourself. Ctrl+C stops Prashna and the tunnel
+together.
+
+You need the tunnel program once:
+
+- **Cloudflare:** install `cloudflared` (macOS: `brew install cloudflared`;
+  Windows: `winget install --id Cloudflare.cloudflared`; Linux:
+  [Cloudflare's downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)).
+  No account is needed.
+- **ngrok:** install it from [ngrok.com/download](https://ngrok.com/download)
+  and sign in once with `ngrok config add-authtoken <your token>`.
+
+On the free plans they differ like this:
+
+| | Cloudflare quick tunnel | ngrok free plan |
+| --- | --- | --- |
+| Account | None | Required |
+| Address | New on every start | The same every time |
+| Participants | Go straight in | See an ngrok warning page once and click "Visit" |
+| Limits | 200 requests in progress at once | 20,000 requests and 1 GB per month |
+
+For a live room, prefer Cloudflare. Every live update makes each
+participant's page fetch new data, so one session with a large audience can
+use up ngrok's monthly request allowance.
+
+The address is public while the tunnel runs. Stop Prashna when the session
+ends.
+
 ## Roles
 
 | Role | Page | Who gets in |

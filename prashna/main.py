@@ -115,6 +115,10 @@ def _diagnostic_path(path: str) -> str:
 # The `prashna` command prints the setup link itself (as a full URL), so it
 # turns this off to keep the link from appearing twice.
 ANNOUNCE_SETUP_LINK: bool = True
+# The public address of the tunnel `prashna --tunnel` started, if any. Pages
+# use it for participant links and QR codes when a session has no base URL
+# of its own (UC-A-06, UC-X-15).
+PUBLIC_URL: str | None = None
 
 
 @asynccontextmanager
@@ -390,6 +394,7 @@ def serialize_session(s: m.Session, *, include_mod_key: bool = False) -> dict:
         "title": s.title,
         "status": s.status,
         "participant_base_url": s.participant_base_url,
+        "default_base_url": PUBLIC_URL,
         "feedback_enabled": bool(s.feedback_enabled),
         "created_at": s.created_at.isoformat(),
         "started_at": s.started_at.isoformat() if s.started_at else None,

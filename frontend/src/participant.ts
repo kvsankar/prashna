@@ -1,4 +1,4 @@
-import { $, answerOption, api, el, errorToast, guardClick, markUsable, type LiveMessage, openLiveSocket, pathCode, renderQR, setVisible, toast } from "./common";
+import { $, answerOption, api, el, errorToast, guardClick, markUsable, openLiveSocket, pathCode, publicBase, renderQR, setVisible, toast, type LiveMessage } from "./common";
 import type { Feedback, ParticipantBootstrap, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
@@ -34,8 +34,7 @@ function applySession(s: Session, refreshFeedback = true): void {
   setVisible($("#ended-card"), sessionEnded);
   setVisible($("#feedback-card"), feedbackEnabled);
   if (feedbackEnabled && refreshFeedback) void loadFeedback();
-  const base = (s.participant_base_url || location.origin).replace(/\/$/, "");
-  void renderQR($("#share-qr"), `${base}/s/${s.code}`, { cellSize: 3, margin: 2 })
+  void renderQR($("#share-qr"), `${publicBase(s)}/s/${s.code}`, { cellSize: 3, margin: 2 })
     .catch(() => { /* QR is best-effort */ });
 }
 
