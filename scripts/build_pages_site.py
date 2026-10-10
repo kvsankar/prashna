@@ -25,6 +25,13 @@ ONE_LINERS = (
     ("Windows (PowerShell)", f'powershell -ExecutionPolicy ByPass -c "irm {SITE_URL}/install.ps1 | iex"'),
 )
 
+# The same routes the README shows for machines that already have Python.
+WITH_PYTHON = (
+    ("With pipx", "pipx install prashna"),
+    ("Or with pip inside a virtual environment",
+     "python3 -m venv ~/.prashna\n~/.prashna/bin/pip install prashna"),
+)
+
 PAGE = """<!doctype html>
 <html lang="en">
 <head>
@@ -54,13 +61,21 @@ PAGE = """<!doctype html>
 <p class="lead">Live Q&amp;A and quizzes for any session with an audience.</p>
 
 <h2>Install</h2>
+<p>One command, on a machine with or without Python. It installs
+<a href="https://docs.astral.sh/uv/">uv</a>, which fetches Python if needed.</p>
 {installs}
-<p>Then start it:</p>
+<h2>Already have Python 3.11 or newer?</h2>
+<p>Install without uv:</p>
+{with_python}
+<p>A plain <code>pip install</code> into the system Python is refused on Debian,
+Ubuntu, and some other Linux distributions; the virtual environment avoids
+that. On Windows, the pip is <code>~\\.prashna\\Scripts\\pip</code>.</p>
+<h2>Start it</h2>
 <pre><code>prashna</code></pre>
-<p>Your browser opens on a one-time page where you choose the admin's
-username and password. If you already have
-<a href="https://docs.astral.sh/uv/">uv</a>, <code>uvx prashna</code> installs
-and starts it in one step.</p>
+<p>With the virtual environment, run <code>~/.prashna/bin/prashna</code>. Your
+browser opens on a one-time page where you choose the admin's username and
+password. If you already have uv, <code>uvx prashna</code> installs and starts
+it in one step.</p>
 
 <h2>More</h2>
 <p><a href="{repo}">Source code and documentation on GitHub</a></p>
@@ -70,12 +85,15 @@ and starts it in one step.</p>
 """
 
 
-def render_index() -> str:
-    installs = "\n".join(
+def _blocks(items: tuple[tuple[str, str], ...]) -> str:
+    return "\n".join(
         f"<p>{html.escape(label)}:</p>\n<pre><code>{html.escape(command, quote=False)}</code></pre>"
-        for label, command in ONE_LINERS
+        for label, command in items
     )
-    return PAGE.format(installs=installs, repo=REPO_URL)
+
+
+def render_index() -> str:
+    return PAGE.format(installs=_blocks(ONE_LINERS), with_python=_blocks(WITH_PYTHON), repo=REPO_URL)
 
 
 def build_site(out_dir: Path) -> None:

@@ -230,6 +230,10 @@ PAGES_URL = "https://kvsankar.github.io/prashna"
 ONE_LINERS = (
     f"curl -LsSf {PAGES_URL}/install.sh | sh",
     f'powershell -ExecutionPolicy ByPass -c "irm {PAGES_URL}/install.ps1 | iex"',
+    # Without uv, for anyone with Python 3.11 or newer.
+    "pipx install prashna",
+    "python3 -m venv ~/.prashna",
+    "~/.prashna/bin/pip install prashna",
 )
 
 

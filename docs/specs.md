@@ -2187,6 +2187,8 @@ one command, on macOS, Linux, or Windows.
   - `uvx prashna` (if `uv` is installed)
   - `curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh` (macOS, Linux)
   - `powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"` (Windows)
+  - `pipx install prashna`, or `pip install prashna` inside a virtual
+    environment (any machine with Python 3.11 or newer, no `uv` needed)
 - **Then** the install scripts install `uv` if it is missing (Astral's
   installer), then run `uv tool install --upgrade prashna`, and print how
   to start it; if `uv` still cannot be found after that step, they stop with
@@ -2241,7 +2243,7 @@ one command, on macOS, Linux, or Windows.
 
 **Tests (packaging, CI)**
 - `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT`, includes `LICENSE`, and links Homepage to `https://kvsankar.github.io/prashna/` and Source to the GitHub repository.
-- `scripts/build_pages_site.py <dir>` writes `install.sh` and `install.ps1` byte-for-byte equal to `prashna/installers/`, and an `index.html` showing both one-liners with the `kvsankar.github.io/prashna` URLs.
+- `scripts/build_pages_site.py <dir>` writes `install.sh` and `install.ps1` byte-for-byte equal to `prashna/installers/`, and an `index.html` showing both one-liners with the `kvsankar.github.io/prashna` URLs and the pipx and virtual-environment commands; README.md shows the same commands.
 - The CI workflow has a `pages` job that runs only on `v*` tags, needs the PyPI job, builds the site with that script, and deploys it with `actions/upload-pages-artifact` and `actions/deploy-pages` under the `github-pages` environment with `pages: write` and `id-token: write`.
 
 ---

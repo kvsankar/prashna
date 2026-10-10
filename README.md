@@ -25,22 +25,46 @@ quiz question in step with the moderator.
 
 ## Install
 
-One command, on macOS, Linux, or Windows:
+Choose one of these. Each installs the same `prashna` command.
+
+**One command, on macOS, Linux, or Windows.** Works on a machine without
+Python; it installs [uv](https://docs.astral.sh/uv/), which fetches Python if
+needed.
 
 ```bash
 curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh                  # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"   # Windows
 ```
 
+**Already have Python 3.11 or newer?** Install without uv, using
+[pipx](https://pipx.pypa.io/):
+
+```bash
+pipx install prashna
+```
+
+Or use pip inside a virtual environment:
+
+```bash
+python3 -m venv ~/.prashna
+~/.prashna/bin/pip install prashna          # Windows: ~\.prashna\Scripts\pip install prashna
+```
+
+A plain `pip install` into the system Python is refused on Debian, Ubuntu,
+and some other Linux distributions ("externally-managed-environment"); the
+virtual environment avoids that.
+
+**Already have uv?** `uvx prashna` installs and starts it in one step.
+
 Then start it:
 
 ```bash
-prashna
+prashna                                     # virtual environment: ~/.prashna/bin/prashna
 ```
 
-If you already have [uv](https://docs.astral.sh/uv/), `uvx prashna` installs
-and starts it in one step. Update with `uv tool upgrade prashna`.
-`prashna --help` lists the options: port, data folder, and backups.
+Update with `uv tool upgrade prashna`, `pipx upgrade prashna`, or
+`~/.prashna/bin/pip install --upgrade prashna`. `prashna --help` lists the
+options: port, data folder, and backups.
 
 ## First run
 
