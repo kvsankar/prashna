@@ -2231,7 +2231,7 @@ one command, on macOS, Linux, or Windows.
 - `prashna --version` prints the installed version.
 
 **Tests (packaging, CI)**
-- `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT` and includes `LICENSE`.
+- `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT`, includes `LICENSE`, and links Homepage to `https://kvsankar.github.io/prashna/` and Source to the GitHub repository.
 - `scripts/build_pages_site.py <dir>` writes `install.sh` and `install.ps1` byte-for-byte equal to `prashna/installers/`, and an `index.html` showing both one-liners with the `kvsankar.github.io/prashna` URLs.
 - The CI workflow has a `pages` job that runs only on `v*` tags, needs the PyPI job, builds the site with that script, and deploys it with `actions/upload-pages-artifact` and `actions/deploy-pages` under the `github-pages` environment with `pages: write` and `id-token: write`.
 

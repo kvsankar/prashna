@@ -1,6 +1,6 @@
 [project]
 name = "prashna"
-version = "0.1.0"
+version = "0.2.0"
 description = "Live Q&A and quizzes for any session with an audience"
 readme = "README.md"
 license = "MIT"
@@ -44,7 +44,10 @@ dev = [
 prashna = "prashna.cli:main"
 
 [project.urls]
-Homepage = "https://prashna.sankara.net/"
+Homepage = "https://kvsankar.github.io/prashna/"
+Source = "https://github.com/kvsankar/prashna"
+Documentation = "https://github.com/kvsankar/prashna/tree/main/docs"
+Issues = "https://github.com/kvsankar/prashna/issues"
 
 [build-system]
 requires = ["hatchling>=1.25"]
