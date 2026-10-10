@@ -251,9 +251,41 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
       };
     }
   }
+  // Keepalive (UC-X-01): ping every 25 s; a socket silent for 60 s is treated
+  // as dead and replaced, so a connection that died without closing (Wi-Fi
+  // drop, a proxy's long idle timeout) cannot leave the page frozen.
+  let pingMs = 25_000;
+  if (import.meta.env.MODE === "test") {
+    try {
+      const override = Number(localStorage.getItem("prashna:keepalive-ms"));
+      if (override > 0) pingMs = override;
+    } catch { /* storage unavailable: keep the default */ }
+  }
+  const silenceMs = pingMs * 2.4;
+  let lastFrameAt = Date.now();
+  setInterval(() => {
+    if (!alive || !ws) return;
+    if (ws.readyState === WebSocket.OPEN) {
+      if (Date.now() - lastFrameAt > silenceMs) {
+        replaceDeadSocket();
+        return;
+      }
+      try { ws.send("ping"); } catch { /* the close handler reconnects */ }
+    }
+  }, pingMs);
+  function replaceDeadSocket(): void {
+    const dead = ws;
+    dead.onclose = null;
+    dead.onerror = null;
+    dead.onmessage = null;
+    try { dead.close(); } catch { /* already closing */ }
+    connect();
+  }
   function connect(): void {
     ws = new WebSocket(url);
+    lastFrameAt = Date.now();
     ws.onopen = () => {
+      lastFrameAt = Date.now();
       retry = 0;
       // The page performs its own initial load. Refetch only after a real
       // reconnect so opening the socket does not duplicate every first-load
@@ -264,7 +296,11 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
       connectedOnce = true;
     };
     ws.onmessage = (ev) => {
-      try { onMessage(JSON.parse(ev.data)); } catch { /* ignore malformed frame */ }
+      lastFrameAt = Date.now();
+      try {
+        const msg = JSON.parse(ev.data) as LiveMessage;
+        if (msg.type !== "pong") onMessage(msg);  // keepalive replies are not refresh hints
+      } catch { /* ignore malformed frame */ }
     };
     ws.onclose = () => {
       if (!alive) return;

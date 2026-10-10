@@ -6,6 +6,10 @@ $("#code").textContent = CODE;
 
 let lastQrUrl: string | null = null;
 let latestLoadSeq = 0;
+// While a quiz run is live the projector also refetches every 5 s, so votes
+// and question changes show even if live updates stop arriving (UC-D-05).
+let quizIsLive = false;
+setInterval(() => { if (quizIsLive) void loadAll().catch(() => { /* next tick retries */ }); }, 5000);
 
 async function loadAll(): Promise<void> {
   const seq = ++latestLoadSeq;
@@ -26,6 +30,7 @@ async function loadAll(): Promise<void> {
   const live = runs.find((r) => r.status === "live");
   const queued = runs.find((r) => r.status === "queued");
   const closed = runs.find((r) => r.status === "closed");
+  quizIsLive = Boolean(live);
   if (live) renderQuiz(live);
   else if (queued) renderLobby(queued);
   else if (closed) renderQuiz(closed);

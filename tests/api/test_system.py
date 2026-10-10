@@ -48,6 +48,60 @@ def test_uc_x_01_session_state_on_patch(admin_client, make_session):
         assert _ws_recv_types(ws) == [{"type": "session_state"}]
 
 
+def test_uc_x_01_ping_gets_pong(admin_client, make_session):
+    """UC-X-01: a page's keepalive ping is answered, so it can tell the socket is alive."""
+    s = make_session()
+    with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
+        ws.send_text("ping")
+        # A broadcast follows, so the test never waits forever for a missing pong.
+        admin_client.patch(f"/api/sessions/{s['code']}", json={"title": "x"})
+        assert ws.receive_json() == {"type": "pong"}
+        assert ws.receive_json() == {"type": "session_state"}
+
+
+def test_uc_x_01_failed_socket_is_closed():
+    """UC-X-01: a socket whose send fails is evicted *and closed* (so its page
+    reconnects), and the broadcast still reaches the other sockets."""
+    import asyncio
+    from typing import cast
+
+    from fastapi import WebSocket
+
+    from prashna.ws import Hub
+
+    class Healthy:
+        def __init__(self):
+            self.sent = []
+            self.closed = False
+
+        async def accept(self):
+            pass
+
+        async def send_json(self, message):
+            self.sent.append(message)
+
+        async def close(self, code=1000):
+            self.closed = True
+
+    class Broken(Healthy):
+        async def send_json(self, message):
+            raise RuntimeError("stalled")
+
+    async def scenario():
+        hub = Hub()
+        good, bad = Healthy(), Broken()
+        await hub.join("room", cast(WebSocket, good))
+        await hub.join("room", cast(WebSocket, bad))
+        await hub.broadcast("room", {"type": "quiz_submission"})
+        await asyncio.sleep(0.05)  # the eviction close runs in the background
+        return hub, good, bad
+
+    hub, good, bad = asyncio.run(scenario())
+    assert good.sent == [{"type": "quiz_submission"}] and not good.closed
+    assert bad.closed
+    assert hub.client_count("room") == 1
+
+
 def test_uc_x_01_query_new(admin_client, make_session):
     """UC-X-01: POST queries → query_new."""
     s = make_session()

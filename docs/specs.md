@@ -1751,10 +1751,15 @@ session.
 - **Then** `openLiveSocket` retries with exponential backoff (capped
   ~32s); when it reconnects, the next broadcast prompts a refetch
   and the projector recovers without operator intervention
+- **And** while a quiz run is live, the projector also refetches its state
+  every 5 s whatever the socket does, so question changes and live vote
+  counts (UC-D-08) are never more than about 5 s stale even when no
+  live update arrives
 
 **Tests (UI)**
 - On `/p/<CODE>`, simulating a WS server restart causes the client to retry with exponential backoff (delays approximately 1s, 2s, 4s, 8s, 16s, capped near 32s).
 - After the WS becomes available again, the next broadcast triggers a refetch and `#queries` / `#quiz-body` reflect the latest state.
+- With the WebSocket blocked entirely and live counts on, a participant's vote appears in the projector's `#quiz-body` within about 5 s (`test_uc_d_05_projector_polls_while_a_quiz_is_live`).
 
 ### UC-D-06: Quiz states on the projector
 
@@ -1846,7 +1851,14 @@ are the rules every user-facing UC silently relies on.
   disconnected.
 - **And** delivery is fanned out concurrently with a per-send timeout
   (2 s by default, `PRASHNA_WS_SEND_TIMEOUT_SECS`). A slow or stalled receiver does not block the API
-  response; failed sockets are evicted from the room.
+  response; a socket whose send fails or times out is evicted from the room
+  **and closed**, so its page reconnects and resyncs instead of silently
+  receiving nothing more
+- **And** every page sends a `ping` text frame every 25 s and the server
+  answers `{type: "pong"}`; a page that receives no frame for 60 s closes
+  its socket and reconnects, so a connection that died without closing
+  (Wi-Fi drop, sleeping network card, an hour-long proxy idle timeout)
+  recovers within a minute
 
 **Tests (API)**
 - Connect WS to `/ws/sessions/{CODE}` with matching `Origin`/`Host`; perform `PATCH /api/sessions/{code}` → WS receives `{"type": "session_state"}`.
@@ -1862,6 +1874,11 @@ are the rules every user-facing UC silently relies on.
 - `PATCH .../me` → frame `{"type": "participant"}`.
 - `POST .../feedback` → frame `{"type": "feedback"}`.
 - `POST .../feedback_enabled` → frame `{"type": "feedback_state"}` (UC-M-12).
+- Sending the text frame `ping` → the server answers `{"type": "pong"}` (`test_uc_x_01_ping_gets_pong`).
+- A broadcast whose send to one socket fails or times out evicts that socket and closes it, and still delivers to the others (`test_uc_x_01_failed_socket_is_closed`).
+
+**Tests (UI)**
+- With the server's frames to the page swallowed after the socket opens, the page reconnects (a second socket opens) once its silence timeout passes; test builds shorten the 25 s / 60 s timings through `localStorage` `prashna:keepalive-ms` (`test_uc_x_01_silent_socket_reconnects`).
 
 ### UC-X-02: WebSocket upgrade rejections
 

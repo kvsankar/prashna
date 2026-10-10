@@ -496,3 +496,62 @@ def test_uc_d_08_live_counts_off_reverts(base_url, admin_setup, page):
         expect(page.locator("#quiz-body .opt-pct")).to_have_count(0, timeout=5000)
     finally:
         c.close()
+
+
+# ---------- live updates that cannot freeze (UC-X-01, UC-D-05) ----------
+
+def _vote_as_new_participant(base_url, code, run_id):
+    with httpx.Client(base_url=base_url, timeout=5) as p:
+        q = p.get(f"/api/sessions/{code}/quiz_runs/{run_id}").json()["current_question"]
+        r = p.post(f"/api/sessions/{code}/quiz_runs/{run_id}/submit",
+                   json={"question_id": q["id"], "answer_ids": [q["answers"][0]["id"]]})
+        assert r.status_code == 200, r.text
+
+
+def _live_quiz_with_counts(base_url):
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-live {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-lives {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts", json={"show": True}).raise_for_status()
+    return c, s, run
+
+
+def test_uc_x_01_silent_socket_reconnects(base_url, admin_setup, page):
+    """UC-X-01: a socket that stays open but delivers nothing is replaced once
+    the page's keepalive hears no reply (timings shortened for the test build)."""
+    c, s, _run = _live_quiz_with_counts(base_url)
+    opened = []
+
+    def swallow_server_frames(ws):
+        opened.append(ws.url)
+        server = ws.connect_to_server()
+        server.on_message(lambda _message: None)  # the server's frames never reach the page
+
+    try:
+        page.add_init_script("localStorage.setItem('prashna:keepalive-ms', '300')")
+        page.route_web_socket("**/ws/sessions/**", swallow_server_frames)
+        page.goto(f"{base_url}/p/{s['code']}")
+        page.wait_for_selector("#quiz-body .option")
+        for _ in range(50):
+            if len(opened) >= 2:
+                break
+            page.wait_for_timeout(100)
+        assert len(opened) >= 2, "the page kept a silent socket instead of reconnecting"
+    finally:
+        c.close()
+
+
+def test_uc_d_05_projector_polls_while_a_quiz_is_live(base_url, admin_setup, page):
+    """UC-D-05: with no live updates at all, the projector still shows new votes within ~5 s."""
+    c, s, run = _live_quiz_with_counts(base_url)
+    try:
+        page.route_web_socket("**/ws/sessions/**", lambda _ws: None)  # socket opens, nothing ever arrives
+        page.goto(f"{base_url}/p/{s['code']}")
+        expect(page.locator("#quiz-body")).to_contain_text("0 respondent", timeout=5000)
+        _vote_as_new_participant(base_url, s["code"], run["id"])
+        expect(page.locator("#quiz-body")).to_contain_text("1 respondent", timeout=8000)
+    finally:
+        c.close()

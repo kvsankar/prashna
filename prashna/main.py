@@ -2786,7 +2786,10 @@ async def ws_session(ws: WebSocket, code: str):
     )
     try:
         while True:
-            await ws.receive_text()
+            # Pages send "ping" every 25 s and reconnect if nothing comes back
+            # (UC-X-01); every other client frame is ignored.
+            if await ws.receive_text() == "ping":
+                await ws.send_json({"type": "pong"})
     except WebSocketDisconnect:
         hub.leave(room, ws)
         log_diagnostic(
