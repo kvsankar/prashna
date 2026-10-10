@@ -62,3 +62,13 @@ These do not block the current single-process, single-operator deployment:
   for known columns and indexes.
 - Replace the in-memory WebSocket hub with shared pub/sub before running more
   than one application process.
+
+## Reconcile the production compose file with `deploy/docker-compose.yml`
+
+`/opt/prashna/docker-compose.yml` on the Hetzner host differs from the
+repository's file: it reads its settings from `/opt/prashna/.env` through
+`env_file`, uses the image's own start command and fixed bind-mount paths,
+while the repository's lists each setting, requires `PRASHNA_SECRET_KEY`,
+overrides the start command, and parameterises the paths. Only the journald
+`logging` block is applied to both. Decide which form is right, make the
+repository match, and install it on the host.

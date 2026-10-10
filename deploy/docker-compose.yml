@@ -41,3 +41,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    # Logs go to the host journal, so replacing the container on a deploy
+    # does not delete them; the journal's own cap bounds their size.
+    logging:
+      driver: journald
+      options:
+        tag: prashna

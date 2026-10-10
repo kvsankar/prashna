@@ -169,13 +169,16 @@ keeps the `/opt/prashna` defaults.
 
 ## Logs and retention
 
-The app writes operator diagnostics to the container log stream. Inspect them
-with:
+The app writes operator diagnostics to the container log stream. The compose
+file sends that stream to the host's systemd journal (`logging: journald`), so
+the logs survive a deploy, which replaces the container. Inspect them with:
 
 ```bash
-cd /opt/prashna && docker compose logs -f prashna
+cd /opt/prashna && docker compose logs -f prashna          # current container
+journalctl CONTAINER_NAME=prashna --since yesterday         # across deploys
 ```
 
-Keep at least 7 days of application logs on the host or in your external log
-shipper. Configure that retention in Docker, journald, or the server's logging
-stack; Prashna emits safe diagnostic context but does not own log rotation.
+The journal's size and age limits bound the logs: on the Hetzner host,
+`homelab`'s `journald.yml` playbook sets 1 GB and 8 weeks. Keep at least 7
+days of application logs; Prashna emits safe diagnostic context but does not
+own log rotation.

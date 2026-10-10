@@ -263,3 +263,11 @@ def test_pages_publish_contract():
     assert "name: github-pages" in job
     assert job.index("scripts/build_pages_site.py") < job.index("actions/upload-pages-artifact@v5") \
         < job.index("actions/deploy-pages@v5")
+
+
+def test_production_compose_logs_to_the_journal():
+    """Production container logs go to the host journal, so a deploy (which
+    replaces the container) does not delete them (deploy/README.md)."""
+    import yaml
+    service = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text())["services"]["prashna"]
+    assert service["logging"] == {"driver": "journald", "options": {"tag": "prashna"}}
