@@ -60,8 +60,16 @@ instead; see [`distribution/README.md`](../distribution/README.md).
 Either:
 
 ```bash
-cd /opt/prashna && docker compose pull && docker compose up -d --wait
+cd /opt/prashna
+old=$(docker inspect --format '{{.Image}}' $(docker compose ps -q))
+docker tag "$old" ghcr.io/kvsankar/prashna:rollback-$(date +%Y%m%d%H%M)
+docker compose pull && docker compose up -d --wait
 ```
+
+The tag keeps the image that was running, so a bad release can be undone
+with `docker tag ghcr.io/kvsankar/prashna:rollback-<stamp>
+ghcr.io/kvsankar/prashna:latest && docker compose up -d`. A restart drops
+every live connection for a few seconds; update between quizzes.
 
 Or wire up the optional `deploy.yml` workflow (not included by default) that
 SSHes in and runs that on every push to `main`.

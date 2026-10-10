@@ -402,8 +402,32 @@ them in SQLite. Log retention for production is in
   client.
 - Rationale: reconnects, missed messages, and client recovery stay simple.
 - Consequence: clients refetch more often, and state stays easy to validate.
+- A page must never stay deaf without noticing. A projector once stopped
+  updating mid-quiz: a socket can be evicted for a slow send, or die without
+  closing, while the page still believes it is connected. So the hub closes
+  every socket it evicts, every page pings every 25 s and replaces a socket
+  silent for 60 s, and the projector also refetches every 5 s while a quiz
+  run is live (UC-X-01, UC-D-05). Do not remove the projector refresh as
+  redundant; it is the backstop when both other mechanisms fail.
 - Revisit when: refetch load breaks the interaction-latency or room-size
   targets in [`specs.md`](specs.md#quality-targets).
+
+### One command to share over the internet
+
+- Decision: `prashna --tunnel cloudflare|ngrok` starts the tunnel, reads its
+  address, and makes it the default for every participant link and QR code
+  (UC-X-15, UC-A-06). The server learns the address internally; there is no
+  user-facing public-URL setting.
+- Alternatives: a `--public-url` option or `PRASHNA_PUBLIC_URL` setting for
+  addresses Prashna does not start itself (same-Wi-Fi rooms, a named tunnel,
+  a reverse proxy).
+- Rationale: those cases are rare, and the per-session Base URL already
+  covers them; a tunnel the user never configures needs no option.
+- Consequence: a same-Wi-Fi room or a self-managed tunnel needs the Base URL
+  typed into each session.
+- Revisit when: same-Wi-Fi rooms become common; detecting the laptop's
+  network address for `--host 0.0.0.0` would then serve better than an
+  option.
 
 ### SQLite with an additive startup bridge
 
