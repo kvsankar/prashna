@@ -162,14 +162,18 @@ def main(argv: list[str] | None = None) -> int:
     if tunnel:
         # uvicorn re-raises SIGINT/SIGTERM after shutting down, which ends the
         # process before `finally` runs; it calls these handlers when it does.
-        def stop_tunnel_then_exit(signum: int, _frame: object) -> None:
+        # Each hands over to the handler that was installed before it, so
+        # default behaviour (and any tool watching the process) is kept.
+        previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+
+        def stop_tunnel_then_continue(signum: int, _frame: object) -> None:
             assert tunnel is not None
             tunnel.stop()
-            signal.signal(signum, signal.SIG_DFL)
+            signal.signal(signum, previous[signal.Signals(signum)])
             signal.raise_signal(signum)
 
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            signal.signal(sig, stop_tunnel_then_exit)
+        for sig in previous:
+            signal.signal(sig, stop_tunnel_then_continue)
     try:
         uvicorn.run(server.app, host=args.host, port=args.port, log_level="warning")
     finally:
