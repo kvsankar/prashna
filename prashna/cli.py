@@ -47,6 +47,10 @@ def _parser() -> argparse.ArgumentParser:
                              "tunnel (needs cloudflared, no account) or ngrok (needs a signed-in ngrok)")
     parser.add_argument("--version", action="version", version=f"prashna {_version()}")
     commands = parser.add_subparsers(dest="command")
+    reset = commands.add_parser("reset-password", help="set a new password for the admin (when it is forgotten)")
+    # Accept --data-dir after the subcommand too; SUPPRESS keeps a value given
+    # before the subcommand from being reset to None.
+    reset.add_argument("--data-dir", default=argparse.SUPPRESS, help="folder holding the database")
     backup = commands.add_parser("backup", add_help=False, help="create or restore a backup of the data folder")
     backup.add_argument("args", nargs=argparse.REMAINDER)
     return parser
@@ -114,9 +118,55 @@ def _summarize(session) -> tuple[str, str | None]:
     return f"{who}, {_plural(sessions, 'session')}, {_plural(quizzes, 'quiz', 'quizzes')}", sign_in_as
 
 
+def _read_new_password() -> tuple[str, str]:
+    if sys.stdin.isatty():
+        import getpass
+        return getpass.getpass("New password: "), getpass.getpass("Repeat it: ")
+    lines = sys.stdin.read().splitlines() + ["", ""]
+    return lines[0], lines[1]
+
+
+def _reset_password(data_dir: Path) -> int:
+    """`prashna reset-password`: set a new admin password from the machine
+    that holds the data folder (UC-X-15). Existing sign-ins stay valid."""
+    db_path = Path(os.environ.get("PRASHNA_DB_PATH") or data_dir / "prashna.db")
+    if not db_path.is_file() or db_path.stat().st_size == 0:
+        print(f"No Prashna database in {db_path.parent}.", file=sys.stderr)
+        return 1
+    os.environ["PRASHNA_DB_PATH"] = str(db_path)
+    from sqlalchemy import select
+
+    from . import auth, db
+    from . import models as m
+    from .main import MIN_PASSWORD_LEN
+    with db.SessionLocal() as session:
+        admins = session.scalars(select(m.User).where(m.User.password_hash != "")).all()
+        if not admins:
+            print("No admin yet. Start `prashna` and create one with the setup link it shows.", file=sys.stderr)
+            return 1
+        if len(admins) > 1:
+            names = ", ".join(a.username for a in admins)
+            print(f"More than one admin ({names}); this command expects one.", file=sys.stderr)
+            return 1
+        admin = admins[0]
+        first, second = _read_new_password()
+        if first != second:
+            print("The two passwords did not match. Nothing changed.", file=sys.stderr)
+            return 1
+        if len(first) < MIN_PASSWORD_LEN:
+            print(f"The password must be at least {MIN_PASSWORD_LEN} characters. Nothing changed.", file=sys.stderr)
+            return 1
+        admin.password_hash = auth.hash_password(first)
+        session.commit()
+        print(f"Password changed for {admin.username}.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     data_dir = _data_dir(args.data_dir)
+    if args.command == "reset-password":
+        return _reset_password(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     # Set before the server modules are imported; they read these at import.
     os.environ.setdefault("PRASHNA_DB_PATH", str(data_dir / "prashna.db"))

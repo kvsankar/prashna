@@ -102,10 +102,26 @@ def test_uc_a_04_row_actions_include_moderate(base_url, admin_setup, page):
     try:
         admin_login_via_ui(page, base_url)
         actions = page.locator("#session-rows tr").filter(has_text=s["title"]).locator("td.actions")
-        expect(actions.locator("a, button")).to_have_text(["Moderate", "Participant", "Projector", "Delete"])
+        expect(actions.locator("a, button")).to_have_text(["Moderate", "Participant", "Projector", "Start", "Delete"])
         expect(actions.get_by_role("link", name="Moderate")).to_have_attribute("href", f"/m/{s['code']}")
         actions.get_by_role("link", name="Moderate").click()
         page.wait_for_url(f"**/m/{s['code']}")
+    finally:
+        c.close()
+
+
+def test_uc_a_04_start_from_the_list(base_url, admin_setup, page):
+    """UC-A-04: Start on a not-started row starts the session in place."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A04s {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        row = page.locator("#session-rows tr").filter(has_text=s["title"])
+        row.get_by_role("button", name="Start").click()
+        expect(row.locator(".badge-live")).to_be_visible(timeout=5000)
+        expect(row.get_by_role("button", name="Start")).to_have_count(0)
+        expect(page).to_have_url(f"{base_url}/")
+        assert c.get(f"/api/sessions/{s['code']}").json()["status"] == "live"
     finally:
         c.close()
 

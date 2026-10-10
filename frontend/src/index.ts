@@ -161,6 +161,16 @@ async function loadSessions(): Promise<void> {
       actions.appendChild(el("a", { class: "small", href: `/m/${s.code}` }, "Moderate"));
       actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
       actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
+      if (s.status === "planning") {
+        const startBtn = el("button", { class: "xsmall" }, "Start") as HTMLButtonElement;
+        guardClick(startBtn, async () => {
+          try {
+            await api(`/api/sessions/${s.code}/start`, { method: "POST" });
+            await loadSessions();
+          } catch (e) { errorToast((e as Error).message); }
+        });
+        actions.appendChild(startBtn);
+      }
       const delBtn = el("button", { class: "danger ghost xsmall" }, "Delete");
       delBtn.addEventListener("click", () => startDeleteFlow(s));
       actions.appendChild(delBtn);

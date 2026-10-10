@@ -390,3 +390,42 @@ def test_uc_x_15_reports_new_or_existing_data_and_where_to_sign_in(tmp_path):
     assert "1 admin (me), 1 session, 0 quizzes" in second
     assert f"Sign in at http://127.0.0.1:{port}/ as me." in second
     assert "Created a new database" not in second
+
+
+def _reset(data: Path, stdin: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([sys.executable, "-m", "prashna.cli", "reset-password", "--data-dir", str(data)],
+                          cwd=ROOT, env=_cli_env(), input=stdin, capture_output=True, text=True, timeout=60)
+
+
+def test_uc_x_15_reset_password(tmp_path):
+    """UC-X-15: `prashna reset-password` sets a new admin password from the
+    machine that holds the data folder, and refuses the error cases."""
+    missing = _reset(tmp_path / "nowhere", "newpassword\nnewpassword\n")
+    assert missing.returncode == 1 and "No Prashna database in" in missing.stdout + missing.stderr
+
+    port, data = _free_port(), tmp_path / "data"
+    proc = _start_cli(["--data-dir", str(data), "--port", str(port), "--no-browser"], _cli_env(PRASHNA_SETUP_TOKEN="t"))
+    try:
+        _wait_up(port)  # a database now exists, with no admin
+    finally:
+        _stop(proc)
+    no_admin = _reset(data, "newpassword\nnewpassword\n")
+    assert no_admin.returncode == 1 and "No admin yet" in no_admin.stdout + no_admin.stderr
+
+    proc = _start_cli(["--data-dir", str(data), "--port", str(port), "--no-browser"], _cli_env(PRASHNA_SETUP_TOKEN="t"))
+    try:
+        _wait_up(port)
+        httpx.post(f"http://127.0.0.1:{port}/api/admin/setup",
+                   json={"username": "me", "password": "oldpassword", "setup_token": "t"}).raise_for_status()  # pragma: allowlist secret
+        mismatch = _reset(data, "newpassword\notherpassword\n")
+        assert mismatch.returncode == 1 and "did not match" in mismatch.stdout + mismatch.stderr
+        short = _reset(data, "short\nshort\n")
+        assert short.returncode == 1 and "at least 8 characters" in short.stdout + short.stderr
+        ok = _reset(data, "newpassword\nnewpassword\n")  # pragma: allowlist secret
+        assert ok.returncode == 0, ok.stdout + ok.stderr
+        assert "Password changed for me." in ok.stdout
+        base = f"http://127.0.0.1:{port}"
+        assert httpx.post(f"{base}/api/admin/login", json={"username": "me", "password": "newpassword"}).status_code == 200  # pragma: allowlist secret
+        assert httpx.post(f"{base}/api/admin/login", json={"username": "me", "password": "oldpassword"}).status_code == 401  # pragma: allowlist secret
+    finally:
+        _stop(proc)

@@ -216,7 +216,8 @@ public can't be claimed by its first visitor.
 - On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
 - Most-recently-created session appears at the top.
 - Authenticated admin chrome shows `#admin-page-nav` with an Admin breadcrumb and links to Sessions and Quiz library.
-- Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL. The Actions column has, in order, a **Moderate** link to `/m/<code>`, Participant, Projector, and Delete (`test_uc_a_04_row_actions_include_moderate`).
+- Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL. The Actions column has, in order, a **Moderate** link to `/m/<code>`, Participant, Projector, a **Start** button while the session is not started, and Delete (`test_uc_a_04_row_actions_include_moderate`).
+- Clicking **Start** on a not-started row starts the session (`POST /api/sessions/{code}/start`, UC-M-01) without leaving the list; the row then shows the Live badge and no Start button. Start is guarded against repeat clicks (`test_uc_a_04_start_from_the_list`).
 - Opening `/?session=<owned-code>` as an authenticated admin redirects to `/m/<code>` (older bookmarks keep working).
 
 ### UC-A-05: Edit session title
@@ -2249,6 +2250,34 @@ one command, on macOS, Linux, or Windows.
 - **And** the wheel published to PyPI as `prashna` contains the built
   frontend, so the installed command needs no Node or build step
 
+**Reset a forgotten password.** `prashna reset-password` sets a new password
+for the admin. It works only on the machine that holds the data folder
+(`--data-dir`, before or after the subcommand, as for `prashna`). Two
+independent facets decide what happens.
+
+The state of the data folder decides whether a reset can happen:
+
+| Data folder | Result |
+| --- | --- |
+| No database | Exits 1: `No Prashna database in <folder>.` |
+| Database, no admin yet | Exits 1: start `prashna` and use the setup link |
+| Database with the admin | Asks for the new password (next table) |
+
+The new password, entered twice, decides whether it succeeds:
+
+| Entries | Result |
+| --- | --- |
+| Match, at least 8 characters | Saved; prints `Password changed for <name>.`; exits 0 |
+| Differ | Exits 1; nothing changes |
+| Shorter than 8 characters | Exits 1; nothing changes |
+
+Where the command runs does not change these results. In a terminal it
+asks twice without echoing; otherwise it reads two lines from standard
+input. While Prashna is running, the new password works at once. Devices
+already signed in stay signed in. In the container image, which runs the
+code without installing the command, it is
+`docker compose exec prashna python -m prashna reset-password`.
+
 **Tests (API)**
 - `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
 - `install.sh` run where `uv` is absent and its download fails exits 1 with a message naming `https://docs.astral.sh/uv/`, and never runs `uv tool install`.
@@ -2261,6 +2290,7 @@ one command, on macOS, Linux, or Windows.
 - A request from `127.0.0.1` carrying `X-Forwarded-Proto: https` gets a `Secure` session cookie; the same request without the header doesn't.
 - `prashna backup create <file>` writes an archive of that data folder.
 - `prashna --version` prints the installed version.
+- `prashna reset-password` with two matching lines on standard input exits 0 and prints `Password changed for me.`; afterwards the new password signs in and the old one gets `401`. Mismatched entries, a password under 8 characters, a database with no admin, and a folder without a database each exit 1 with their message and change nothing (`test_uc_x_15_reset_password`).
 - A first run prints `Created a new database: <data>/prashna.db`; a later run against the same folder prints `Using existing data: <data>/prashna.db` with `1 admin (me)` and the session and quiz counts, and `Sign in at http://127.0.0.1:<port>/ as me.` (`test_uc_x_15_reports_new_or_existing_data_and_where_to_sign_in`).
 - With a stub `cloudflared` (and, separately, a stub `ngrok`) on `PATH` that prints a known address, `prashna --tunnel …` prints `Participants join at: <address>`, sessions report it as `default_base_url`, and stopping Prashna stops the stub (`test_uc_x_15_tunnel_wires_the_public_address`).
 - Through that tunnel, a visitor who exhausts the login rate limit (`X-Forwarded-For: <visitor A>`) gets `429` while another visitor (`<visitor B>`) still gets `401` for a wrong password (`test_uc_x_15_tunnel_rate_limits_each_visitor`).
