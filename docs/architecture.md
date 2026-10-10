@@ -342,7 +342,9 @@ Two pairs of names are easy to confuse:
 
 `init_db()` runs at startup. It calls SQLAlchemy `create_all`, then the
 additive SQLite migration bridge in `prashna/db.py` adds the known
-post-deploy columns and indexes to an existing database. A change that adds
+post-deploy columns and indexes to an existing database. It records a
+`db.migration` diagnostic only for a column or index it actually adds. A
+change that adds
 a column or index to an existing table extends that bridge and adds an
 old-shape SQLite regression test. A non-additive schema change needs an
 explicit release plan or a migration tool (see [`todo.md`](todo.md)).
@@ -372,8 +374,10 @@ name contains `password`, `secret`, `token`, `key`, or `cookie`, and cuts
 string values to 120 characters. Call sites do not log participant contact
 fields, uploaded bytes, filenames, or user-entered Q&A text.
 
-Diagnostics go to the process log stream only; Prashna does not store them in
-SQLite. Log retention for production is in
+Diagnostics go to the process log stream, which is what the containers
+record. The `prashna` command sends them to `prashna.log` in its data folder
+instead, so the presenter's terminal stays readable. Prashna does not store
+them in SQLite. Log retention for production is in
 [`deploy/README.md`](../deploy/README.md#logs-and-retention).
 
 ## Design decisions

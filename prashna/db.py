@@ -134,8 +134,13 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
                     table=table,
                     column=column,
                 )
+        existing_indexes = {
+            row[0] for row in conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
         for name, table, columns, unique, where in indexes:
-            if table not in tables:
+            if table not in tables or name in existing_indexes:
                 continue
             existing_cols = {
                 row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")

@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import httpx
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -92,6 +93,10 @@ def test_uc_x_15_first_run_opens_setup_page_with_a_working_token(tmp_path):
         out = _stop(proc)
     assert f"http://127.0.0.1:{port}" in out
     assert str(data) in out
+    # The terminal stays readable: no diagnostics, and the browser carries the link.
+    assert "diagnostic_event" not in out
+    assert "#setup=" not in out
+    assert "diagnostic_event" in (data / "prashna.log").read_text()
 
 
 def test_uc_x_15_later_runs_open_home_and_no_browser_opens_nothing(tmp_path):
@@ -107,7 +112,9 @@ def test_uc_x_15_later_runs_open_home_and_no_browser_opens_nothing(tmp_path):
         time.sleep(1)
         assert not opened.exists()
     finally:
-        _stop(proc)
+        out = _stop(proc)
+    assert out.count("#setup=") == 1
+    assert "diagnostic_event" not in out
 
     proc = _start_cli(["--port", str(port)], _cli_env(BROWSER=browser, PRASHNA_DATA_DIR=str(data)))
     try:
@@ -200,3 +207,21 @@ def test_uc_x_15_install_scripts_are_served(client):
     assert ps1.headers["content-type"].startswith("text/plain")
     assert "uv tool install --upgrade prashna" in ps1.text
     assert "https://astral.sh/uv/install.ps1" in ps1.text
+
+
+def test_uc_x_15_installer_stops_when_uv_cannot_be_installed(tmp_path):
+    """UC-X-15: with no uv and a failing download, install.sh exits 1 with a clear message."""
+    import shutil
+    if shutil.which("uv", path="/usr/bin:/bin"):
+        pytest.skip("uv is installed system-wide, so the installer would not need to fetch it")
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    (stubs / "curl").write_text("#!/bin/sh\necho 'curl: (6) Could not resolve host' >&2\nexit 6\n")
+    (stubs / "curl").chmod(0o755)
+    result = subprocess.run(
+        ["sh", str(ROOT / "prashna" / "installers" / "install.sh")],
+        env={"HOME": str(tmp_path), "PATH": f"{stubs}:/usr/bin:/bin"},
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode == 1
+    assert "https://docs.astral.sh/uv/" in result.stderr
+    assert "uv: not found" not in result.stderr

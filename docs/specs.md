@@ -2189,7 +2189,9 @@ one command, on macOS, Linux, or Windows.
   - `powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"` (Windows)
 - **Then** the install scripts install `uv` if it is missing (Astral's
   installer), then run `uv tool install --upgrade prashna`, and print how
-  to start it
+  to start it; if `uv` still cannot be found after that step, they stop with
+  status 1 and a message pointing to `https://docs.astral.sh/uv/` instead of
+  continuing
 - **When** the presenter runs `prashna`
 - **Then** it serves on `http://127.0.0.1:8000`, keeps its database,
   uploads, `secret-key` and `setup-token` in the per-user app-data folder
@@ -2200,6 +2202,10 @@ one command, on macOS, Linux, or Windows.
   prints the address and the data folder, and opens the browser — on the
   one-time setup page (`/#setup=<token>`, UC-A-01) while no admin exists,
   otherwise on `/`
+- **And** the terminal shows only those lines, the setup link at most once
+  (as a full URL with `--no-browser`), and how to stop; the server's
+  diagnostic records go to `prashna.log` in the data folder instead of the
+  terminal. Warnings and errors still reach the terminal
 - **And** `--port`, `--host`, `--data-dir` (or `PRASHNA_DATA_DIR`), and
   `--no-browser` change those defaults; a port already in use exits with
   status 1 and suggests `--port`
@@ -2222,6 +2228,9 @@ one command, on macOS, Linux, or Windows.
 
 **Tests (API)**
 - `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
+- `install.sh` run where `uv` is absent and its download fails exits 1 with a message naming `https://docs.astral.sh/uv/`, and never runs `uv tool install`.
+- On a fresh data folder the CLI's terminal output contains no `diagnostic_event` line and the setup link at most once (exactly once with `--no-browser`); `prashna.log` in the data folder holds the diagnostic records.
+- Applying the additive migration bridge to an up-to-date database logs no `db.migration` record.
 - `prashna.db.default_data_dir()` returns the per-platform folder, also inside a source checkout (`XDG_DATA_HOME` honoured on Linux, `LOCALAPPDATA` on Windows), and never a folder inside the repository.
 - The CLI resolves the data folder from `--data-dir`, then `PRASHNA_DATA_DIR`, then the default, and sets `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` inside it.
 - On a fresh data folder the CLI opens the browser at `http://127.0.0.1:<port>/#setup=<token>` with the token the server will accept; once an admin exists it opens `/`; `--no-browser` opens nothing.

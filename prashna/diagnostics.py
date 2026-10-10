@@ -4,9 +4,21 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from pathlib import Path
 
 logger = logging.getLogger("prashna")
 logger.setLevel(logging.INFO)
+
+# When set (by the `prashna` command), diagnostics are appended to this file
+# instead of the terminal, so a presenter's terminal stays readable.
+_log_file: Path | None = None
+
+
+def send_to_file(path: Path) -> None:
+    """Write diagnostics to `path` instead of the process log stream."""
+    global _log_file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _log_file = path
 
 
 def _ensure_runtime_logger() -> None:
@@ -48,6 +60,10 @@ def log_diagnostic(event: str, **fields) -> None:
         + json.dumps(payload, sort_keys=True, separators=(",", ":"))
     )
     try:
+        if _log_file is not None:
+            with _log_file.open("a", encoding="utf-8") as out:
+                out.write(message + "\n")
+            return
         _ensure_runtime_logger()
         logger.info(message, extra=extra)
         uvicorn_logger = logging.getLogger("uvicorn.error")

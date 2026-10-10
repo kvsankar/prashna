@@ -112,6 +112,11 @@ def _diagnostic_path(path: str) -> str:
     return "/" + "/".join(parts)
 
 
+# The `prashna` command prints the setup link itself (as a full URL), so it
+# turns this off to keep the link from appearing twice.
+ANNOUNCE_SETUP_LINK: bool = True
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
@@ -124,7 +129,7 @@ async def lifespan(_app: FastAPI):
         )
     with SessionLocal() as db:
         token = auth.setup_token(db)
-    if token:
+    if token and ANNOUNCE_SETUP_LINK:
         # The only place the first-admin link appears (UC-A-01).
         logger.warning(
             "No admin yet. Create one by opening this one-time link on this "

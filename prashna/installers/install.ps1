@@ -9,6 +9,9 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
     # Make the freshly installed uv usable in this session.
     $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        throw "Could not install uv. Install it from https://docs.astral.sh/uv/ and run this script again."
+    }
 }
 
 uv tool install --upgrade prashna

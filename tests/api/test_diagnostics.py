@@ -284,3 +284,18 @@ def test_sqlite_additive_migration_logs_execution(tmp_path, caplog):
     _apply_additive_migrations(bind=engine)
 
     assert "db.migration" in _events(caplog)
+
+
+def test_bridge_logs_nothing_on_an_up_to_date_database(tmp_path, caplog):
+    """UC-X-15: a restart against a current schema records no db.migration."""
+    from prashna.db import Base, _apply_additive_migrations
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'current.db'}")
+    Base.metadata.create_all(bind=engine)
+    _apply_additive_migrations(bind=engine)
+
+    caplog.clear()
+    caplog.set_level(logging.INFO, logger="prashna")
+    _apply_additive_migrations(bind=engine)
+
+    assert "db.migration" not in _events(caplog)

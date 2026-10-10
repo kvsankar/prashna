@@ -106,7 +106,8 @@ def main(argv: list[str] | None = None) -> int:
               f"for example: prashna --port {args.port + 1}", file=sys.stderr)
         return 1
 
-    from . import auth, db
+    from . import auth, db, diagnostics
+    diagnostics.send_to_file(data_dir / "prashna.log")
     db.init_db()
     with db.SessionLocal() as session:
         token = auth.setup_token(session)
@@ -126,7 +127,10 @@ def main(argv: list[str] | None = None) -> int:
         threading.Thread(target=_open_when_ready, args=(shown_host, args.port, url), daemon=True).start()
 
     import uvicorn
-    uvicorn.run("prashna.main:app", host=args.host, port=args.port, log_level="warning")
+
+    from . import main as server
+    server.ANNOUNCE_SETUP_LINK = False
+    uvicorn.run(server.app, host=args.host, port=args.port, log_level="warning")
     return 0
 
 

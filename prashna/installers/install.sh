@@ -11,6 +11,10 @@ if ! command -v uv >/dev/null 2>&1; then
     # Make the freshly installed uv usable in this shell.
     PATH="${XDG_BIN_HOME:-$HOME/.local/bin}:$HOME/.cargo/bin:$PATH"
     export PATH
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "Could not install uv. Install it from https://docs.astral.sh/uv/ and run this script again." >&2
+        exit 1
+    fi
 fi
 
 uv tool install --upgrade prashna
