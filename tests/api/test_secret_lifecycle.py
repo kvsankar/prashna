@@ -168,7 +168,7 @@ def test_generated_setup_token_is_logged_reused_and_retired(tmp_path):
         assert token_file.exists()
         assert (token_file.stat().st_mode & 0o777) == 0o600
         token = token_file.read_text().strip()
-        assert token
+        assert token.startswith("prashna_st_") and len(token) > 30
     finally:
         _stop_app_output = _stop_app(proc)
     assert f"/#setup={token}" in _stop_app_output

@@ -8,17 +8,11 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .diagnostics import log_diagnostic as _log_diagnostic
 
-_CHECKOUT = Path(__file__).resolve().parent.parent
-
 
 def default_data_dir() -> Path:
-    """Where data lives when PRASHNA_DB_PATH / PRASHNA_UPLOADS_DIR are unset.
-
-    A source checkout keeps its data in the repository (development). An
-    installed package uses the platform's per-user app-data folder.
-    """
-    if (_CHECKOUT / "pyproject.toml").exists() and (_CHECKOUT / "frontend").is_dir():
-        return _CHECKOUT
+    """Where data lives when PRASHNA_DB_PATH / PRASHNA_UPLOADS_DIR are unset:
+    the platform's per-user app-data folder, for a source checkout too, so
+    the database and the generated secrets never land in a repository."""
     if sys.platform == "win32":
         return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "prashna"
     if sys.platform == "darwin":

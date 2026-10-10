@@ -533,10 +533,13 @@ def test_uc_x_07_resolve_secret(tmp_path):
     assert auth._resolve_secret("abc", key_file) == ("abc", False)
     assert not key_file.exists()
     key, ephemeral = auth._resolve_secret(None, key_file)
-    assert ephemeral is False and key
+    assert ephemeral is False and key.startswith("prashna_sk_") and len(key) > 40
     assert key_file.read_text().strip() == key
     assert (key_file.stat().st_mode & 0o777) == 0o600
     assert auth._resolve_secret(None, key_file) == (key, False)
+    older = tmp_path / "older-secret-key"
+    older.write_text("unprefixed-key-from-an-older-install")
+    assert auth._resolve_secret(None, older) == ("unprefixed-key-from-an-older-install", False)
     blocked = tmp_path / "missing-dir" / "sub"
     blocked.parent.mkdir()
     blocked.parent.chmod(0o500)

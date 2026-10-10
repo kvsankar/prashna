@@ -172,11 +172,13 @@ def test_uc_x_15_backup_and_version(tmp_path):
 
 
 def test_uc_x_15_data_dir_defaults(monkeypatch, tmp_path):
-    """UC-X-15: a checkout uses the repo; an install uses the per-user folder."""
+    """UC-X-15: the per-user folder, also from a source checkout; never inside the repository."""
     from prashna import db
-    assert db.default_data_dir() == ROOT
-    monkeypatch.setattr(db, "_CHECKOUT", tmp_path / "site-packages")
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.setattr(db.sys, "platform", "linux")
+    default = db.default_data_dir()
+    assert default == Path.home() / ".local" / "share" / "prashna"
+    assert default != ROOT and ROOT not in default.parents
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     assert db.default_data_dir() == tmp_path / "xdg" / "prashna"
     monkeypatch.setattr(db.sys, "platform", "win32")

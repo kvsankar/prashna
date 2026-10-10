@@ -44,10 +44,13 @@ npm run dev                                              # Vite dev server with 
   `/api`, `/ws`, and `/uploads` to the backend on port 8000. Use the URL it
   prints during frontend work.
 
-In a source checkout, the database (`prashna.db`), the uploads folder
-(`uploads/`), `secret-key`, and `setup-token` are created in the repository
-root. Git ignores `prashna.db` and the contents of `uploads/`. `secret-key`
-and `setup-token` are not in `.gitignore`; do not commit them.
+A source checkout keeps its data where an installed copy does: the database
+(`prashna.db`), the uploads folder, `secret-key`, and `setup-token` live in
+the per-user app-data folder (see `PRASHNA_DATA_DIR` below), not in the
+repository. Use `uv run prashna --data-dir <folder>` for a separate
+database, and keep that folder outside any repository. The commit checks
+reject a generated secret or a SQLite database wherever it is staged (see
+[Checks](#checks)).
 
 To load settings from a file, copy `.env.example` to `.env` and pass
 `--env-file .env` to uvicorn.
@@ -83,11 +86,11 @@ These are all the variables the application reads. Each one is optional.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `PRASHNA_DATA_DIR` | Source checkout: the repository root. Installed package: the per-user app-data folder (`~/.local/share/prashna`, or `$XDG_DATA_HOME/prashna`; `~/Library/Application Support/prashna`; `%LOCALAPPDATA%\prashna`). | Read only by the `prashna` command. It is the folder for the database and uploads. `--data-dir` takes precedence. The command sets `PRASHNA_DB_PATH` and `PRASHNA_UPLOADS_DIR` inside this folder unless they are already set. |
+| `PRASHNA_DATA_DIR` | The per-user app-data folder, for a source checkout and an installed package alike (`~/.local/share/prashna`, or `$XDG_DATA_HOME/prashna`; `~/Library/Application Support/prashna`; `%LOCALAPPDATA%\prashna`). | Read only by the `prashna` command. It is the folder for the database and uploads. `--data-dir` takes precedence. The command sets `PRASHNA_DB_PATH` and `PRASHNA_UPLOADS_DIR` inside this folder unless they are already set. |
 | `PRASHNA_DB_PATH` | `prashna.db` in the default data folder above. The container image sets `/data/prashna.db`. | SQLite database file. `secret-key` and `setup-token` live in the same folder. `python -m prashna.backup` assumes `/data/prashna.db` when this is unset. |
 | `PRASHNA_UPLOADS_DIR` | `uploads/` in the default data folder. The container image sets `/app/uploads`. | Folder for uploaded images. `python -m prashna.backup` assumes `/app/uploads` when this is unset. |
-| `PRASHNA_SECRET_KEY` | Unset: the key in `secret-key` beside the database, created with mode `0600` on first start. | Cookie-signing key. Changing it signs every admin out (UC-X-07). |
-| `PRASHNA_SETUP_TOKEN` | Unset: a random token kept in `setup-token` beside the database until an admin exists. | Fixed first-admin setup token (UC-A-01). |
+| `PRASHNA_SECRET_KEY` | Unset: the key in `secret-key` beside the database, created with mode `0600` on first start; generated keys start with `prashna_sk_`. | Cookie-signing key. Changing it signs every admin out (UC-X-07). |
+| `PRASHNA_SETUP_TOKEN` | Unset: a random token starting with `prashna_st_`, kept in `setup-token` beside the database until an admin exists. | Fixed first-admin setup token (UC-A-01). |
 | `PRASHNA_TRUSTED_PROXY_HOPS` | `0` (use the socket peer). | Number of trusted reverse-proxy hops for client-IP resolution. Set `1` behind ngrok or the bundled nginx (UC-X-08). |
 | `PRASHNA_RATELIMIT` | On. | `off`, `0`, `false`, or `no` (any case) disables rate limiting (UC-X-08). |
 | `PRASHNA_GITHUB_CLIENT_ID` | Unset. | GitHub OAuth app client id. GitHub sign-in is enabled only when all three GitHub variables are set (UC-A-26). |
@@ -154,8 +157,11 @@ uv run pyrefly check                # Python types
 | commit-msg | `scripts/check_commit_msg.py`: Conventional Commits with a body |
 | pre-push | The API tests |
 
-`scripts/check_pii.py` rejects real email addresses, public IP addresses, and
-home-directory paths. Mark a deliberate line with `pii-allow`.
+`scripts/check_pii.py` rejects real email addresses, public IP addresses,
+home-directory paths, and generated Prashna secrets (values starting with
+`prashna_sk_` or `prashna_st_`) in text files. It also rejects any SQLite
+database, recognised by its file header, whatever the file is called and
+wherever it is staged. Mark a deliberate text line with `pii-allow`.
 
 CI (`.github/workflows/docker.yml`) runs on pushes to `main`, on version
 tags, and on pull requests to `main`:
@@ -198,7 +204,6 @@ docs/                specs, UX rules, architecture, this guide, the backlog
 compose.yaml         laptop and small-host Compose model
 compose.env.example  optional settings for compose.yaml
 Dockerfile           production image
-uploads/             uploaded images in a source checkout (ignored by Git)
 ```
 
 ## Cut a release

@@ -4,9 +4,11 @@ Run by pre-commit on staged files and by CI on every tracked file:
 
     python scripts/check_pii.py FILE...
 
-It flags real-looking email addresses, public IPv4 addresses, and
-home-directory paths. The patterns are generic on purpose, so this file
-itself reveals nothing private. Placeholders are allowed: example.*
+It flags real-looking email addresses, public IPv4 addresses,
+home-directory paths, and generated Prashna secrets (`prashna_sk_...`,
+`prashna_st_...`) in text files, and any SQLite database by its file
+header, whatever the file is called. The patterns are generic on purpose,
+so this file itself reveals nothing private. Placeholders are allowed: example.*
 domains, GitHub no-reply addresses, and loopback, private and
 documentation IP ranges. A line containing `pii-allow` is skipped, for
 the rare deliberate case.
@@ -30,6 +32,9 @@ ALLOWED_EMAIL_DOMAINS = re.compile(
 
 IPV4 = re.compile(r"(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])")
 DOCUMENTATION_NETS = [ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")]
+
+SECRET = re.compile(r"\bprashna_s[kt]_[A-Za-z0-9_-]{16,}")
+SQLITE_HEADER = b"SQLite format 3\x00"
 
 HOME_PATH = re.compile(r"(/home/[A-Za-z0-9._-]+/|/Users/[A-Za-z0-9._-]+/|\b[A-Za-z]:\\Users\\)")
 
@@ -67,6 +72,8 @@ def scan_text(text: str) -> list[Finding]:
                 findings.append(Finding(number, "ip", m.group(0)))
         for m in HOME_PATH.finditer(line):
             findings.append(Finding(number, "path", m.group(0)))
+        for m in SECRET.finditer(line):
+            findings.append(Finding(number, "secret", m.group(0)[:16] + "..."))
     return findings
 
 
@@ -77,9 +84,17 @@ def main(paths: list[str]) -> int:
             continue
         path = Path(name)
         try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
-            continue  # binaries and deleted files
+            data = path.read_bytes()
+        except (FileNotFoundError, IsADirectoryError):
+            continue  # deleted files
+        if data.startswith(SQLITE_HEADER):
+            failed = True
+            print(f"{name}: sqlite database: runtime data must not be committed")
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            continue  # other binaries
         for f in scan_text(text):
             failed = True
             print(f"{name}:{f.line}: {f.kind}: {f.text}")

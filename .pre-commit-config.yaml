@@ -55,7 +55,7 @@ repos:
         name: no personal data or private infrastructure
         entry: uv run python scripts/check_pii.py
         language: system
-        types: [text]
+        # No type filter: a staged SQLite database is binary and must reach the check.
 
       # ---- python ----
       - id: ruff

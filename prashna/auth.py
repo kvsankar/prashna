@@ -31,6 +31,10 @@ MAX_PASSWORD_BYTES = 72
 DATA_DIR = DB_PATH.parent
 SECRET_KEY_FILE = DATA_DIR / "secret-key"
 SETUP_TOKEN_FILE = DATA_DIR / "setup-token"
+# Generated values carry a fixed prefix so a scanner (scripts/check_pii.py)
+# recognises a leaked key or token in any file, whatever it is called.
+SECRET_KEY_PREFIX = "prashna_sk_"  # pragma: allowlist secret
+SETUP_TOKEN_PREFIX = "prashna_st_"
 
 
 def _write_private(path: Path, value: str) -> None:
@@ -66,9 +70,9 @@ def _resolve_secret(env_value: str | None, key_file: Path) -> tuple[str, bool]:
     if env_value:
         return env_value, False
     try:
-        return _read_or_create(key_file, lambda: pysecrets.token_urlsafe(48)), False
+        return _read_or_create(key_file, lambda: SECRET_KEY_PREFIX + pysecrets.token_urlsafe(48)), False
     except OSError:
-        return pysecrets.token_urlsafe(32), True
+        return SECRET_KEY_PREFIX + pysecrets.token_urlsafe(32), True
 
 
 _secret, SECRET_KEY_IS_EPHEMERAL = _resolve_secret(os.environ.get("PRASHNA_SECRET_KEY"), SECRET_KEY_FILE)
@@ -179,7 +183,7 @@ def setup_token(db: DbSession) -> str | None:
     env_token = os.environ.get("PRASHNA_SETUP_TOKEN", "").strip()
     if env_token:
         return env_token
-    return _read_or_create(SETUP_TOKEN_FILE, lambda: pysecrets.token_urlsafe(24))
+    return _read_or_create(SETUP_TOKEN_FILE, lambda: SETUP_TOKEN_PREFIX + pysecrets.token_urlsafe(24))
 
 
 def setup_token_matches(db: DbSession, supplied: object) -> bool:

@@ -95,8 +95,9 @@ public can't be claimed by its first visitor.
 - **Given** no user rows exist when the server starts
 - **Then** it holds a one-time **setup token**: the value of
   `PRASHNA_SETUP_TOKEN` if the operator set one, otherwise a random token
-  saved as `setup-token` (mode `0600`) beside the database and reused
-  across restarts until an admin exists
+  starting with `prashna_st_`, saved as `setup-token` (mode `0600`) beside
+  the database and reused across restarts until an admin exists. The prefix
+  lets a scanner recognise a leaked token in any file
 - **And** it logs a `WARNING` with the setup link `/#setup=<token>`
   ("open it on this server's address"), so it appears in the terminal or
   in `docker compose logs`
@@ -125,7 +126,7 @@ public can't be claimed by its first visitor.
 - Same-username conflict path is also caught via `try/except IntegrityError` and surfaces as `409`.
 - `POST /api/admin/setup` with `{"username": "alice", "password": "short", ...}` → `400 "password must be at least 8 characters"`.
 - `POST /api/admin/setup` with `{"username": "", "password": "longenough", ...}` → `400 "username required"`.
-- Starting the server on a fresh database without `PRASHNA_SETUP_TOKEN` writes `setup-token` (mode `0600`) beside the database, logs `/#setup=<that token>`, and reuses the same token after a restart; a successful setup deletes the file.
+- Starting the server on a fresh database without `PRASHNA_SETUP_TOKEN` writes `setup-token` (mode `0600`, value starting `prashna_st_`) beside the database, logs `/#setup=<that token>`, and reuses the same token after a restart; a successful setup deletes the file.
 
 **Tests (UI)**
 - On `/` with no admin and no `#setup=` in the address, `#setup-needed-card` is visible and explains the server-log link; `#setup-card`, `#login-card`, and `#sessions-card` are hidden.
@@ -1962,8 +1963,10 @@ chosen once at process start.
   "invalidate all sessions" action
 - **Given** `PRASHNA_SECRET_KEY` is **unset**
 - **Then** the server uses the key in `secret-key` beside the database,
-  creating it (random, mode `0600`) on first start; cookies therefore
-  survive restarts with no operator step
+  creating it on first start (random, starting with `prashna_sk_`, mode
+  `0600`); cookies therefore survive restarts with no operator step. The
+  prefix lets a scanner recognise a leaked key in any file; a key without
+  it, from an older install, keeps working
 - **And** only if that file can't be read or written does the process
   fall back to a key for the process lifetime, logging a `WARNING`
   (`auth.SECRET_KEY_IS_EPHEMERAL` is `True`) because sessions then end on
@@ -1976,7 +1979,7 @@ chosen once at process start.
 - Start app with `PRASHNA_SECRET_KEY=abc...`, log in; restart with the same value → the old cookie still returns `authenticated: true`.
 - Start app with one value of `PRASHNA_SECRET_KEY`, log in; restart with a different value → the old cookie fails to verify (rotation invalidates sessions).
 - Start app with `PRASHNA_SECRET_KEY` unset, log in; restart, still unset → the old cookie still returns `authenticated: true`; `secret-key` exists beside the database with mode `0600`; no ephemeral-key warning is logged.
-- `auth._resolve_secret("abc", path)` returns `("abc", False)`; `auth._resolve_secret(None, path)` creates the file and returns `(<key>, False)`, and a second call returns the same key; with an unwritable path it returns `(<random>, True)`.
+- `auth._resolve_secret("abc", path)` returns `("abc", False)`; `auth._resolve_secret(None, path)` creates the file and returns `(<key>, False)` with a key starting `prashna_sk_`, and a second call returns the same key; an existing file without the prefix is used unchanged; with an unwritable path it returns `(<random>, True)`.
 
 ### UC-X-08: Rate limiting
 
@@ -2188,9 +2191,12 @@ one command, on macOS, Linux, or Windows.
   installer), then run `uv tool install --upgrade prashna`, and print how
   to start it
 - **When** the presenter runs `prashna`
-- **Then** it serves on `http://127.0.0.1:8000`, keeps its database and
-  uploads in the per-user app-data folder (`~/.local/share/prashna`,
-  `~/Library/Application Support/prashna`, `%LOCALAPPDATA%\prashna`),
+- **Then** it serves on `http://127.0.0.1:8000`, keeps its database,
+  uploads, `secret-key` and `setup-token` in the per-user app-data folder
+  (`~/.local/share/prashna`, `~/Library/Application Support/prashna`,
+  `%LOCALAPPDATA%\prashna`) — also when run from a source checkout, so
+  runtime data and secrets never land in a repository unless
+  `--data-dir` or `PRASHNA_DB_PATH` puts them there —
   prints the address and the data folder, and opens the browser — on the
   one-time setup page (`/#setup=<token>`, UC-A-01) while no admin exists,
   otherwise on `/`
@@ -2211,7 +2217,7 @@ one command, on macOS, Linux, or Windows.
 
 **Tests (API)**
 - `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
-- `prashna.db.default_data_dir()` returns the repository for a source checkout, and the per-platform folder otherwise (`XDG_DATA_HOME` honoured on Linux, `LOCALAPPDATA` on Windows).
+- `prashna.db.default_data_dir()` returns the per-platform folder, also inside a source checkout (`XDG_DATA_HOME` honoured on Linux, `LOCALAPPDATA` on Windows), and never a folder inside the repository.
 - The CLI resolves the data folder from `--data-dir`, then `PRASHNA_DATA_DIR`, then the default, and sets `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` inside it.
 - On a fresh data folder the CLI opens the browser at `http://127.0.0.1:<port>/#setup=<token>` with the token the server will accept; once an admin exists it opens `/`; `--no-browser` opens nothing.
 - With the port already bound, `prashna --port <it>` exits 1 and prints a message naming `--port`.

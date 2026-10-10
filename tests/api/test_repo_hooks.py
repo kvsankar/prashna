@@ -107,3 +107,35 @@ def test_ignores_comments_and_allows_merges_and_fixups():
     assert commit_problems(GOOD + "# Please enter the commit message\n") == []
     assert commit_problems("Merge branch 'main' into feature\n") == []
     assert commit_problems("fixup! fix(sync): keep the queue when a push fails\n") == []
+
+
+# ---------- runtime secrets and databases ----------
+
+def test_flags_generated_prashna_secrets():
+    assert kinds("key prashna_sk_" + "A1b2C3d4E5f6G7h8I9j0-_kLmN") == ["secret"]  # pii-allow: deliberate sample  # pragma: allowlist secret
+    assert kinds("prashna_st_" + "Zz9Yy8Xx7Ww6Vv5Uu4") == ["secret"]  # pii-allow: deliberate sample
+
+
+def test_allows_documented_secret_prefixes():
+    assert kinds("generated keys start with `prashna_sk_` or `prashna_st_<random>`") == []
+
+
+def test_cli_rejects_a_sqlite_database_under_any_name(tmp_path):
+    import sqlite3
+    db_file = tmp_path / "nested" / "notes.bin"
+    db_file.parent.mkdir()
+    sqlite3.connect(db_file).execute("create table t (x)").connection.commit()
+    image = tmp_path / "photo.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)))
+    result = subprocess.run([sys.executable, "scripts/check_pii.py", str(db_file), str(image)],
+                            cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 1
+    assert "notes.bin" in result.stdout and "sqlite" in result.stdout
+    assert "photo.png" not in result.stdout
+
+
+def test_pii_hook_receives_binary_files():
+    """The hook must not filter to text files, or a staged database never reaches the check."""
+    config = (ROOT / ".pre-commit-config.yaml").read_text()
+    block = config.split("id: check-pii", 1)[1].split("- id:", 1)[0]
+    assert "types: [text]" not in block
