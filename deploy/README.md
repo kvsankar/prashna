@@ -52,9 +52,6 @@ instead; see [`distribution/README.md`](../distribution/README.md).
    cd /opt/prashna && docker compose logs prashna | grep setup=
    ```
 
-   With GitHub sign-in configured, an allowlisted GitHub account can create
-   the admin instead.
-
 ## Updating
 
 Either:

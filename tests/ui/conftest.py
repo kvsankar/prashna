@@ -90,18 +90,6 @@ def fresh_base_url(tmp_path) -> Iterator[str]:
 
 
 @pytest.fixture
-def fresh_github_base_url(tmp_path) -> Iterator[str]:
-    """A fresh server (no admin) with GitHub sign-in configured (UC-A-26)."""
-    base, proc = _start_uvicorn(tmp_path / "prashna-ui.db", tmp_path / "uploads", {
-        "PRASHNA_GITHUB_CLIENT_ID": "test-client-id",
-        "PRASHNA_GITHUB_CLIENT_SECRET": "test-client-secret",
-        "PRASHNA_GITHUB_ADMINS": "someone",
-    })
-    yield base
-    _stop_uvicorn(proc)
-
-
-@pytest.fixture
 def base_url(uvicorn_url: str) -> str:
     return uvicorn_url
 

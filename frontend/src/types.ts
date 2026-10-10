@@ -96,7 +96,6 @@ export interface AdminStatus {
   initialized: boolean;
   authenticated: boolean;
   username: string | null;
-  github_enabled: boolean;
 }
 
 export interface ParticipantBootstrap {

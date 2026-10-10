@@ -24,13 +24,6 @@ if (bad) {
 }
 $("#join-code").addEventListener("input", () => { setVisible($("#bad-code-msg"), false); });
 
-// ----- GitHub OAuth error banner -----
-const authErr = new URLSearchParams(location.search).get("auth_error");
-if (authErr) {
-  errorToast(authErr);
-  history.replaceState({}, "", "/");
-}
-
 // ----- visibility helpers -----
 const cards: Record<string, HTMLElement> = {
   join: $("#join-card"),
@@ -60,17 +53,12 @@ async function refresh(): Promise<void> {
   if (!s.initialized) {
     setHeaderMeta(el("span", { class: "muted small" }, "Initial setup"));
     // Without the link, explain where it is instead of showing a form the
-    // server would refuse; GitHub sign-in can also create the first admin.
-    if (setupToken) show("setup");
-    else {
-      show("setupNeeded");
-      setVisible($("#setup-github-wrap"), s.github_enabled);
-    }
+    // server would refuse.
+    show(setupToken ? "setup" : "setupNeeded");
     return;
   }
   if (!s.authenticated) {
     setHeaderMeta(el("span", { class: "muted small" }, "Live Q&A and quizzes for training sessions."));
-    setVisible($("#github-login-wrap"), s.github_enabled);
     show("join", "login");
     return;
   }

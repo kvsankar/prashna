@@ -79,12 +79,6 @@ _secret, SECRET_KEY_IS_EPHEMERAL = _resolve_secret(os.environ.get("PRASHNA_SECRE
 _signer = TimestampSigner(_secret)
 
 
-def new_signer() -> TimestampSigner:
-    """A signer over the same app secret — for one-off signed tokens like
-    the GitHub OAuth `state` (CSRF) that aren't session cookies."""
-    return TimestampSigner(_secret)
-
-
 def hash_password(pw: str) -> str:
     pw_bytes = pw.encode("utf-8")
     if len(pw_bytes) > MAX_PASSWORD_BYTES:

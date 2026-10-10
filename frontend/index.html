@@ -41,10 +41,6 @@
       <div class="card-head"><h2>Finish setting up Prashna</h2></div>
       <p class="m-0">This Prashna has no admin yet. When it started, it printed a one-time setup link in the server log. Open that link to create the admin; it ends in <code>/#setup=…</code>.</p>
       <p class="small muted mt-2">Running with Docker? <code>docker compose logs prashna</code> shows the link.</p>
-      <div hidden class="mt-3" id="setup-github-wrap">
-        <div class="small muted mb-1">or</div>
-        <a class="ghost" id="setup-github-login" href="/api/auth/github/login">Sign in with GitHub</a>
-      </div>
     </section>
 
     <section hidden class="card" id="setup-card">
@@ -62,10 +58,6 @@
       <div class="field"><label for="li-user">Username</label><input id="li-user" autocomplete="username"></div>
       <div class="field"><label for="li-pass">Password</label><input id="li-pass" type="password" autocomplete="current-password"></div>
       <button class="primary" id="li-btn">Log in</button>
-      <div hidden class="mt-3" id="github-login-wrap">
-        <div class="small muted mb-1">or</div>
-        <a class="ghost" id="github-login-btn" href="/api/auth/github/login">Sign in with GitHub</a>
-      </div>
     </section>
 
     <section hidden class="card compact" id="sessions-card">

@@ -30,8 +30,7 @@ alerts, and multi-tenant administration are outside the current design.
 - Backend: Python 3.11 or newer (the container image uses Python 3.12),
   FastAPI, SQLAlchemy 2 with the synchronous ORM, SQLite, and uvicorn.
 - Authentication and authorization: bcrypt password hashes, `itsdangerous`
-  signed admin cookies, optional allowlisted GitHub OAuth, per-session
-  moderator keys, participant `voter_token` cookies, and in-process
+  signed admin cookies, per-session moderator keys, participant `voter_token` cookies, and in-process
   token-bucket rate limits.
 - Live updates: one FastAPI WebSocket endpoint and an in-process hub with one
   room per session code.
@@ -57,7 +56,7 @@ alerts, and multi-tenant administration are outside the current design.
 - Deployment simplicity: one process, one SQLite file, one uploads directory,
   and one in-memory live-update hub.
 - Explicit security boundaries: admin cookies, moderator keys, participant
-  tokens, upload limits, security headers, OAuth allowlists, and rate limits.
+  tokens, upload limits, security headers, and rate limits.
 - Small codebase: large rewrites, a frontend framework, distributed pub/sub, a
   migration framework, and multi-tenant controls each need a separate,
   accepted change.
@@ -127,9 +126,9 @@ flowchart TB
   publishing, and run reports.
 - **Application API** (`prashna/main.py`): routes, validation, commits,
   serialization, and update hints.
-- **Authentication boundary** (`prashna/auth.py`, `prashna/oauth.py`,
-  `prashna/ratelimit.py`): admin cookies, GitHub OAuth, moderator keys,
-  participant tokens, password checks, and throttling.
+- **Authentication boundary** (`prashna/auth.py`, `prashna/ratelimit.py`):
+  admin cookies, moderator keys, participant tokens, password checks, and
+  throttling.
 - **Live-update hub** (`prashna/ws.py`): WebSocket rooms and hint delivery.
 - **SQLite data store** (`prashna/db.py`, `prashna/models.py`): relational
   persistence and the additive migration bridge.
@@ -156,9 +155,6 @@ flowchart TB
   `POST /api/sessions/{code}/me/photo` without an admin login. Both paths use
   one helper with the same extension allowlist and 5 MB cap, and both return
   a `/uploads/<uuid>.<ext>` URL.
-- **GitHub admin OAuth.** Optional routes redirect through the configured
-  GitHub OAuth app, enforce the allowlist, resolve the admin user, and issue
-  the same admin cookie as password sign-in.
 - **Static assets and media.** FastAPI serves the built Vite output from
   `prashna/static` at `/static`, and uploaded files at `/uploads`.
 
@@ -175,7 +171,7 @@ separation is by responsibility:
 | Projector display | Presentation | Public read-only state and accessibility |
 | Quiz library | Policy and presentation | Template validation and version history |
 | Application API | Application shell | Route contracts, commits, broadcasts, and errors |
-| Authentication boundary | Policy and shell | Cookie, OAuth, key, token, and rate-limit checks |
+| Authentication boundary | Policy and shell | Cookie, password, key, token, and rate-limit checks |
 | Live-update hub | Adapter shell | Socket fan-out, reconnect, and refetch |
 | SQLite data store | Data infrastructure | Persistence, migrations, and history |
 | Upload store | Adapter shell | Upload limits, file writes, and serving |
@@ -321,7 +317,7 @@ erDiagram
 
 | Entity | What it is |
 | --- | --- |
-| `User` | An admin: username, password hash, optional GitHub id, session version, and creation time. First-run setup creates one password admin. Each allowlisted GitHub login that signs in gets its own `User` row (UC-A-26). GitHub-created users have an empty password hash and cannot use password sign-in. |
+| `User` | An admin: username, password hash, session version, and creation time. First-run setup creates one password admin. Databases created by earlier releases may also contain an unused, nullable `github_id` column with its unique index; the application neither reads nor writes it. A row with an empty password hash cannot sign in. |
 | `Session` | A live event: code, title, moderator key, owner, status, participant base URL, feedback-enabled flag, and timestamps. Lifecycle: `planning → live → ended`. The UI labels `planning` as "Not started". |
 | `Participant` | A per-session anonymous identity keyed by the `voter_token` cookie. It holds the optional attendee profile (display name, email, contact number, organization, role, LinkedIn URL, current work, learning goal), an optional photograph URL, and first-seen and last-seen times. |
 | `Query` and `QueryVote` | A Q&A entry with text, an optional response, a soft-removal time, and its author; one vote row per participant. |
@@ -451,6 +447,17 @@ them in SQLite. Log retention for production is in
 - Revisit when: UI complexity causes repeated maintenance problems that shared
   helpers do not solve.
 
+### Password-only admin sign-in
+
+- Decision: an admin signs in with a username and password, and only that
+  way. The first admin is created through the one-time setup link.
+- Alternatives: a third-party sign-in, such as GitHub OAuth, alongside the
+  password.
+- Rationale: one sign-in method keeps installation and operation simple. It
+  needs no OAuth app registration, client secret, or allowlist.
+- Consequence: every admin account has its own password.
+- Revisit when: several admins or organisations share one server.
+
 ### Owner and delegate authority
 
 - Decision: admin owners and delegate moderators are separate. A delegate
@@ -477,9 +484,9 @@ them in SQLite. Log retention for production is in
 
 | Risk | Impact | Mitigation | Residual risk | Revisit when |
 | --- | --- | --- | --- | --- |
-| First-run setup exposure | If the address is public before setup, the wrong person could claim the admin account. | Setup needs a one-time token that appears only in the server log, in an operator-set `PRASHNA_SETUP_TOKEN`, or in the `setup-token` file beside the database. The token is retired once an admin exists. GitHub sign-in is allowlisted. | Anyone who can read the server log or data folder before setup can create the admin. | A server log or data folder leaks before setup completes. |
+| First-run setup exposure | If the address is public before setup, the wrong person could claim the admin account. | Setup needs a one-time token that appears only in the server log, in an operator-set `PRASHNA_SETUP_TOKEN`, or in the `setup-token` file beside the database. The token is retired once an admin exists. | Anyone who can read the server log or data folder before setup can create the admin. | A server log or data folder leaks before setup completes. |
 | Limited upload validation | Extension and size checks do not prove that a file is a safe image. Participants can upload profile photographs without an admin login, and that route has no rate limit. | 5 MB cap, extension allowlist without SVG, random file names, and an isolating CSP, `nosniff`, and `Cross-Origin-Resource-Policy` on `/uploads`. Content sniffing is a deferred decision in [`specs.md`](specs.md#deferred-decision-needed). | Anyone with a session code can store images of up to 5 MB each. | Upload volume or abuse appears, or authoring opens to less-trusted users. |
 | Narrow migration bridge | An unsupported schema change could need manual repair. | Extend the bridge and its old-shape SQLite tests for every persisted column or index. | No general migration tool. | A non-additive schema change or a data-retention commitment. |
 | Single-process live hub | Several workers would split clients across separate room hubs. | Run one process, recover through HTTP refetch, and time out stalled sends. | Accepted for the current room-size target. | Several workers, several hosts, or hosted operation. |
 | Room-scale performance | The 100-person room target has no automated load test. | Page-load measurement and budgets in [`performance/README.md`](../performance/README.md); server timing on every response. | Latency under a full room is unmeasured. | Before relying on rooms near the target size. |
-| Operator-only diagnostics | Without dashboards or alerts, incident diagnosis relies on reading logs. | Structured, secret-safe diagnostics for authentication, setup, OAuth, uploads, migrations, lifecycle, and page performance. | No hosted telemetry. | Recurring live-event incidents or hosted support obligations. |
+| Operator-only diagnostics | Without dashboards or alerts, incident diagnosis relies on reading logs. | Structured, secret-safe diagnostics for authentication, setup, uploads, migrations, lifecycle, and page performance. | No hosted telemetry. | Recurring live-event incidents or hosted support obligations. |

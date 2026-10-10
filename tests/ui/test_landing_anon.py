@@ -16,6 +16,13 @@ from playwright.sync_api import expect
 from ..support import SETUP_TOKEN
 from ._helpers import ADMIN, api_login, api_make_session
 
+
+def _expect_no_github(page) -> None:
+    """Password is the only admin sign-in: nothing on the page, shown or
+    hidden, mentions GitHub or carries a GitHub id (UC-A-01)."""
+    expect(page.get_by_text("GitHub")).to_have_count(0)
+    expect(page.locator("[id*='github' i]")).to_have_count(0)
+
 # ---------- UC-A-01 ----------
 
 
@@ -59,7 +66,7 @@ def test_uc_a_01_without_link_explains_where_to_find_it(fresh_base_url, page):
     expect(page.locator("#setup-needed-card")).to_contain_text("server log")
     for hidden in ("#setup-card", "#login-card", "#sessions-card"):
         expect(page.locator(hidden)).to_be_hidden()
-    expect(page.locator("#setup-github-login")).to_be_hidden()
+    _expect_no_github(page)
 
 
 def test_uc_a_01_setup_link_creates_admin(fresh_base_url, page):
@@ -74,12 +81,18 @@ def test_uc_a_01_setup_link_creates_admin(fresh_base_url, page):
     assert "setup=" not in page.url
 
 
-def test_uc_a_01_first_run_page_offers_github(fresh_github_base_url, page):
-    """UC-A-01/26: with GitHub configured, the first-run page offers GitHub sign-in."""
-    page.goto(fresh_github_base_url + "/")
-    expect(page.locator("#setup-needed-card")).to_be_visible(timeout=5000)
-    expect(page.locator("#setup-github-login")).to_be_visible()
-    expect(page.locator("#setup-github-login")).to_have_attribute("href", "/api/auth/github/login")
+def test_uc_a_01_setup_form_offers_no_other_sign_in(fresh_base_url, page):
+    """UC-A-01: the first-run setup form offers no GitHub sign-in."""
+    page.goto(f"{fresh_base_url}/#setup={SETUP_TOKEN}")
+    expect(page.locator("#setup-card")).to_be_visible(timeout=5000)
+    _expect_no_github(page)
+
+
+def test_uc_a_01_sign_in_page_offers_no_other_sign_in(base_url, admin_setup, page):
+    """UC-A-01: the signed-out sign-in page offers only the password form."""
+    page.goto(base_url + "/")
+    expect(page.locator("#login-card")).to_be_visible(timeout=5000)
+    _expect_no_github(page)
 
 
 # ---------- UC-A-02 ----------
@@ -107,7 +120,6 @@ def test_uc_a_02_shell_visible_while_status_is_pending(base_url, admin_setup, pa
                 "initialized": True,
                 "authenticated": False,
                 "username": None,
-                "github_enabled": False,
             }
         ),
     )

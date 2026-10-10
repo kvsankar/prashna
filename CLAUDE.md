@@ -55,15 +55,13 @@ a UI framework, or a CSS preprocessor without an explicit request.
 
 ## Conventions
 
-- **Auth model.** The admin signs in with a password (bcrypt) or, when it is
-  configured, an allowlisted GitHub account; both issue the signed
-  `prashna_admin` cookie. Moderator routes accept the owner's cookie **or**
+- **Auth model.** The admin signs in with a username and password (bcrypt),
+  which issues the signed `prashna_admin` cookie. Password sign-in is the only
+  admin sign-in method. Moderator routes accept the owner's cookie **or**
   the session's `mod_key` in the `X-Mod-Key` header, through
   `require_mod_or_owner`. Admin capabilities are a superset of moderator
   capabilities; `mod_key` is the delegation mechanism. Participants are
   anonymous and identified by the `voter_token` cookie.
-- **GitHub sign-in** runs alongside password sign-in. Do not make GitHub the
-  only admin sign-in path without a request.
 - **Live updates.** Every state-changing route ends with
   `broadcast_session(s, "<kind>")`. Clients refetch on the hint; never send
   model state through the socket. The kinds are listed in UC-X-01.

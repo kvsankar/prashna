@@ -118,7 +118,7 @@ ends.
 
 | Role | Page | Who gets in |
 | --- | --- | --- |
-| Admin | `/` | The person who signed in with the admin password (or an allowed GitHub account). Creates sessions and quizzes. |
+| Admin | `/` | The person who signed in with the admin password. Creates sessions and quizzes. |
 | Moderator | `/m/<code>` | The admin who owns the session, or anyone the admin gives the moderator link to, such as a co-host. Runs the room. |
 | Participant | `/s/<code>` | Anyone with the session code or QR code. No account; an optional profile. |
 | Projector | `/p/<code>` | Anyone. Read-only, for the room's screen. |

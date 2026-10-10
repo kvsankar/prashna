@@ -6,7 +6,7 @@ from ..support import SETUP_TOKEN
 def test_admin_status_starts_uninitialized(client):
     r = client.get("/api/admin/status")
     assert r.status_code == 200
-    assert r.json() == {"initialized": False, "authenticated": False, "username": None, "github_enabled": False}
+    assert r.json() == {"initialized": False, "authenticated": False, "username": None}
 
 
 def test_admin_setup_creates_first_admin(client):
@@ -17,7 +17,7 @@ def test_admin_setup_creates_first_admin(client):
 
 def test_admin_client_fixture_is_logged_in(admin_client):
     r = admin_client.get("/api/admin/status")
-    assert r.json() == {"initialized": True, "authenticated": True, "username": "admin", "github_enabled": False}
+    assert r.json() == {"initialized": True, "authenticated": True, "username": "admin"}
 
 
 def test_make_session_factory(make_session):

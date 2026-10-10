@@ -6,7 +6,7 @@ reports can cite it. Acceptance tests are Given/When/Then.
 
 **Roles** (and their UC prefixes)
 - **Admin** (`UC-A-*`) — a signed-in `User`: the password admin created
-  at first-run setup (UC-A-01) or an allowlisted GitHub account (UC-A-26).
+  at first-run setup (UC-A-01).
   Owns sessions and quiz templates and sees only their own.
   **Capabilities are a strict superset of Moderator.** Authenticates
   via signed cookie; reaches all moderator routes on owned sessions
@@ -109,15 +109,22 @@ public can't be claimed by its first visitor.
 - **And** with the right token the admin is created, a session cookie is
   issued, the `setup-token` file is deleted, and the link stops working
 - **And** without the link, the landing page explains that the server
-  log holds a one-time setup link (and shows **Sign in with GitHub** when
-  GitHub login is configured, UC-A-26) instead of a setup form
+  log holds a one-time setup link instead of a setup form
 - **And** any subsequent `POST /api/admin/setup` returns `409 Admin
   already initialized`
 - **And** passwords shorter than 8 chars return `400` with a length
   message
+- **And** a password is the only admin sign-in method: the status payload
+  reports only whether an admin exists, whether the visitor is signed in,
+  and the signed-in username; there are no third-party sign-in routes; and
+  neither the first-run page nor the sign-in page offers another sign-in
+  option
 
 **Tests (API)**
-- `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null, github_enabled: false}` (`github_enabled` reflects whether GitHub OAuth is configured — see UC-A-26). Auth: none.
+- `GET /api/admin/status` on a fresh DB → `200 {initialized: false, authenticated: false, username: null}`. Auth: none.
+- The `GET /api/admin/status` payload has exactly the keys `initialized`, `authenticated`, and `username`, both before setup and when signed in.
+- `GET /api/auth/github/login` and `GET /api/auth/github/callback` → `404`, also when the environment sets `PRASHNA_GITHUB_CLIENT_ID`, `PRASHNA_GITHUB_CLIENT_SECRET`, and `PRASHNA_GITHUB_ADMINS`; the server reads none of them, and the status payload keeps the same three keys.
+- A database created before this version whose `users` table still has a nullable `github_id` column starts, accepts first-run setup, and lets the password admin log in; the column's data is left unchanged.
 - `POST /api/admin/setup` with `{"username": "alice", "password": "longenough", "setup_token": <token>}` → `200 {username: "alice"}` and sets the `prashna_admin` cookie. Auth: the setup token.
 - The same request without `setup_token`, or with a wrong one → `403 "Open the one-time setup link from the server log to create the first admin"`; no user is created.
 - `GET /api/admin/status` immediately after setup (with cookie) → `200 {initialized: true, authenticated: true, username: "alice"}`.
@@ -133,7 +140,7 @@ public can't be claimed by its first visitor.
 - On `/#setup=<token>` with no admin, `#setup-card` is visible; filling `#su-user`, `#su-pass`, `#su-pass2` (matching) and clicking `#su-btn` swaps the page to the authed view (`#sessions-card` visible).
 - Mismatched `#su-pass`/`#su-pass2` shows an error toast without an API call.
 - A password shorter than 8 chars surfaces a `400` toast and leaves `#setup-card` visible.
-- With GitHub login configured and no admin, the first-run page shows **Sign in with GitHub** (`#setup-github-login`).
+- Neither the first-run page (`/` with no admin, with or without `#setup=`) nor the signed-out sign-in page shows any text mentioning GitHub or any element whose id contains `github`.
 
 ### UC-A-02: Login / Logout
 
@@ -789,53 +796,6 @@ Used by question and answer editors to set `image_url`.
 - A new password shorter than 8 chars shows a `400` toast.
 - Pressing Escape inside `#change-pw-card` closes it without submitting.
 - `#cp-close` closes the card without submitting.
-
-### UC-A-26: GitHub OAuth admin login (allowlist)
-
-An optional sign-in path for hosted deploys (e.g. the Hetzner box).
-It runs **alongside** username/password login — password stays as a
-fallback. It's enabled only when all of `PRASHNA_GITHUB_CLIENT_ID`,
-`PRASHNA_GITHUB_CLIENT_SECRET`, and `PRASHNA_GITHUB_ADMINS`
-(comma-separated GitHub logins) are set; otherwise the routes 404 and
-the UI shows no button.
-
-- **Given** GitHub login is configured
-- **Then** `GET /api/admin/status` reports `github_enabled: true`, and
-  the landing page shows a **Sign in with GitHub** button, including on
-  the first-run page before any admin exists (UC-A-01)
-- **When** the admin clicks it → `GET /api/auth/github/login` redirects
-  to GitHub's authorize URL with a signed, short-lived `state` (CSRF)
-- **And** GitHub redirects back to `GET /api/auth/github/callback`;
-  the server verifies `state`, exchanges the `code`, fetches the
-  GitHub `{id, login}`, and:
-  - if `login` is in the allowlist (case-insensitive) → **find-or-create**
-    the admin `User` keyed by the immutable GitHub `id` (so the first
-    allowlisted sign-in bootstraps the admin — no password setup needed
-    on the server), issues the normal signed `prashna_admin` session
-    cookie, and `303`-redirects to `/`; when this creates the first admin, the
-    one-time setup token (UC-A-01) is retired as well
-  - otherwise → `303`-redirects to `/?auth_error=…` with a banner; no
-    cookie is issued
-- **And** a missing/invalid/expired `state` or a failed token exchange
-  → `303` to `/?auth_error=…`, no cookie
-- **And** GitHub-created admins have no password (`password_hash=""`),
-  so they cannot use the password login; the local password admin (if
-  any) is unaffected
-
-**Tests (API)**
-- `oauth.enabled()` is `True` only when all three env vars are set; `oauth.is_allowed()` matches the allowlist case-insensitively.
-- `oauth.exchange_code(code)` POSTs `client_id`, `client_secret`, and `code` to GitHub's token URL with `Accept: application/json` and returns `access_token`; an error reply, non-JSON, or a network failure returns `None`.
-- `oauth.fetch_user(token)` sends `Authorization: Bearer <token>` to `https://api.github.com/user` and returns the profile; a network failure returns `None`.
-- With GitHub unconfigured: `GET /api/auth/github/login` and `/callback` → `404`; `GET /api/admin/status` → `github_enabled: false`.
-- With GitHub configured: `GET /api/admin/status` → `github_enabled: true`; `GET /api/auth/github/login` → `302` to `github.com/login/oauth/authorize` carrying a `state`.
-- Callback with a forged/garbage `state` → `303` to `/?auth_error=…`, no `prashna_admin` cookie.
-- Callback with valid `state` and an **allowlisted** login (token/user fetch mocked) → `303` to `/`, sets `prashna_admin`; a follow-up `GET /api/admin/status` is `authenticated: true` with `username` = the GitHub login; a `User` row exists with that `github_id`.
-- Callback with a **non-allowlisted** login → `303` to `/?auth_error=…`, no cookie, no new `User`.
-- Two callbacks for the same GitHub `id` reuse the same `User` (no duplicate row).
-
-**Tests (UI)**
-- On `/` with GitHub configured and not authenticated, `#github-login-btn` is visible and links to `/api/auth/github/login`; with GitHub unconfigured it stays hidden.
-- Loading `/?auth_error=Nope` surfaces the message as an error toast and strips the query param.
 
 ---
 

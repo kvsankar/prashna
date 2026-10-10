@@ -138,6 +138,13 @@ def test_every_environment_variable_is_documented():
         names.update(ENV_LITERAL.findall(source.read_text(encoding="utf-8")))
     development = read("docs/development.md")
 
-    assert len(names) >= 10, sorted(names)
+    # The scan must find every known setting, so a broken pattern cannot make
+    # the documentation check below pass vacuously.
+    known = {
+        "PRASHNA_DATA_DIR", "PRASHNA_DB_PATH", "PRASHNA_UPLOADS_DIR",
+        "PRASHNA_SECRET_KEY", "PRASHNA_SETUP_TOKEN", "PRASHNA_TRUSTED_PROXY_HOPS",
+        "PRASHNA_RATELIMIT", "PRASHNA_TUNNEL_DNS_WAIT_SECS", "PRASHNA_WS_SEND_TIMEOUT_SECS",
+    }
+    assert known <= names, sorted(known - names)
     missing = sorted(name for name in names if f"`{name}`" not in development)
     assert missing == []

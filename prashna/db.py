@@ -84,7 +84,6 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
     additive = [
         # (table, column, ddl-snippet)
         ("users", "session_version", "INTEGER NOT NULL DEFAULT 1"),
-        ("users", "github_id", "INTEGER"),
         ("sessions", "participant_base_url", "VARCHAR(500)"),
         ("sessions", "feedback_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("participants", "email", "VARCHAR(254)"),
@@ -102,7 +101,6 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
     # Indexes to (re)create on existing DBs. `ALTER TABLE ADD COLUMN` can't
     # carry UNIQUE/partial-index constraints; create those separately.
     indexes = [
-        ("ix_users_github_id", "users", ["github_id"], True, None),
         (
             "uq_session_live_run",
             "quiz_runs",

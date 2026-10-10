@@ -92,9 +92,6 @@ These are all the variables the application reads. Each one is optional.
 | `PRASHNA_SETUP_TOKEN` | Unset: a random token starting with `prashna_st_`, kept in `setup-token` beside the database until an admin exists. | Fixed first-admin setup token (UC-A-01). |
 | `PRASHNA_TRUSTED_PROXY_HOPS` | `0` (use the socket peer). | Number of trusted reverse-proxy hops for client-IP resolution. Set `1` behind ngrok or the bundled nginx (UC-X-08). |
 | `PRASHNA_RATELIMIT` | On. | `off`, `0`, `false`, or `no` (any case) disables rate limiting (UC-X-08). |
-| `PRASHNA_GITHUB_CLIENT_ID` | Unset. | GitHub OAuth app client id. GitHub sign-in is enabled only when all three GitHub variables are set (UC-A-26). |
-| `PRASHNA_GITHUB_CLIENT_SECRET` | Unset. | GitHub OAuth app client secret. |
-| `PRASHNA_GITHUB_ADMINS` | Unset. | Comma-separated allowlist of GitHub logins, matched case-insensitively. The OAuth app's callback URL is `https://<host>/api/auth/github/callback`. |
 | `PRASHNA_TUNNEL_DNS_WAIT_SECS` | `60` seconds. | How long `prashna --tunnel cloudflare` waits for the new address to appear in public DNS before printing it anyway (UC-X-15). `0` skips the wait; the stub-tunnel tests use that. |
 | `PRASHNA_WS_SEND_TIMEOUT_SECS` | `2.0` seconds. | Per-send timeout for WebSocket hints; a socket that times out is removed from its room. |
 
@@ -181,7 +178,6 @@ prashna/             Python package
   models.py          SQLAlchemy models
   db.py              engine, SQLite pragmas, default data folder, migration bridge
   auth.py            password hashing, signed cookies, signing key, setup token
-  oauth.py           GitHub OAuth sign-in
   ratelimit.py       token-bucket rate limiter
   ws.py              in-memory WebSocket hub
   diagnostics.py     structured, secret-safe diagnostic logging

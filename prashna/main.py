@@ -13,7 +13,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import quote
 
 from fastapi import (
     Cookie,
@@ -37,7 +36,7 @@ from sqlalchemy.orm import selectinload
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
-from . import auth, oauth
+from . import auth
 from . import models as m
 from .db import SessionLocal, default_data_dir, get_db, init_db
 from .diagnostics import log_diagnostic
@@ -871,7 +870,6 @@ def admin_status(db: DbSession = Depends(get_db), me: m.User | None = Depends(au
         "initialized": auth.admin_exists(db),
         "authenticated": me is not None,
         "username": me.username if me else None,
-        "github_enabled": oauth.enabled(),
     }
 
 
@@ -930,70 +928,6 @@ def performance_beacon(payload: dict, request: Request):
         cf_colo=cf_colo,
     )
     return Response(status_code=204)
-
-
-# ---------- routes: GitHub OAuth login (UC-A-26) ----------
-
-def _auth_error_redirect(message: str) -> RedirectResponse:
-    return RedirectResponse(f"/?auth_error={quote(message)}", status_code=303)
-
-
-@app.get("/api/auth/github/login")
-def github_login():
-    if not oauth.enabled():
-        raise HTTPException(404, "GitHub login is not configured")
-    return RedirectResponse(oauth.authorize_url(oauth.sign_state()), status_code=302)
-
-
-@app.get("/api/auth/github/callback")
-def github_callback(
-    request: Request,
-    code: str | None = None,
-    state: str | None = None,
-    db: DbSession = Depends(get_db),
-):
-    if not oauth.enabled():
-        raise HTTPException(404, "GitHub login is not configured")
-    if not code or not oauth.check_state(state):
-        return _auth_error_redirect("GitHub sign-in failed — please try again")
-    token = oauth.exchange_code(code)
-    if not token:
-        return _auth_error_redirect("GitHub sign-in failed — please try again")
-    ghuser = oauth.fetch_user(token) or {}
-    gid, login = ghuser.get("id"), ghuser.get("login")
-    if not gid or not oauth.is_allowed(login or ""):
-        return _auth_error_redirect("That GitHub account is not authorized for this server")
-    user = db.scalar(select(m.User).where(m.User.github_id == gid))
-    if user is None:
-        user = _create_github_admin(db, gid, login)
-    redirect = RedirectResponse("/", status_code=303)
-    auth.issue_session(redirect, user.id, user.session_version, secure=request.url.scheme == "https")
-    return redirect
-
-
-def _create_github_admin(db: DbSession, gid: int, login: str | None) -> m.User:
-    """Find-or-create the admin User for a GitHub id. Handles the insert race
-    (another concurrent callback won) and a username collision with an
-    existing local admin (fall back to a github-suffixed username)."""
-    username = login or f"github-{gid}"
-    # A GitHub sign-in can create the first admin too; retire the setup
-    # link then (UC-A-01, UC-A-26).
-    auth.retire_setup_token()
-    user = m.User(username=username, github_id=gid, password_hash="")
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        winner = db.scalar(select(m.User).where(m.User.github_id == gid))
-        if winner is not None:
-            return winner
-        # Username collided with a local admin — retry with a unique name.
-        user = m.User(username=f"{username}-gh{gid}", github_id=gid, password_hash="")
-        db.add(user)
-        db.commit()
-    db.refresh(user)
-    return user
 
 
 # Serializes first-run admin_setup against itself. Prashna runs as a

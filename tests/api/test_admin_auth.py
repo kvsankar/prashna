@@ -1,7 +1,17 @@
 """UC-A-01, UC-A-02, UC-A-25: admin setup, login/logout, change password."""
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Sequence
+from pathlib import Path
+
+import httpx
+from sqlalchemy import create_engine
+
 from ..support import SETUP_TOKEN
+from .test_secret_lifecycle import _start_app, _stop_app
+
+STATUS_KEYS = {"initialized", "authenticated", "username"}
 
 # ---------- UC-A-01: First-run admin setup ----------
 
@@ -9,7 +19,7 @@ def test_uc_a_01_status_fresh_db(client):
     """UC-A-01: GET /api/admin/status on a fresh DB."""
     r = client.get("/api/admin/status")
     assert r.status_code == 200
-    assert r.json() == {"initialized": False, "authenticated": False, "username": None, "github_enabled": False}
+    assert r.json() == {"initialized": False, "authenticated": False, "username": None}
 
 
 def test_uc_a_01_setup_creates_admin_and_cookie(client):
@@ -26,7 +36,105 @@ def test_uc_a_01_status_after_setup(client):
     client.post("/api/admin/setup", json={"username": "alice", "password": "longenough", "setup_token": SETUP_TOKEN})
     r = client.get("/api/admin/status")
     assert r.status_code == 200
-    assert r.json() == {"initialized": True, "authenticated": True, "username": "alice", "github_enabled": False}
+    assert r.json() == {"initialized": True, "authenticated": True, "username": "alice"}
+
+
+def test_uc_a_01_status_reports_only_password_sign_in(client):
+    """UC-A-01: the status payload has exactly initialized/authenticated/username."""
+    assert set(client.get("/api/admin/status").json()) == STATUS_KEYS
+    client.post("/api/admin/setup", json={"username": "alice", "password": "longenough", "setup_token": SETUP_TOKEN})
+    assert set(client.get("/api/admin/status").json()) == STATUS_KEYS
+
+
+def test_uc_a_01_no_github_sign_in_routes(client, monkeypatch):
+    """UC-A-01: password is the only sign-in; GitHub routes 404 even with the variables set."""
+    monkeypatch.setenv("PRASHNA_GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("PRASHNA_GITHUB_CLIENT_SECRET", "csecret")
+    monkeypatch.setenv("PRASHNA_GITHUB_ADMINS", "someone")
+    assert client.get("/api/auth/github/login", follow_redirects=False).status_code == 404
+    r = client.get("/api/auth/github/callback?code=x&state=y", follow_redirects=False)
+    assert r.status_code == 404
+    assert "prashna_admin" not in client.cookies
+    assert set(client.get("/api/admin/status").json()) == STATUS_KEYS
+
+
+def _old_shape_db(path: Path, users: Sequence[tuple] = ()) -> None:
+    """A database whose users table still has the nullable github_id column
+    and its unique index, as databases created by earlier releases do."""
+    from prashna import models  # noqa: F401
+    from prashna.db import Base
+    engine = create_engine(f"sqlite:///{path}", future=True)
+    Base.metadata.create_all(bind=engine)
+    engine.dispose()
+    with sqlite3.connect(path) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        if "github_id" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN github_id INTEGER")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_github_id ON users (github_id)")
+        conn.executemany(
+            "INSERT INTO users (id, username, password_hash, github_id, session_version, created_at)"
+            " VALUES (?, ?, ?, ?, 1, '2026-01-01 00:00:00')",
+            users,
+        )
+
+
+def _github_column_state(path: Path) -> tuple[bool, bool, list[tuple]]:
+    with sqlite3.connect(path) as conn:
+        has_col = "github_id" in {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        has_idx = "ix_users_github_id" in {row[1] for row in conn.execute("PRAGMA index_list(users)")}
+        rows = conn.execute("SELECT username, github_id FROM users ORDER BY id").fetchall()
+    return has_col, has_idx, rows
+
+
+def test_uc_a_01_old_database_with_github_id_sets_up_password_admin(tmp_path):
+    """UC-A-01: a database that still has users.github_id starts, runs first-run
+    setup, and lets the password admin log in; the column stays."""
+    db_path = tmp_path / "old.db"
+    _old_shape_db(db_path)
+    proc, base = _start_app(db_path, tmp_path / "uploads", "old-shape-secret")
+    try:
+        with httpx.Client(base_url=base, timeout=5.0) as c:
+            assert c.get("/api/admin/status").json() == {
+                "initialized": False, "authenticated": False, "username": None}
+            r = c.post("/api/admin/setup", json={
+                "username": "admin", "password": "testpass1", "setup_token": SETUP_TOKEN})
+            assert r.status_code == 200, r.text
+            c.post("/api/admin/logout")
+            c.cookies.clear()
+            r = c.post("/api/admin/login", json={"username": "admin", "password": "testpass1"})
+            assert r.status_code == 200, r.text
+            assert c.get("/api/admin/status").json() == {
+                "initialized": True, "authenticated": True, "username": "admin"}
+    finally:
+        _stop_app(proc)
+    assert _github_column_state(db_path) == (True, True, [("admin", None)])
+
+
+def test_uc_a_02_old_database_keeps_github_rows_but_only_passwords_sign_in(tmp_path):
+    """UC-A-02: on a database with a GitHub-linked row, the password admin logs
+    in, the passwordless row cannot, and its github_id is left unchanged."""
+    from prashna import auth
+    db_path = tmp_path / "old.db"
+    _old_shape_db(db_path, [
+        (1, "admin", auth.hash_password("testpass1"), None),
+        (2, "someone", "", 4242),
+    ])
+    proc, base = _start_app(db_path, tmp_path / "uploads", "old-shape-secret")
+    try:
+        with httpx.Client(base_url=base, timeout=5.0) as c:
+            r = c.post("/api/admin/login", json={"username": "someone", "password": ""})
+            assert r.status_code == 401
+            assert "prashna_admin" not in c.cookies
+            r = c.post("/api/admin/login", json={"username": "admin", "password": "testpass1"})
+            assert r.status_code == 200, r.text
+            assert c.get("/api/admin/status").json() == {
+                "initialized": True, "authenticated": True, "username": "admin"}
+            r = c.post("/api/admin/setup", json={
+                "username": "other", "password": "testpass1", "setup_token": SETUP_TOKEN})
+            assert r.status_code == 409
+    finally:
+        _stop_app(proc)
+    assert _github_column_state(db_path) == (True, True, [("admin", None), ("someone", 4242)])
 
 
 def test_uc_a_01_setup_requires_the_token(client):
