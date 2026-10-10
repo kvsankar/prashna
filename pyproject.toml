@@ -1,6 +1,6 @@
 [project]
 name = "prashna"
-version = "0.2.0"
+version = "0.2.1"
 description = "Live Q&A and quizzes for any session with an audience"
 readme = "README.md"
 license = "MIT"
