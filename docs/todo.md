@@ -72,3 +72,20 @@ while the repository's lists each setting, requires `PRASHNA_SECRET_KEY`,
 overrides the start command, and parameterises the paths. Only the journald
 `logging` block is applied to both. Decide which form is right, make the
 repository match, and install it on the host.
+
+## Stable address for `--tunnel cloudflare`
+
+A Cloudflare quick tunnel gets a new `trycloudflare.com` name on every run.
+A Cloudflare named tunnel would keep one name, but needs a Cloudflare account
+and a domain whose DNS Cloudflare manages, so it serves only such users;
+everyone else's stable option is ngrok's fixed free domain (`--tunnel
+ngrok`). Decide whether to support named tunnels (for example
+`--tunnel cloudflare --hostname quiz.example.org`) and where the tunnel's
+name and credentials live.
+
+## Prune old rollback images on the Hetzner host
+
+Each production deploy tags the previous image as
+`ghcr.io/kvsankar/prashna:rollback-<date>`, and nothing removes old tags.
+Keep the newest few and remove the rest, by hand or in the update steps of
+`deploy/README.md`.
