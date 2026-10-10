@@ -363,3 +363,30 @@ def test_uc_x_15_tunnel_waits_for_public_dns(monkeypatch):
 
     monkeypatch.setattr(tunnel, "_doh_query", lambda host: (_ for _ in ()).throw(AssertionError("asked")))
     assert tunnel.wait_until_resolvable("https://x.trycloudflare.com", timeout=0) is True
+
+
+def test_uc_x_15_reports_new_or_existing_data_and_where_to_sign_in(tmp_path):
+    """UC-X-15: the terminal says whether the database is new or existing, what
+    it holds, and where to sign in once an admin exists."""
+    port, data = _free_port(), tmp_path / "data"
+    env = _cli_env(PRASHNA_SETUP_TOKEN="t")
+    proc = _start_cli(["--data-dir", str(data), "--port", str(port), "--no-browser"], env)
+    try:
+        _wait_up(port)
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10) as c:
+            c.post("/api/admin/setup", json={"username": "me", "password": "longenough", "setup_token": "t"}).raise_for_status()
+            c.post("/api/sessions", json={"title": "One"}).raise_for_status()
+    finally:
+        first = _stop(proc)
+    assert f"Created a new database: {data / 'prashna.db'}" in first
+    assert "Sign in at" not in first
+
+    proc = _start_cli(["--data-dir", str(data), "--port", str(port), "--no-browser"], env)
+    try:
+        _wait_up(port)
+    finally:
+        second = _stop(proc)
+    assert f"Using existing data: {data / 'prashna.db'}" in second
+    assert "1 admin (me), 1 session, 0 quizzes" in second
+    assert f"Sign in at http://127.0.0.1:{port}/ as me." in second
+    assert "Created a new database" not in second

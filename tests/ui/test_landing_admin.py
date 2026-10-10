@@ -95,6 +95,21 @@ def test_uc_a_04_list_shows_owned_sessions(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_a_04_row_actions_include_moderate(base_url, admin_setup, page):
+    """UC-A-04: each row offers Moderate (the session page), Participant, Projector, Delete."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A04m {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        actions = page.locator("#session-rows tr").filter(has_text=s["title"]).locator("td.actions")
+        expect(actions.locator("a, button")).to_have_text(["Moderate", "Participant", "Projector", "Delete"])
+        expect(actions.get_by_role("link", name="Moderate")).to_have_attribute("href", f"/m/{s['code']}")
+        actions.get_by_role("link", name="Moderate").click()
+        page.wait_for_url(f"**/m/{s['code']}")
+    finally:
+        c.close()
+
+
 def test_uc_a_04_session_query_redirects_to_session_page(base_url, admin_setup, page):
     """UC-A-04: /?session=<code> (older bookmarks) redirects to /m/<code>."""
     c = api_login(base_url)

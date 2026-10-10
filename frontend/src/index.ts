@@ -170,6 +170,7 @@ async function loadSessions(): Promise<void> {
 
       const actions = el("td", { class: "actions" });
       actions.addEventListener("click", (e) => e.stopPropagation());
+      actions.appendChild(el("a", { class: "small", href: `/m/${s.code}` }, "Moderate"));
       actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
       actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
       const delBtn = el("button", { class: "danger ghost xsmall" }, "Delete");

@@ -209,7 +209,7 @@ public can't be claimed by its first visitor.
 - On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
 - Most-recently-created session appears at the top.
 - Authenticated admin chrome shows `#admin-page-nav` with an Admin breadcrumb and links to Sessions and Quiz library.
-- Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL; the Actions column keeps Participant, Projector, and Delete.
+- Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL. The Actions column has, in order, a **Moderate** link to `/m/<code>`, Participant, Projector, and Delete (`test_uc_a_04_row_actions_include_moderate`).
 - Opening `/?session=<owned-code>` as an authenticated admin redirects to `/m/<code>` (older bookmarks keep working).
 
 ### UC-A-05: Edit session title
@@ -2236,6 +2236,15 @@ one command, on macOS, Linux, or Windows.
   (as a full URL with `--no-browser`), and how to stop; the server's
   diagnostic records go to `prashna.log` in the data folder instead of the
   terminal. Warnings and errors still reach the terminal
+- **And** the terminal says which data it uses. A database that did not
+  exist yet is reported as `Created a new database: <path>`. An existing
+  one is reported as `Using existing data: <path>` with a summary of what
+  it holds (admins by name, number of sessions and quizzes, or "no admin
+  yet"), so a presenter knows when an earlier or seeded data folder is in
+  use
+- **And** once an admin exists, the terminal says where to sign in:
+  `Sign in at <address>/ as <name>.` when there is exactly one password
+  admin, otherwise `Sign in at <address>/ with your admin account.`
 - **And** `--port`, `--host`, `--data-dir` (or `PRASHNA_DATA_DIR`), and
   `--no-browser` change those defaults; a port already in use exits with
   status 1 and suggests `--port`
@@ -2292,6 +2301,7 @@ one command, on macOS, Linux, or Windows.
 - A request from `127.0.0.1` carrying `X-Forwarded-Proto: https` gets a `Secure` session cookie; the same request without the header doesn't.
 - `prashna backup create <file>` writes an archive of that data folder.
 - `prashna --version` prints the installed version.
+- A first run prints `Created a new database: <data>/prashna.db`; a later run against the same folder prints `Using existing data: <data>/prashna.db` with `1 admin (me)` and the session and quiz counts, and `Sign in at http://127.0.0.1:<port>/ as me.` (`test_uc_x_15_reports_new_or_existing_data_and_where_to_sign_in`).
 - With a stub `cloudflared` (and, separately, a stub `ngrok`) on `PATH` that prints a known address, `prashna --tunnel …` prints `Participants join at: <address>`, sessions report it as `default_base_url`, and stopping Prashna stops the stub (`test_uc_x_15_tunnel_wires_the_public_address`).
 - Through that tunnel, a visitor who exhausts the login rate limit (`X-Forwarded-For: <visitor A>`) gets `429` while another visitor (`<visitor B>`) still gets `401` for a wrong password (`test_uc_x_15_tunnel_rate_limits_each_visitor`).
 - Without the tunnel program on `PATH`, `prashna --tunnel cloudflare` exits 1 and names `cloudflared` and how to install it; a stub that exits without an address makes it exit 1 showing the stub's output (`test_uc_x_15_tunnel_reports_missing_or_failed_programs`).

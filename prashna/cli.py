@@ -94,6 +94,26 @@ def _open_when_ready(host: str, port: int, url: str) -> None:
     _launch_browser(url)
 
 
+def _plural(count: int, noun: str, plural: str | None = None) -> str:
+    return f"{count} {noun if count == 1 else plural or noun + 's'}"
+
+
+def _summarize(session) -> tuple[str, str | None]:
+    """What an existing database holds, and the admin to sign in as when
+    there is exactly one password admin."""
+    from sqlalchemy import func, select
+
+    from . import models as m
+    admins = session.execute(select(m.User.username, m.User.password_hash)).all()
+    sessions = session.scalar(select(func.count()).select_from(m.Session)) or 0
+    quizzes = session.scalar(select(func.count()).select_from(m.Quiz)) or 0
+    names = ", ".join(name for name, _ in admins[:3]) + (", ..." if len(admins) > 3 else "")
+    who = f"{_plural(len(admins), 'admin')} ({names})" if admins else "no admin yet"
+    password_admins = [name for name, password_hash in admins if password_hash]
+    sign_in_as = password_admins[0] if len(admins) == 1 and password_admins else None
+    return f"{who}, {_plural(sessions, 'session')}, {_plural(quizzes, 'quiz', 'quizzes')}", sign_in_as
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     data_dir = _data_dir(args.data_dir)
@@ -111,11 +131,14 @@ def main(argv: list[str] | None = None) -> int:
               f"for example: prashna --port {args.port + 1}", file=sys.stderr)
         return 1
 
+    db_path = Path(os.environ["PRASHNA_DB_PATH"])
+    db_existed = db_path.is_file() and db_path.stat().st_size > 0
     from . import auth, db, diagnostics
     diagnostics.send_to_file(data_dir / "prashna.log")
     db.init_db()
     with db.SessionLocal() as session:
         token = auth.setup_token(session)
+        holdings, sign_in_as = _summarize(session)
     shown_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
     address = f"http://{shown_host}:{args.port}"
     url = f"{address}/#setup={token}" if token else f"{address}/"
@@ -145,6 +168,13 @@ def main(argv: list[str] | None = None) -> int:
     if public_url:
         print(f"Participants join at: {public_url}")
     print(f"Data folder: {data_dir}")
+    if db_existed:
+        print(f"Using existing data: {db_path} ({holdings})")
+    else:
+        print(f"Created a new database: {db_path}")
+    if not token:
+        who = f"as {sign_in_as}" if sign_in_as else "with your admin account"
+        print(f"Sign in at {address}/ {who}." + ("" if args.no_browser else " Opening it in your browser."))
     if token:
         if args.no_browser:
             print(f"Create your admin account here (one-time link): {url}")
