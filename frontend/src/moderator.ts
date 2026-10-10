@@ -603,6 +603,8 @@ function refreshSoon(msg: LiveMessage): void {
 async function boot(): Promise<void> {
   const state = await api<ModeratorBootstrap>(`/api/sessions/${CODE}/moderator-bootstrap`, { headers: modHeaders() });
   isOwner = state.is_owner;
+  // The Sessions list is the admin's page; a delegate cannot use it.
+  setVisible($("#moderator-breadcrumbs li:first-child"), isOwner);
   applySession(state.session);
   applyQuizzes(state.available_quizzes);
   $<HTMLDetailsElement>("#setup-section").open = sessionState?.status === "planning";

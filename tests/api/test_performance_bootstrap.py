@@ -34,7 +34,9 @@ def test_participant_bootstrap_returns_one_snapshot_and_one_identity(
         "queries",
         "quiz_runs",
         "feedback",
+        "viewer_is_owner",
     }
+    assert response.json()["viewer_is_owner"] is False
     assert response.json()["session"]["code"] == session["code"]
     assert response.json()["me"]["name"] is None
     assert response.json()["queries"] == []

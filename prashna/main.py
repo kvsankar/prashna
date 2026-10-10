@@ -1109,6 +1109,7 @@ def participant_bootstrap(
     response: Response,
     voter_token: Annotated[str | None, Cookie()] = None,
     db: DbSession = Depends(get_db),
+    admin: m.User | None = Depends(auth.optional_admin),
 ):
     """Return one cookie-consistent participant startup snapshot."""
     session = get_session_by_code(db, code)
@@ -1141,6 +1142,8 @@ def participant_bootstrap(
             is_mod=False,
         ),
         "feedback": serialize_feedback(feedback) if feedback else None,
+        # Lets the page link the session's other views for its owner.
+        "viewer_is_owner": bool(admin and admin.id == session.owner_user_id),
     }
 
 

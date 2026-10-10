@@ -478,3 +478,13 @@ def test_uc_m_10_presence_expires_after_30s(client, admin_client, make_session, 
         r = c2.get(f"/api/sessions/{s['code']}/presence")
     # the new participant from c2 is fresh; backdated one is excluded.
     assert r.json()["online"] == 1
+
+
+def test_uc_p_bootstrap_reports_the_owner(admin_client, make_session):
+    """UC-P: participant-bootstrap says whether the viewer is the admin who owns the session."""
+    s = make_session()
+    owner_view = admin_client.get(f"/api/sessions/{s['code']}/participant-bootstrap").json()
+    assert owner_view["viewer_is_owner"] is True
+    admin_client.cookies.delete("prashna_admin")
+    participant_view = admin_client.get(f"/api/sessions/{s['code']}/participant-bootstrap").json()
+    assert participant_view["viewer_is_owner"] is False

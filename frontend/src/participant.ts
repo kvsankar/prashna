@@ -1,4 +1,4 @@
-import { $, answerOption, api, el, errorToast, guardClick, markUsable, openLiveSocket, pathCode, publicBase, renderQR, setVisible, toast, type LiveMessage } from "./common";
+import { $, answerOption, api, el, errorToast, guardClick, markUsable, modKey, openLiveSocket, pathCode, publicBase, renderQR, setVisible, toast, type LiveMessage } from "./common";
 import type { Feedback, ParticipantBootstrap, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
@@ -546,6 +546,17 @@ function scheduleQuizRefresh(): void {
   quizCountTimer = setTimeout(() => { quizCountTimer = null; void loadQuiz(); }, 1000);
 }
 
+/** Links to the session's other views, for its owner or a delegate moderator
+ * (who holds the session's moderator key); participants see none. */
+function renderViewLinks(isOwner: boolean): void {
+  const links: [string, string][] = [];
+  if (isOwner) links.push(["Sessions", "/"]);
+  if (isOwner || modKey()) links.push(["Moderate", `/m/${CODE}`], ["Projector", `/p/${CODE}`]);
+  const box = $("#view-links");
+  box.replaceChildren(...links.flatMap(([label, href]) => [" · ", el("a", { href }, label)]));
+  setVisible(box, links.length > 0);
+}
+
 // Refetch only what each event affects; ignore peers' quiz_submission unless
 // live counts are shown (else every submit → every client refetches: O(N^2)).
 function onLive(msg: LiveMessage): void {
@@ -578,5 +589,6 @@ function onLive(msg: LiveMessage): void {
   applyQueries(state.queries);
   applyQuizRuns(state.quiz_runs);
   applyFeedback(state.feedback);
+  renderViewLinks(state.viewer_is_owner);
   markUsable("participant");
 })().catch((error: unknown) => errorToast((error as Error).message));

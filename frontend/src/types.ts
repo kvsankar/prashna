@@ -104,6 +104,7 @@ export interface ParticipantBootstrap {
   queries: Query[];
   quiz_runs: QuizRun[];
   feedback: Feedback | null;
+  viewer_is_owner: boolean;
 }
 
 export interface ModeratorBootstrap {

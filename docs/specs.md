@@ -836,6 +836,7 @@ Used by question and answer editors to set `image_url`.
 - Opening `/m/<code>` with neither cookie nor stored key renders `#modkey-card`; submitting `#modkey-input` via `#modkey-submit` boots the surface.
 - Opening `/m/<code>` with a wrong stored key renders `#modkey-card` with toast "Couldn't load — re-enter the moderator key".
 - `#moderator-breadcrumbs` shows Sessions → session title. The Sessions link targets `/`; the session title is the current page. The adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
+- The header links to the session's other views: `#participant-link` (`/s/<code>`) and `#projector-link` (`/p/<code>`). A delegate moderator does not see the Sessions breadcrumb, which only an admin can use (`test_uc_m_views_links_for_a_delegate`).
 
 ### UC-M-02: Session lifecycle: Start → End
 
@@ -1264,6 +1265,7 @@ by default while the session is `planning`.
 - On `/`, typing a valid code into `#join-code` and clicking `#join-btn` (or pressing Enter) navigates to `/s/<CODE>`.
 - `/s/<CODE>` shows `#title`, `#code`, `#my-name`, `#ask-card`, `#queries-card`, `#invite-card`.
 - `#participant-breadcrumbs` shows Prashna → session title → Participant, with section links for the long participant page.
+- `#view-links` links the session's other views for those who may open them, and is hidden for everyone else: the admin who owns the session (`viewer_is_owner: true` in `GET /api/sessions/{code}/participant-bootstrap`) sees Sessions (`/`), Moderate (`/m/<code>`) and Projector (`/p/<code>`); a delegate moderator (this browser holds the session's moderator key) sees Moderate and Projector; a participant sees none (`test_uc_p_view_links_follow_the_viewer`).
 - Typing an unknown code redirects to `/?bad_code=XXX`; `#bad-code-msg` shows "Session 'XXX' does not exist." in red.
 
 ### UC-P-02: Anonymous identity per session
@@ -1645,6 +1647,9 @@ session.
   live or closed quiz question
 - **And** an invalid `code` redirects to `/?bad_code=…` (same 303
   pattern used by participant/moderator pages)
+- **And** the projector shows no navigation links, for any viewer: it is
+  on the room's screen, so links would be visible to the audience. The
+  session page links to it instead
 
 **Tests (API)**
 - `GET /p/<code>` for an existing code → `200` and serves `projector.html`.

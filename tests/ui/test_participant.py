@@ -11,6 +11,7 @@ import httpx
 from playwright.sync_api import expect
 
 from ._helpers import (
+    admin_login_via_ui,
     api_end_session,
     api_login,
     api_make_quiz,
@@ -798,5 +799,33 @@ def test_uc_p_12_live_counts_off_default_no_bars(base_url, admin_setup, page):
         page.wait_for_selector("#quiz-card:visible")
         # No percentages shown.
         expect(page.locator("#quiz-body .opt-pct")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def test_uc_p_view_links_follow_the_viewer(base_url, admin_setup, page, browser):
+    """UC-P: #view-links shows the other views to the owner and to a delegate, and
+    nothing to a participant."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-Pviews {secrets.token_hex(3)}")
+    code = s["code"]
+    try:
+        page.goto(f"{base_url}/s/{code}")
+        page.wait_for_selector("#questions-card")
+        expect(page.locator("#view-links")).to_be_hidden()
+
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/s/{code}")
+        links = page.locator("#view-links a")
+        expect(links).to_have_text(["Sessions", "Moderate", "Projector"], timeout=5000)
+        expect(links.nth(1)).to_have_attribute("href", f"/m/{code}")
+        expect(links.nth(2)).to_have_attribute("href", f"/p/{code}")
+
+        delegate = browser.new_context()
+        dpage = delegate.new_page()
+        dpage.add_init_script(f"localStorage.setItem('mod_key:{code}', '{s['mod_key']}')")
+        dpage.goto(f"{base_url}/s/{code}")
+        expect(dpage.locator("#view-links a")).to_have_text(["Moderate", "Projector"], timeout=5000)
+        delegate.close()
     finally:
         c.close()

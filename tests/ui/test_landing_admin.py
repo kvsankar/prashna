@@ -359,6 +359,21 @@ def test_uc_a_08_delegate_sees_no_settings(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_views_links_for_a_delegate(base_url, admin_setup, page):
+    """Session page: a delegate sees the participant and projector links but not
+    the Sessions breadcrumb."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-Mviews {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
+        expect(page.locator("#participant-link")).to_have_attribute("href", f"/s/{s['code']}")
+        expect(page.locator("#projector-link")).to_have_attribute("href", f"/p/{s['code']}")
+        expect(page.locator("#moderator-breadcrumbs a[href='/']")).to_be_hidden()
+    finally:
+        c.close()
+
+
 # ---------- UC-A-25 ----------
 
 
