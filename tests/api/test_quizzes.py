@@ -442,6 +442,89 @@ def test_uc_a_14_non_owner_404(admin_client):
     assert r.status_code == 404
 
 
+def test_uc_a_14_no_auth_401(client):
+    """UC-A-14: no auth → 401."""
+    r = client.post("/api/quizzes/1/questions", json={"position": 0})
+    assert r.status_code == 401
+
+
+def _orders(admin_client, quiz_id: int) -> list[int]:
+    return [q["order_index"] for q in admin_client.get(f"/api/quizzes/{quiz_id}").json()["questions"]]
+
+
+def test_uc_a_14_insert_at_position(admin_client):
+    """UC-A-14: position 0, 1, and count insert first, in the middle, and last; others shift."""
+    for position, expected in (
+        (0, ["N", "A?", "B?", "C?"]),
+        (1, ["A?", "N", "B?", "C?"]),
+        (3, ["A?", "B?", "C?", "N"]),
+    ):
+        qid, _ids = _three_question_quiz(admin_client)
+        r = admin_client.post(f"/api/quizzes/{qid}/questions",
+                              json={"text": "N", "qtype": "single", "position": position})
+        assert r.status_code == 200, r.text
+        new_id = r.json()["id"]
+        qs = admin_client.get(f"/api/quizzes/{qid}").json()["questions"]
+        assert [q["text"] for q in qs] == expected, position
+        assert [q["order_index"] for q in qs] == [0, 1, 2, 3], position
+        assert qs[position]["id"] == new_id
+
+
+def test_uc_a_14_omitted_position_appends(admin_client):
+    """UC-A-14: without position the question goes last."""
+    qid, _ids = _three_question_quiz(admin_client)
+    admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": "N"})
+    assert _question_texts(admin_client, qid) == ["A?", "B?", "C?", "N"]
+
+
+def test_uc_a_14_insert_renumbers_after_delete(admin_client):
+    """UC-A-14: inserting into a quiz with a gap in order_index renumbers 0..n."""
+    qid, (_a, b, _c) = _three_question_quiz(admin_client)
+    admin_client.delete(f"/api/quiz_questions/{b}")
+    r = admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": "N", "position": 1})
+    assert r.status_code == 200, r.text
+    assert _question_texts(admin_client, qid) == ["A?", "N", "C?"]
+    assert _orders(admin_client, qid) == [0, 1, 2]
+
+
+def test_uc_a_14_position_out_of_range_400(admin_client):
+    """UC-A-14: negative or > count → 400; non-integer → 400; nothing changes."""
+    qid, _ids = _three_question_quiz(admin_client)
+    for bad, msg in (
+        (-1, "position out of range"),
+        (4, "position out of range"),
+        ("x", "position must be an integer"),
+        (1.5, "position must be an integer"),
+        (True, "position must be an integer"),
+    ):
+        r = admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": "N", "position": bad})
+        assert r.status_code == 400, bad
+        assert r.json() == {"detail": msg}, bad
+    assert _question_texts(admin_client, qid) == ["A?", "B?", "C?"]
+    assert _orders(admin_client, qid) == [0, 1, 2]
+
+
+def test_uc_a_14_insert_is_an_ordinary_edit(admin_client, make_session):
+    """UC-A-14: insert bumps last_edited_at, keeps ready, and past runs keep their questions."""
+    qid, _ids = _three_question_quiz(admin_client)
+    assert admin_client.post(f"/api/quizzes/{qid}/publish").status_code == 200
+    s = make_session()
+    first = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": qid}).json()
+    before = _last_edited(qid)
+    new_id = admin_client.post(f"/api/quizzes/{qid}/questions",
+                               json={"text": "N?", "position": 1}).json()["id"]
+    admin_client.post(f"/api/quiz_questions/{new_id}/answers", json={"text": "x", "is_correct": True})
+    admin_client.post(f"/api/quiz_questions/{new_id}/answers", json={"text": "y"})
+    assert _last_edited(qid) > before
+    assert admin_client.get(f"/api/quizzes/{qid}").json()["status"] == "ready"
+    second = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": qid}).json()
+
+    def run_texts(run_id):
+        return [q["text"] for q in admin_client.get(f"/api/quiz_runs/{run_id}/results").json()["questions"]]
+    assert run_texts(first["id"]) == ["A?", "B?", "C?"]
+    assert run_texts(second["id"]) == ["A?", "N?", "B?", "C?"]
+
+
 # ---------- UC-A-15: Edit question ----------
 
 def test_uc_a_15_patch_text(admin_client, make_quiz):

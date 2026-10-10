@@ -308,7 +308,7 @@ itself with `tr.expanded > td.detail-cell` content. Reserved for
   ```
 
 - The button text always starts with **`+`** and a noun: `+ New`,
-  `+ Add option`, `+ Add question`. Never just "Add" without context.
+  `+ Add option`, `+ Answer`. Never just "Add" without context.
 - A successful create scrolls/opens the new item in the detail pane.
 - **Use a modal only** when creation requires fields that can't fit in
   a single inline input (rare). Modals are last resort.
@@ -347,6 +347,29 @@ itself with `tr.expanded > td.detail-cell` content. Reserved for
   with every id) and re-render from the response — never one PATCH per
   moved item, which leaves duplicate positions when a request fails.
 - First use: questions and answers in the quiz editor.
+
+### Insertion point
+
+Adds an item at a chosen place in an ordered list, so it doesn't have to
+be added at the end and then moved.
+
+- An **insertion point** sits before the first item, between every two
+  items, and after the last; an empty list shows one. The last one is
+  the list's only add control — no separate `+ Add ___` button.
+- Each is a real `<button class="insert-point">`: a thin divider line
+  with a small centred `+`, low-contrast at rest. It brightens on hover
+  and on keyboard focus (`:focus-visible`). On touch devices (no hover)
+  it stays visible at the same low contrast and is at least `--tap-min`
+  tall. On desktop it is `--control-h-xs` tall, on the button scale
+  (§10).
+- The `aria-label` names the place: "Insert a ___ before ___ N",
+  "Add a ___ at the end", or "Add the first ___" for an empty list.
+- Clicking creates a blank item at that position in one request (the
+  server shifts the later items in the same transaction), re-renders,
+  and puts the cursor in the new item's main text field. Wire it through
+  `guardClick` (§10).
+- First use: questions in the quiz editor (UC-A-14). Answers are still
+  added at the end with `+ Answer`.
 
 ### Delete
 

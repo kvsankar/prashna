@@ -1974,14 +1974,28 @@ def add_quiz_question(
     qtype = payload.get("qtype", "single")
     if qtype not in ("single", "multi"):
         raise HTTPException(400, "qtype must be single or multi")
-    next_order = (max((qq.order_index for qq in quiz.questions), default=-1)) + 1
+    existing = list(quiz.questions)
+    position = payload.get("position")
+    if position is None:
+        order_index = payload.get(
+            "order_index", max((qq.order_index for qq in existing), default=-1) + 1)
+    else:
+        # Insert at a 0-based index (UC-A-14): later questions shift down and
+        # every question is renumbered 0..n in this same transaction.
+        if not isinstance(position, int) or isinstance(position, bool):
+            raise HTTPException(400, "position must be an integer")
+        if not 0 <= position <= len(existing):
+            raise HTTPException(400, "position out of range")
+        for idx, other in enumerate(existing):
+            other.order_index = idx if idx < position else idx + 1
+        order_index = position
     qq = m.Question(
         quiz_id=quiz_id,
         text=(payload.get("text") or "").strip(),
         image_url=payload.get("image_url"),
         qtype=qtype,
         graded=bool(payload.get("graded", True)),
-        order_index=payload.get("order_index", next_order),
+        order_index=order_index,
     )
     db.add(qq)
     _mark_quiz_edited(quiz)

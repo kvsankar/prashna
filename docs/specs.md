@@ -480,10 +480,27 @@ are added with an **Add image** button rather than a bare file input.
 
 ### UC-A-14: Add a quiz question
 
-- **Given** the admin clicks **+ Add question** in the editor
-- **When** `POST /api/quizzes/{id}/questions` is called
-- **Then** a `Question` is added at the end (`order_index = max + 1`);
-  parent's `last_edited_at` advances
+- **Given** the quiz editor is open
+- **And** the editor shows an **insertion point** before the first
+  question, between every two questions, and after the last (an empty
+  quiz shows one); the one after the last is the only way to add at
+  the end, so there is no separate add button
+- **When** the admin clicks an insertion point
+- **Then** `POST /api/quizzes/{id}/questions` with `position` (the
+  0-based index the new question takes) adds a blank question there in
+  one transaction: questions at or after that index move down by one
+  and every question's `order_index` is renumbered `0..n`
+- **And** the editor re-renders with the cursor in the new question's
+  text field, ready to type
+- **And** without `position` the question is added at the end
+  (`order_index = max + 1`); `position` equal to the question count
+  also adds at the end
+- **And** a `position` that is negative or greater than the question
+  count returns `400 "position out of range"`; a non-integer returns
+  `400 "position must be an integer"`; nothing changes
+- **And** the parent's `last_edited_at` advances, as for any edit:
+  past runs keep their frozen QuizVersion and a `ready` quiz stays
+  `ready`
 - **And** a `qtype` not in `("single", "multi")` returns `400`
 - **And** `graded` (default `true`) marks whether the question has a
   correct answer; `graded: false` is a **poll/survey** question (options
@@ -494,10 +511,15 @@ are added with an **Add image** button rather than a bare file input.
 - `POST /api/quizzes/{id}/questions` with `{"text": "X", "qtype": "multi"}` → `200`; created with `text: "X"`, `qtype: "multi"`.
 - `POST /api/quizzes/{id}/questions` with `{"graded": false}` → `200`; created as a poll question (`graded: false`), surfaced by `GET /api/quizzes/{id}`.
 - `POST /api/quizzes/{id}/questions` with `{"qtype": "bogus"}` → `400 "qtype must be single or multi"`.
-- For a non-owner quiz → `404`.
+- On a quiz with questions A, B, C: `{"text": "N", "position": 0}` → `GET /api/quizzes/{id}` lists N, A, B, C with `order_index` `0..3`; `{"position": 1}` lists A, N, B, C; `{"position": 3}` lists A, B, C, N; omitting `position` lists A, B, C, N.
+- `{"position": -1}` or `{"position": 4}` on a three-question quiz → `400 "position out of range"`; `{"position": "x"}` → `400 "position must be an integer"`; the questions and their order are unchanged.
+- Inserting with `position` advances `last_edited_at` and leaves a `ready` quiz `ready`; a run launched before the insert keeps its questions, a run launched after includes the new one.
+- For a non-owner quiz → `404`; with no auth → `401`.
 
 **Tests (UI)**
-- In `#editor-body`, clicking `+ Add question` appends a new question row. The frontend submits `{"text": "New question", "qtype": "single"}`, so the new row's text input shows "New question" as the editable starting value.
+- In `#editor-body`, a quiz with N questions shows N+1 insertion points (`button.insert-point`): "Insert a question before question 1" … "Insert a question before question N", then "Add a question at the end". An empty quiz shows one, "Add the first question". No other button adds a question.
+- Clicking "Insert a question before question 2" adds a question in second place; its text field shows "New question" and has focus. Inserting before question 1 and at the end puts the new question first and last. The order persists after reopening the quiz. The frontend submits `{"text": "New question", "qtype": "single", "position": <index>}`.
+- At 390 px wide on a touch device, the insertion points are visible without hover and at least 32 px tall.
 - Each question row has a **Poll** checkbox next to the type selector; ticking it PATCHes `{graded: false}` and re-renders the row so the per-answer "correct" checkboxes disappear (a poll has no correct answer). Unticking restores them.
 
 ### UC-A-15: Edit a quiz question

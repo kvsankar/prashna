@@ -357,6 +357,31 @@ button.xsmall { font-size: var(--text-xs); padding: calc((var(--control-h-xs) - 
 .move-btn:disabled { opacity: 0.35; cursor: default; }
 .dragging { opacity: 0.7; outline: 2px dashed var(--accent); outline-offset: 2px; }
 
+/* Insertion point (UX.md §7): a thin divider with a centred "+", low
+   contrast at rest, brighter on hover and keyboard focus. On the button
+   scale (--control-h-xs) on desktop; --tap-min tall on touch. */
+.editor-q-slot > .editor-q.compact { margin-top: 0; }
+button.insert-point {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-2);
+  width: 100%; height: var(--control-h-xs); margin: var(--space-1) 0; padding: 0;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--muted); opacity: 0.6; font-size: var(--text-md); line-height: 1;
+}
+button.insert-point::before, button.insert-point::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+.insert-plus {
+  display: inline-flex; flex-wrap: nowrap; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border: 1px solid var(--border); border-radius: 999px;
+}
+button.insert-point:focus-visible { opacity: 1; color: var(--accent-2); outline: 2px solid var(--accent); outline-offset: 2px; }
+button.insert-point:focus-visible::before, button.insert-point:focus-visible::after,
+button.insert-point:focus-visible .insert-plus { border-color: var(--accent); }
+@media (hover: hover) {
+  button.insert-point:hover { opacity: 1; color: var(--accent-2); }
+  button.insert-point:hover::before, button.insert-point:hover::after,
+  button.insert-point:hover .insert-plus { border-color: var(--accent); }
+}
+.dragging .insert-point { visibility: hidden; }
+
 /* Row menus in the quiz library and the session picker. */
 .ctable td.actions details.menu { margin-left: 8px; }
 .ctable td.actions details.menu > summary { padding: 2px 8px; font-size: var(--text-xs); border-radius: 6px; }
@@ -437,6 +462,7 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 /* Touch devices: tap targets at least 32 px tall (UC-X-12). */
 @media (pointer: coarse) {
   button.small, button.xsmall, details.menu > summary { min-height: var(--tap-min); }
+  button.insert-point { height: var(--tap-min); }
   input[type="checkbox"] { width: 22px; height: 22px; }
   .section-links a { display: inline-flex; flex-wrap: nowrap; align-items: center; min-height: var(--tap-min); padding: 0 var(--space-1); }
 }

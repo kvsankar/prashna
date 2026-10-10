@@ -388,18 +388,32 @@ function renderEditor(): void {
   body.appendChild(el("div", { class: "row gap field-row" },
     el("label", { class: "small muted" }, "Title"), titleInp));
 
+  // Each question carries the insertion point before it, so the pair moves
+  // together while dragging; the last insertion point follows the list
+  // (UC-A-14, UX.md §7 Insertion point).
   const list = el("div", { id: "editor-questions" });
-  quiz.questions.forEach((qq, idx) => list.appendChild(renderQuestion(qq, idx)));
+  quiz.questions.forEach((qq, idx) => {
+    const slot = el("div", { class: "editor-q-slot", "data-id": qq.id },
+      insertPoint(idx, `Insert a question before question ${idx + 1}`));
+    slot.appendChild(renderQuestion(qq, idx, slot));
+    list.appendChild(slot);
+  });
   body.appendChild(list);
-
-  body.appendChild(el("div", { class: "row gap mt-2" },
-    guardClick(el("button", { class: "primary small" }, "+ Add question") as HTMLButtonElement, addQuestion)));
+  const count = quiz.questions.length;
+  body.appendChild(insertPoint(count, count ? "Add a question at the end" : "Add the first question"));
 }
 
-function renderQuestion(qq: EditorQuestion, idx: number): HTMLElement {
+function insertPoint(position: number, label: string): HTMLButtonElement {
+  return guardClick(
+    el("button", { class: "insert-point", type: "button", "aria-label": label, title: label },
+      el("span", { class: "insert-plus", "aria-hidden": "true" }, "+")) as HTMLButtonElement,
+    () => insertQuestion(position));
+}
+
+function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTMLElement {
   const quizId = editing!.id;
   const ids = editing!.questions.map((q) => q.id);
-  const wrap = el("div", { class: "editor-q compact", "data-id": qq.id });
+  const wrap = el("div", { class: "editor-q compact" });
   const saveOrder = (order: number[]) => saveQuestionOrder(quizId, order);
 
   const textInp = el("textarea", { rows: 2, "aria-label": `Question ${idx + 1} text` }, qq.text) as HTMLTextAreaElement;
@@ -426,7 +440,7 @@ function renderQuestion(qq: EditorQuestion, idx: number): HTMLElement {
 
   // Number by position so deletes leave no gaps (UC-A-28).
   const head = el("div", { class: "row gap question-head" },
-    dragHandle(wrap, "question", saveOrder),
+    dragHandle(slot, "question", saveOrder),
     el("strong", {}, `Q${idx + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
     ...moveButtons(ids, idx, "question", saveOrder),
     guardClick(el("button", { class: "danger ghost xsmall" }, "Delete") as HTMLButtonElement, async () => {
@@ -591,13 +605,19 @@ async function patchAnswer(id: number, body: Record<string, unknown>): Promise<v
     void loadQuizzes();
   } catch (e) { errorToast((e as Error).message); }
 }
-async function addQuestion(): Promise<void> {
+/** Add a blank question at `position` (0-based) and put the cursor in its
+ *  text, ready to type (UC-A-14). */
+async function insertQuestion(position: number): Promise<void> {
   if (!editing) return;
+  const quizId = editing.id;
   try {
-    await api(`/api/quizzes/${editing.id}/questions`, {
-      method: "POST", body: { text: "New question", qtype: "single" },
+    const { id } = await api<{ id: number }>(`/api/quizzes/${quizId}/questions`, {
+      method: "POST", body: { text: "New question", qtype: "single", position },
     });
-    void openQuizDetail(editing.id);
+    await openQuizDetail(quizId);
+    const text = document.querySelector<HTMLTextAreaElement>(`#editor-questions [data-id="${id}"] textarea`);
+    text?.focus();
+    text?.select();
   } catch (e) { errorToast((e as Error).message); }
 }
 /** "Add image" / "Change image" button driving a hidden file input; the

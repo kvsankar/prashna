@@ -243,20 +243,111 @@ def test_uc_a_27_duplicate_adds_draft_row_and_opens_editor(base_url, admin_setup
 # ---------- UC-A-14 ----------
 
 
-def test_uc_a_14_add_question_appends_row(base_url, admin_setup, page):
-    """UC-A-14: + Add question appends a new question row with 'New question' text."""
+def _insert_points(page):
+    return page.locator("#editor-body button.insert-point")
+
+
+def _insert_labels(page) -> list[str]:
+    return _insert_points(page).evaluate_all("els => els.map(e => e.getAttribute('aria-label'))")
+
+
+def test_uc_a_14_insertion_points_and_labels(base_url, admin_setup, page):
+    """UC-A-14: N questions show N+1 labelled insertion points and no other add button."""
     c = api_login(base_url)
-    quiz = api_make_quiz(c, f"UI-Q14 {secrets.token_hex(3)}")
+    quiz = api_make_quiz(c, f"UI-Q14 {secrets.token_hex(3)}", questions=_valid_questions("A", "B", "C"))
     try:
-        _goto_quizzes(page, base_url)
-        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).click()
-        before = page.locator("#editor-body .editor-q").count()
-        page.locator("#editor-body button", has_text="+ Add question").click()
-        # Wait for re-render.
-        expect(page.locator("#editor-body .editor-q")).to_have_count(before + 1, timeout=5000)
-        # New question textarea contains "New question".
-        expect(page.locator("#editor-body textarea").last).to_have_value("New question")
+        _open_editor(page, base_url, quiz["title"])
+        expect(page.locator("#editor-body .editor-q")).to_have_count(3)
+        expect(_insert_points(page)).to_have_count(4)
+        assert _insert_labels(page) == [
+            "Insert a question before question 1",
+            "Insert a question before question 2",
+            "Insert a question before question 3",
+            "Add a question at the end",
+        ]
+        expect(page.locator("#editor-body button", has_text="Add question")).to_have_count(0)
     finally:
+        c.close()
+
+
+def test_uc_a_14_empty_quiz_adds_first_question(base_url, admin_setup, page):
+    """UC-A-14: an empty quiz shows one insertion point; clicking it adds a focused question."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q14e {secrets.token_hex(3)}")
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        expect(_insert_points(page)).to_have_count(1)
+        assert _insert_labels(page) == ["Add the first question"]
+        page.get_by_role("button", name="Add the first question").click()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(1, timeout=5000)
+        text = page.locator("#editor-body .editor-q textarea").first
+        expect(text).to_have_value("New question")
+        expect(text).to_be_focused()
+        expect(_insert_points(page)).to_have_count(2)
+    finally:
+        c.close()
+
+
+def test_uc_a_14_insert_before_question_2(base_url, admin_setup, page):
+    """UC-A-14: the insertion point before question 2 inserts there, focused; the order persists."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q14m {secrets.token_hex(3)}", questions=_valid_questions("A", "B", "C"))
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        page.get_by_role("button", name="Insert a question before question 2").click()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(4, timeout=5000)
+        assert _question_texts(page) == ["A", "New question", "B", "C"]
+        expect(page.locator("#editor-body .editor-q textarea").nth(1)).to_be_focused()
+        # Typing goes straight into the new question.
+        page.keyboard.type("Inserted")
+        page.locator("#editor-body .editor-q textarea").nth(1).blur()
+        page.reload()
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).click()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(4)
+        assert _question_texts(page) == ["A", "Inserted", "B", "C"]
+    finally:
+        c.close()
+
+
+def test_uc_a_14_insert_at_start_and_end(base_url, admin_setup, page):
+    """UC-A-14: insert before question 1 goes first; the end insertion point goes last."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q14s {secrets.token_hex(3)}", questions=_valid_questions("A", "B"))
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        page.get_by_role("button", name="Insert a question before question 1").click()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(3, timeout=5000)
+        assert _question_texts(page) == ["New question", "A", "B"]
+        expect(page.locator("#editor-body .editor-q textarea").first).to_be_focused()
+        page.get_by_role("button", name="Add a question at the end").click()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(4, timeout=5000)
+        assert _question_texts(page) == ["New question", "A", "B", "New question"]
+        expect(page.locator("#editor-body .editor-q textarea").last).to_be_focused()
+    finally:
+        c.close()
+
+
+def test_uc_a_14_insertion_points_visible_on_touch_phone(base_url, admin_setup, browser):
+    """UC-A-14: at 390 px on a touch device the insertion points show without hover, >= 32 px tall."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-Q14t {secrets.token_hex(3)}", questions=_valid_questions("A", "B"))
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    try:
+        page = ctx.new_page()
+        _open_editor(page, base_url, quiz["title"])
+        points = _insert_points(page)
+        expect(points).to_have_count(3)
+        for i in range(3):
+            expect(points.nth(i)).to_be_visible()
+        sizes = points.evaluate_all("""els => els.map(e => ({
+            h: e.getBoundingClientRect().height,
+            opacity: parseFloat(getComputedStyle(e).opacity),
+            plus: parseFloat(getComputedStyle(e.querySelector('.insert-plus')).opacity),
+        }))""")
+        assert all(x["h"] >= 32 for x in sizes), sizes
+        assert all(x["opacity"] >= 0.4 and x["plus"] > 0 for x in sizes), sizes
+    finally:
+        ctx.close()
         c.close()
 
 
