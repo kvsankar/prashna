@@ -11,49 +11,46 @@ here *before* shipping a one-off.
 
 ## 1. Visual tokens
 
-Defined as CSS variables in `frontend/src/app.css`. Don't hardcode hex
-outside the token list.
+Every colour, tint, corner radius, font weight, shadow, type size and
+control size is a CSS custom property in `frontend/src/tokens.css`.
+Other stylesheets use the tokens through `var(...)`; they never hold the
+raw value.
 
-| Token         | Use                                                  |
-| ------------- | ---------------------------------------------------- |
-| `--bg`        | Page background                                      |
-| `--panel`     | Card / surface background                            |
-| `--panel-2`   | Inset surface (rows, inputs, options)                |
-| `--text`      | Primary text                                         |
-| `--muted`     | Secondary text, labels, metadata                     |
-| `--accent`    | Primary brand, default action                        |
-| `--accent-2`  | Hover, links                                         |
-| `--good`      | Success, "ready", "correct"                          |
-| `--bad`       | Error, destructive, "wrong"                          |
-| `--warn`      | "Draft", in-progress                                 |
-| `--border`    | Dividers, neutral borders                            |
+| Group | Tokens | Use |
+| --- | --- | --- |
+| Surfaces | `--bg`, `--panel`, `--panel-2`, `--border` | Page, card, inset surface (rows, inputs, options), dividers |
+| Text | `--text`, `--muted`, `--on-accent`, `--on-accent-muted` | Primary text, secondary text, text on an accent fill |
+| Roles | `--accent`, `--accent-2`, `--good`, `--warn`, `--bad` | Primary action, links and hover, success, needs work, destructive |
+| Tints | `--accent-bg`, `--good-bg`, `--warn-bg`, `--bad-bg`, `--neutral-bg`, `--hover-bg` | Badge, banner, selection and result-bar backgrounds |
+| Controls | `--control-bg`, `--control-bg-hover`; `--control-h`, `--control-h-sm`, `--control-h-xs`; `--control-px*`; `--tap-min` | Control fill, the three control heights and their side padding (§10), the touch minimum (§16a) |
+| Corners | `--radius-sm` 4, `--radius-md` 6, `--radius-lg` 8, `--radius-xl` 12, `--radius-pill`, `--radius-round` | Chips and images; extra-small controls and menu items; controls, inputs and rows; cards and panels; badges; avatars |
+| Weights | `--weight-medium` 500, `--weight-semibold` 600, `--weight-bold` 700 | Controls; labels and badges; titles |
+| Type | `--text-xs` 11 … `--text-5xl` 48 | 11 badge, 12 table header, 13 dense body, 14 body, 16 section, 18 page, 24+ projector |
+| Spacing | `--space-1` 4 … `--space-5` 24 | Margins and gaps (utilities `.mt-2` and so on) |
+| Other | `--shadow-menu`, `--shadow-toast`, `--nav-bg`, `--overlay-bg`, `--overlay-text`, `--star`, `--qr-bg`, `--proj-bg`, `--proj-hint` | Menus, toasts, sticky nav, QR lightbox, star ratings, QR codes, projector |
 
-**Spacing scale (rough):** 4 / 6 / 8 / 12 / 16 / 20 / 28 / 40 px.
-Use multiples; don't invent values.
+Add a token rather than a one-off value. Spacing (`padding`, `margin`,
+`gap`) still uses raw pixel values on the rough 4 / 6 / 8 / 12 / 16 / 20 /
+28 / 40 px scale; use those multiples.
 
-**Radii:** 4 (chip), 6 (small control), 8 (input, button, row), 12 (card).
+### How the tokens are enforced
 
-**Type sizes:** 11 (badge), 12 (table header), 13 (small/body-dense),
-14 (body), 16 (h2/section), 18 (h1/page), 24+ (display/projector).
-
----
-
-### Tokens and the no-inline-style rule
-
-`app.css` defines design tokens in `:root`: a type scale (`--text-xs` …
-`--text-5xl`), a spacing scale (`--space-1` … `--space-5`), and control
-heights (`--control-h`, `--control-h-sm`, `--control-h-xs`, `--tap-min`).
-
-- Every font size outside `:root` uses a `--text-*` token. Add a token
-  rather than a one-off pixel value.
-- Markup and scripts never set inline styles. Use a class — a spacing
+- **Stylelint** (`.stylelintrc.json`, run by `npm run lint`, pre-commit and
+  CI) rejects, in every stylesheet except `tokens.css`: hex colours,
+  named colours, colour functions (`rgb()`, `rgba()`, `hsl()` and so on),
+  and any `font-size`, `font-weight`, `border-radius` or `box-shadow` that
+  is not the matching token. An inset accent stripe
+  (`box-shadow: inset 3px 0 0 var(--accent)`) is allowed.
+- **No styles outside stylesheets.** Pages have no `<style>` blocks, and
+  markup and scripts never set inline styles. Use a class: a spacing
   utility (`.mt-2`, `.mb-2`, `.grow`, …) or a component class
   (`.label-col`, `.qr-box`, `.url-box`, `.card.inset`).
 - Show and hide with the `hidden` attribute through `setVisible()` from
   `common.ts`; `[hidden]` overrides any display rule.
 - The one allowed script write is a CSS custom property carrying data,
   e.g. a result bar's `--share`.
-- `tests/api/test_frontend_contracts.py` enforces all four rules.
+- `tests/api/test_frontend_contracts.py` enforces the last three rules and
+  that the control sizes come from the control-height tokens.
 
 ---
 
@@ -480,10 +477,10 @@ a link as a button or use a button only to navigate.
 
 | Class           | Use                                                       |
 | --------------- | --------------------------------------------------------- |
-| `.primary`      | The single most important action on the surface           |
-| (default)       | Secondary actions                                         |
-| `.ghost`        | Tertiary / link-like; no background                       |
-| `.danger`       | Destructive; pair with `.ghost` for low-visual-weight     |
+| `.primary`      | The single most important action on the surface; indigo fill |
+| (default)       | Secondary actions; `--control-bg` fill with a border, lighter on hover |
+| `.ghost`        | Tertiary actions; outline only, no fill                   |
+| `.danger`       | Destructive; red text on the variant's fill (add `.ghost` for an outline only), red outline on hover |
 | `.small`        | Inside dense tables / `card-tools`                        |
 | `.xsmall`       | Row actions inside `.ctable`                              |
 
@@ -495,6 +492,12 @@ a link as a button or use a button only to navigate.
 | `.small`  | 13 px | ~26 px | `card-tools`, dense lists                        |
 | `.xsmall` | 11 px | ~20 px | Row actions in `.ctable`                         |
 
+- Buttons and menu triggers (`details.menu > summary`: Export ▾, Add to
+  session ▾, ⋯) share one recipe in `app.css`. A size sets the height,
+  side padding, font size and corners; a variant sets the colours. Menu
+  triggers take the `.small` size, or `.xsmall` inside `.ctable` rows, so
+  they match the buttons beside them. Inline fields in card tools
+  (`input.inline`, `select.inline`) take the `.small` height.
 - All of a card's own actions share one size; never mix default and
   `.small` for the same kind of action on a page.
 - A custom call-to-action that isn't a `<button>` (e.g. the profile
@@ -517,14 +520,17 @@ a link as a button or use a button only to navigate.
 
 ## 11. Badges & status
 
-Use `.badge` for any lifecycle state. Per-state classes follow the
-pattern `badge-<state-slug>`:
+Use `.badge` for any lifecycle state: an uppercase pill with a tint and
+no border, so it never looks like a button. Per-state classes follow the
+pattern `badge-<state-slug>`, and the colour says what the state means:
 
-- `badge-draft` (warn yellow)
-- `badge-ready` (good green)
-- `badge-live` (good green)
-- `badge-closed` (muted grey)
-- `badge-answered`, `badge-hidden`, etc. — add as needed.
+- Green, running or usable: `badge-live`, `badge-ready`.
+- Indigo, waiting to run: `badge-queued`.
+- Orange, needs work: `badge-draft`. Keep orange for states that need
+  attention.
+- Neutral: `badge-planning` (not started, bright text); `badge-ended`,
+  `badge-closed` (finished, muted text). A state without its own class
+  is neutral.
 
 Badges are read-only. Don't make them clickable. If you need to *change*
 state, use a verb button (§7 Status transitions).

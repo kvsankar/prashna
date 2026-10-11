@@ -96,21 +96,10 @@ def test_scripts_set_no_inline_styles():
     assert offenders == []
 
 
-def _css_outside_root(css: str) -> str:
-    return re.sub(r":root\s*\{[^}]*\}", "", css)
-
-
-def test_font_sizes_use_type_tokens():
-    """Every font size outside :root uses a --text-* token (UX.md §1)."""
-    sources = [("app.css", (ROOT / "frontend/src/app.css").read_text())]
-    for p in HTML_PAGES:
-        sources += [(p.name, block) for block in re.findall(r"<style>(.*?)</style>", p.read_text(), re.S)]
-    offenders = [
-        f"{name}: {decl}"
-        for name, css in sources
-        for decl in re.findall(r"font-size:\s*[^;}]+", _css_outside_root(css))
-        if not re.fullmatch(r"font-size:\s*var\(--text-[\w-]+\)", decl.strip())
-    ]
+def test_pages_have_no_style_blocks():
+    """All styles live in .css files, where stylelint enforces the design
+    tokens (UX.md §1); a <style> block in a page would escape that check."""
+    offenders = [p.name for p in HTML_PAGES if re.search(r"<style[\s>]", p.read_text())]
     assert offenders == []
 
 

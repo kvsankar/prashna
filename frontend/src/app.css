@@ -1,84 +1,14 @@
-:root {
-  --bg: #0f172a;
-  --panel: #1e293b;
-  --panel-2: #273449;
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --accent: #6366f1;
-  --accent-2: #818cf8;
-  --good: #22c55e;
-  --bad: #ef4444;
-  --warn: #f59e0b;
-  --border: #334155;
-  --proj-bg: #000;
-  --proj-hint: #888;
-  --on-accent: #fff;
-  --star: #f5b301;
-  --control-bg: var(--panel-2);
-  --control-bg-hover: #334155;
-  --qr-bg: #fff;
-
-  /* Tints: a role colour at low opacity, for badge, banner, selection and
-     result-bar backgrounds (UX.md §1). */
-  --accent-bg: rgba(99, 102, 241, 0.16);
-  --good-bg: rgba(34, 197, 94, 0.14);
-  --warn-bg: rgba(245, 158, 11, 0.16);
-  --bad-bg: rgba(239, 68, 68, 0.12);
-  --neutral-bg: rgba(148, 163, 184, 0.16);
-  --hover-bg: rgba(255, 255, 255, 0.03);
-  --nav-bg: rgba(15, 23, 42, 0.96);
-  --overlay-bg: rgba(0, 0, 0, 0.92);
-  --overlay-text: rgba(255, 255, 255, 0.7);
-  --on-accent-muted: rgba(255, 255, 255, 0.85);
-  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.4);
-
-  /* Corners: chips, small controls, controls and rows, cards and panels. */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-pill: 999px;
-  --radius-round: 50%;
-
-  --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-bold: 700;
-
-  /* Design tokens (UX.md §1). Outside :root, font sizes must use --text-*
-     (enforced by tests/api/test_frontend_contracts.py). */
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-base: 14px;
-  --text-body: 16px;
-  --text-lg: 18px;
-  --text-xl: 20px;
-  --text-2xl: 24px;
-  --text-3xl: 32px;
-  --text-4xl: 40px;
-  --text-5xl: 48px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  /* Control heights for the button scale (UC-X-13) and the touch minimum
-     (UC-X-12). */
-  --control-h: 34px;
-  --control-h-sm: 26px;
-  --control-h-xs: 20px;
-  --control-px: 14px;
-  --control-px-sm: 10px;
-  --control-px-xs: 8px;
-  --tap-min: 32px;
-}
+@import "./tokens.css";
 
 /* `hidden` always wins over author display rules; show and hide only with
    setVisible() (common.ts), never with inline styles. */
 [hidden] { display: none !important; }
 
 /* Components. */
+/* Projector page (UC-D-*): black ground, full width, scrolling Q&A list. */
+body.projector { background: var(--proj-bg); }
+main.proj { max-width: none; }
+.qa-list { max-height: 75vh; overflow: auto; }
 .label-col { min-width: 110px; }
 .qr-box { flex: none; }
 .qr-box.qr-sm { width: 120px; }
@@ -129,14 +59,14 @@ input, textarea, select {
 textarea { min-height: 70px; resize: vertical; }
 /* Controls (UX.md §10, UC-X-13). Buttons and menu triggers share one
    recipe: a size sets the font size and --ctl-h /
-   --ctl-px / --ctl-r, a variant sets the colours. The padding derives from the height,
+   --ctl-px / --radius-control, a variant sets the colours. The padding derives from the height,
    so a size keeps its height whatever its font size.
    Sizes: default 34 px (a card's own actions), .small 26 px (card tools,
    menus), .xsmall 20 px (table row actions).
    Variants: secondary (default), .primary, .ghost, .danger. */
 button, details.menu > summary, .profile-cta {
-  --ctl-h: var(--control-h); --ctl-px: var(--control-px); --ctl-r: var(--radius-lg);
-  cursor: pointer; border-radius: var(--ctl-r); border: 1px solid var(--border);
+  --ctl-h: var(--control-h); --ctl-px: var(--control-px); --radius-control: var(--radius-lg);
+  cursor: pointer; border-radius: var(--radius-control); border: 1px solid var(--border);
   background: var(--control-bg); color: var(--text); font: inherit;
   font-size: var(--text-base); line-height: 1.3; font-weight: var(--weight-medium);
   padding: calc((var(--ctl-h) - 1.3em - 2px) / 2) var(--ctl-px);
@@ -145,7 +75,7 @@ button.small, details.menu > summary {
   --ctl-h: var(--control-h-sm); --ctl-px: var(--control-px-sm); font-size: var(--text-md);
 }
 button.xsmall, .ctable td.actions details.menu > summary {
-  --ctl-h: var(--control-h-xs); --ctl-px: var(--control-px-xs); --ctl-r: var(--radius-md); font-size: var(--text-xs);
+  --ctl-h: var(--control-h-xs); --ctl-px: var(--control-px-xs); --radius-control: var(--radius-md); font-size: var(--text-xs);
 }
 /* :where() keeps this hover at class specificity, so component states such
    as .option.selected keep their own border and fill. */

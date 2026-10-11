@@ -1,6 +1,28 @@
 {
   "extends": "stylelint-config-recommended",
   "rules": {
-    "no-descending-specificity": null
-  }
+    "no-descending-specificity": null,
+    "color-no-hex": [true, { "message": "Use a colour token from tokens.css (UX.md §1)" }],
+    "color-named": ["never", { "message": "Use a colour token from tokens.css (UX.md §1)" }],
+    "function-disallowed-list": [["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color"], {
+      "message": "Use a colour or tint token from tokens.css (UX.md §1)"
+    }],
+    "declaration-property-value-allowed-list": [{
+      "font-size": ["/^var\\(--text-[\\w-]+\\)$/"],
+      "font-weight": ["/^var\\(--weight-[\\w-]+\\)$/"],
+      "border-radius": ["/^var\\(--radius-[\\w-]+\\)$/", "0"],
+      "box-shadow": ["/^var\\(--shadow-[\\w-]+\\)$/", "none", "/^inset [0-9px ]+var\\(--[\\w-]+\\)$/"]
+    }, { "message": "Use a token from tokens.css for this property (UX.md §1)" }]
+  },
+  "overrides": [
+    {
+      "files": ["frontend/src/tokens.css"],
+      "rules": {
+        "color-no-hex": null,
+        "color-named": null,
+        "function-disallowed-list": null,
+        "declaration-property-value-allowed-list": null
+      }
+    }
+  ]
 }

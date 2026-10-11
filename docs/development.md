@@ -190,7 +190,7 @@ prashna/             Python package
   installers/        install.sh and install.ps1, served at /install.sh and /install.ps1
   static/            Vite build output (generated, ignored by Git)
 frontend/            Vite + TypeScript frontend, one HTML entry per role
-  src/               common.ts, types.ts, one entry per page, app.css
+  src/               common.ts, types.ts, one entry per page, app.css, tokens.css
   public/vendor/     vendored QR code generator
 tests/
   api/               API, CLI, hook, and contract tests
