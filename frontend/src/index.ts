@@ -163,11 +163,11 @@ async function loadSessions(): Promise<void> {
 
       const actions = el("td", { class: "actions" });
       actions.addEventListener("click", (e) => e.stopPropagation());
-      actions.appendChild(el("a", { class: "small", href: `/m/${s.code}` }, "Moderate"));
-      actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
-      actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
+      actions.appendChild(el("a", { class: "btn ghost xsmall", href: `/m/${s.code}` }, "Moderate"));
+      actions.appendChild(el("a", { class: "btn ghost xsmall", href: `/s/${s.code}` }, "Participant"));
+      actions.appendChild(el("a", { class: "btn ghost xsmall", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
       if (s.status === "planning") {
-        const startBtn = el("button", { class: "xsmall" }, "Start") as HTMLButtonElement;
+        const startBtn = el("button", { class: "ghost xsmall" }, "Start") as HTMLButtonElement;
         guardClick(startBtn, async () => {
           try {
             await api(`/api/sessions/${s.code}/start`, { method: "POST" });
