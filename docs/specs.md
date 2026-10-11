@@ -2039,6 +2039,22 @@ Two tiers, applied by one middleware:
 | At most one `QuizSubmission` per `(run, question, answer, participant)` | UNIQUE constraint                         |
 | One `Participant` per `(session, voter_token)`                         | UNIQUE constraint                          |
 
+- **Given** a live session with an open query and a live quiz question
+- **When** 40 distinct participants vote on the query and submit an answer
+  at the same moment, while their pages refetch the query and quiz lists
+- **Then** every request succeeds (no 5xx, no timeout) and the burst
+  completes within 15 s
+- **And** a `GET /api/admin/status` issued during the burst answers within
+  2 s, because waiting for a database connection never blocks the server's
+  event loop
+
+**Tests (API)**
+- `test_uc_x_05_concurrent_writes_do_not_stall_the_server`: against a real
+  uvicorn server, 40 participants with their own cookies each fire a vote, a
+  quiz submission, and two list refetches at once; all 160 responses are
+  2xx within 15 s, a concurrent status request answers within 2 s, and the
+  query's vote count is 40.
+
 **Tests (DB)**
 - `PRAGMA foreign_keys` on every connection returns `1` (enabled via SQLAlchemy `connect` event). Cascade deletes (`ondelete="CASCADE"`) are actually enforced at the DB layer, not only by the ORM.
 - Insert two `QuizRun` rows with `status="live"` for the same Session → second insert raises `IntegrityError` (partial unique index `uq_session_live_run`).

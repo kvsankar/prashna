@@ -5,6 +5,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from .diagnostics import log_diagnostic as _log_diagnostic
 
@@ -23,9 +24,15 @@ def default_data_dir() -> Path:
 # Allow the DB location to be overridden via env (Docker volume in prod).
 DB_PATH = Path(os.environ.get("PRASHNA_DB_PATH") or default_data_dir() / "prashna.db")
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+# NullPool: every checkout opens its own SQLite connection and closes it on
+# release. A bounded pool deadlocks under a burst: async routes run on the
+# event-loop thread and hold their connection until the request ends, so
+# once the pool is exhausted the next async route blocks the loop waiting
+# for a slot, and the requests that would free one can never finish.
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
     connect_args={"check_same_thread": False},
+    poolclass=NullPool,
     future=True,
 )
 
