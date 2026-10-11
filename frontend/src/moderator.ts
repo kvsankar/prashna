@@ -38,14 +38,19 @@ let latestProfilesSeq = 0;
 // delegates never see them.
 const exportBase = `/api/sessions/${CODE}/export`;
 const ownerExports = [
-  exportMenu("session-export", exportBase, "Export this session"),
+  exportMenu("session-export", exportBase, "Export all of this session's data, including attendees' contact details",
+    "Export session ▾"),
+  exportMenu("qna-export", `${exportBase}?part=qna`, "Export this session's questions"),
   exportMenu("profiles-export", `${exportBase}?part=profiles`, "Export attendee profiles"),
   exportMenu("feedback-export", `${exportBase}?part=feedback`, "Export feedback"),
 ];
 for (const menu of ownerExports) setVisible(menu, false);
-$("#set-export-row label").after(ownerExports[0]);
-$("#profiles-tools").appendChild(ownerExports[1]);
-$("#feedback-tools").appendChild(ownerExports[2]);
+// The whole-session export sits beside the lifecycle buttons, outside
+// #lifecycle-actions (rebuilt on every render), so it shows in every state.
+$("#lifecycle-card .card-head").appendChild(ownerExports[0]);
+$("#queries-tools").appendChild(ownerExports[1]);
+$("#profiles-tools").appendChild(ownerExports[2]);
+$("#feedback-tools").appendChild(ownerExports[3]);
 
 function showWorkSurfaces(visible: boolean): void {
   for (const id of ["lifecycle-card", "setup-section", "quizzes-card", "queries-card", "profiles-card", "feedback-card"]) {

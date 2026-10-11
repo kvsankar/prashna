@@ -44,7 +44,7 @@ def test_uc_a_30_sessions_list_exports_all_sessions(base_url, admin_setup, page)
 
 
 def test_uc_a_30_session_page_exports_for_the_owner(base_url, admin_setup, page):
-    """UC-A-30: the owner exports the session, its profiles, and its feedback."""
+    """UC-A-30: the owner exports the session, its Q&A, its profiles, and its feedback."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A30s {secrets.token_hex(3)}")
     code = s["code"]
@@ -52,9 +52,31 @@ def test_uc_a_30_session_page_exports_for_the_owner(base_url, admin_setup, page)
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{code}")
         page.wait_for_selector("#settings-card:visible")
+        expect(page.locator("#lifecycle-card #session-export")).to_be_visible()
+        expect(page.locator("#session-export summary")).to_have_text("Export session ▾")
+        expect(page.locator("#settings-card #session-export")).to_have_count(0)
+        expect(page.locator("#queries-card #qna-export")).to_be_visible()
         assert _download(page, page.locator("#session-export"), "JSON") == f"prashna-session-{code}-{_today()}.json"
+        assert _download(page, page.locator("#qna-export"), "Excel") == f"prashna-qna-{code}-{_today()}.xlsx"
         assert _download(page, page.locator("#profiles-export"), "JSON") == f"prashna-profiles-{code}-{_today()}.json"
         assert _download(page, page.locator("#feedback-export"), "JSON") == f"prashna-feedback-{code}-{_today()}.json"
+    finally:
+        c.close()
+
+
+def test_uc_a_30_session_export_stays_visible_after_end(base_url, admin_setup, page):
+    """UC-A-30: the whole-session export sits in the Lifecycle card, so it shows after End."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A30e {secrets.token_hex(3)}")
+    code = s["code"]
+    c.post(f"/api/sessions/{code}/start").raise_for_status()
+    c.post(f"/api/sessions/{code}/end").raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{code}")
+        expect(page.locator("#session-status")).to_have_text("Ended")
+        expect(page.locator("#lifecycle-card #session-export")).to_be_visible()
+        assert _download(page, page.locator("#session-export"), "Excel") == f"prashna-session-{code}-{_today()}.xlsx"
     finally:
         c.close()
 
@@ -66,7 +88,7 @@ def test_uc_a_30_delegate_sees_no_export(base_url, admin_setup, page):
     c.close()
     page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
     page.wait_for_selector("#profiles-card:visible")
-    for sel in ("#session-export", "#profiles-export", "#feedback-export"):
+    for sel in ("#session-export", "#qna-export", "#profiles-export", "#feedback-export"):
         expect(page.locator(sel)).to_be_hidden()
 
 

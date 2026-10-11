@@ -323,8 +323,9 @@ owner-only controls; a delegate sees the same page without them.
   gate (admin owners authenticate via cookie)
 - **And** the owner sees a **Session settings** card (`#settings-card`)
   inside Set up, with the Title input (UC-A-05), a "Share moderator
-  URL" copy button for delegation, **Export ▾** (UC-A-30), and
-  **Delete session…** (UC-A-07)
+  URL" copy button for delegation, and **Delete session…** (UC-A-07)
+- **And** the owner sees the whole-session **Export ▾** (UC-A-30) in the
+  Session lifecycle card, in every state
 - **And** the owner sees the Base URL field in the Invite card (UC-A-06)
 - **And** a delegate (mod_key, no admin cookie) sees neither the
   Session settings card nor the Base URL field
@@ -838,10 +839,10 @@ scope narrows with `part`.
 | Scope | Contains | Endpoint | Where in the UI |
 | --- | --- | --- | --- |
 | All data | Every session the admin owns, each with all of its data (as "One session"), and every quiz in the admin's quiz library (as "One quiz") | `GET /api/export/all` | `/`, Your sessions card (`#all-export`, labelled "Export all data") |
-| One session | The session's details, every participant, its Q&A questions, its quiz runs with each participant's answers, and its feedback | `GET /api/sessions/{code}/export` (`part=all`, the default) | Session page, Session settings card (`#session-export`) |
+| One session | The session's details, every participant, its Q&A questions, its quiz runs with each participant's answers, and its feedback | `GET /api/sessions/{code}/export` (`part=all`, the default) | Session page, Session lifecycle card (`#session-export`, labelled "Export session"), in every state, including after End |
 | One session's attendee profiles | The participants who gave any profile field or a photograph (UC-M-13) | `…/export?part=profiles` | Session page, Attendee profiles card (`#profiles-export`) |
 | One session's feedback | Each participant's current rating and comments (UC-P-13) | `…/export?part=feedback` | Session page, Feedback card (`#feedback-export`) |
-| One session's Q&A | The session's questions, including removed ones, with votes, status and response | `…/export?part=qna` | Included in the whole-session export; API only on its own |
+| One session's Q&A | The session's questions, including removed ones, with votes, status and response | `…/export?part=qna` | Session page, Questions card (`#qna-export`) |
 | One session's quiz runs | The session's quiz runs, per-question results, and each participant's answers | `…/export?part=quiz_runs` | Included in the whole-session export; API only on its own |
 | One quiz run | The run, its frozen quiz version, per-question answer counts, and each participant's answers | `GET /api/quiz_runs/{id}/export` | `/quizzes`, run report card (`#results-export`) |
 | One quiz template | The quiz, its questions and answers with correctness, and its versions with their run counts | `GET /api/quizzes/{id}/export` | `/quizzes`, the quiz row's ⋯ menu (Export JSON, Export Excel) |
@@ -915,7 +916,8 @@ hash or any other secret, and moderator keys.
 
 **Tests (UI)**
 - On `/` (authed), `#all-export` reads "Export all data ▾" and offers JSON and Excel; choosing Excel downloads `prashna-all-data-<YYYYMMDD>.xlsx`. The quiz library card's link reads "Open quiz library →".
-- On `/m/<code>` as the owner, `#session-export` (Session settings), `#profiles-export` (Attendee profiles) and `#feedback-export` (Feedback) are visible; choosing JSON in each downloads `prashna-session-<code>-…json`, `prashna-profiles-<code>-…json`, and `prashna-feedback-<code>-…json`.
+- On `/m/<code>` as the owner, `#session-export` (Session lifecycle card, not Session settings, reading "Export session ▾"), `#qna-export` (Questions), `#profiles-export` (Attendee profiles) and `#feedback-export` (Feedback) are visible; choosing JSON downloads `prashna-session-<code>-…json`, `prashna-profiles-<code>-…json` and `prashna-feedback-<code>-…json`, and choosing Excel in `#qna-export` downloads `prashna-qna-<code>-…xlsx`.
+- On `/m/<code>` for an ended session, `#session-export` is still visible in the Session lifecycle card, and choosing Excel downloads `prashna-session-<code>-…xlsx`.
 - On `/m/<code>#k=<mod_key>` as a delegate, none of the export menus are shown.
 - On `/quizzes`, a quiz row's ⋯ menu Export Excel downloads `prashna-quiz-<id>-<YYYYMMDD>.xlsx`, and the open run report's `#results-export` JSON downloads `prashna-quiz-run-<id>-<YYYYMMDD>.json`.
 

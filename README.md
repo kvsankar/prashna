@@ -23,8 +23,8 @@ A **projector view** for the screen at the front of the room shows the join
 code, a QR code for the participant link, the top questions, and the current
 quiz question in step with the moderator.
 
-The admin can **export** sessions, attendee profiles, feedback, quiz runs,
-and quizzes as JSON or as an Excel workbook.
+The admin can **export** sessions, Q&A questions, attendee profiles,
+feedback, quiz runs, and quizzes as JSON or as an Excel workbook.
 
 ## Install
 

@@ -211,7 +211,7 @@ disclosure (not a custom popover) for keyboard/no-JS robustness.
   panel lists the open sessions as verb buttons — a menu, not a modal,
   because it is one click deep.
 - **Export ▾** (UC-A-30) is a small `details.menu.export-menu` in a card's
-  tools (or a settings row) whose panel holds two download links, JSON and
+  head or tools whose panel holds two download links, JSON and
   Excel (`exportMenu()` in `common.ts`). Downloads are links (`<a download>`),
   not buttons: they change nothing, and the admin cookie authenticates them.
   Picking one closes the menu. Show it only to the owner (§16).
