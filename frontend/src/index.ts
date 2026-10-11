@@ -70,10 +70,10 @@ async function refresh(): Promise<void> {
   const meta = el("div", { class: "row gap" });
   meta.appendChild(el("span", { class: "small muted" }, "Signed in as "));
   meta.appendChild(el("strong", { class: "small" }, s.username ?? ""));
-  const cpBtn = el("button", { class: "ghost xsmall" }, "Change password");
+  const cpBtn = el("button", { class: "ghost small" }, "Change password");
   cpBtn.addEventListener("click", openChangePassword);
   meta.appendChild(cpBtn);
-  const logoutBtn = el("button", { class: "ghost xsmall" }, "Log out");
+  const logoutBtn = el("button", { class: "ghost small" }, "Log out");
   logoutBtn.addEventListener("click", async () => {
     await api("/api/admin/logout", { method: "POST" });
     void refresh();

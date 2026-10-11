@@ -2275,7 +2275,7 @@ out and signed in, `/quizzes` (list, editor open, run results open),
 - any page error or console error;
 - a visible control without an accessible name (label, `aria-label`, `title`, or text);
 - at 390 and 360 px: a visible text input, text area, or select under 16 px;
-- at 1280 px: a visible button (other than answer options, rating stars, and vote buttons) whose height is not 34, 26, or 20 px (UC-X-13), or a `.profile-cta` that isn't 34 px;
+- at 1280 px: a visible button (other than answer options, rating stars, and vote buttons) whose height is not 40, 32, or 24 px (UC-X-13), or a `.profile-cta` that isn't 40 px;
 - in a touch-emulating context at 390 px: a visible `button`, `details.menu > summary`, or `.section-links a` under 32 px tall.
 
 ### UC-X-13: One button size scale
@@ -2286,7 +2286,7 @@ out and signed in, `/quizzes` (list, editor open, run results open),
   use one size
 
 **Tests (UI)**
-- At 1280×800 on `/s/<code>` with rating open, `.profile-cta`, `#fb-submit`, and `#ask-btn` have the same height (within 1 px), at most 36 px, and a 14 px font.
+- At 1280×800 on `/s/<code>` with rating open, `.profile-cta`, `#fb-submit`, and `#ask-btn` have the same height (within 1 px), 40 px, and a 14 px font.
 - At 1280×800 on `/` signed out, `#join-btn` and `#li-btn` have that same height and font size.
 
 ### UC-X-14: One answer-option component

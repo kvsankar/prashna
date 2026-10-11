@@ -48,7 +48,7 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  /* Type scale, spacing scale and control sizes. */
+  /* Type scale. */
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
@@ -60,18 +60,41 @@
   --text-3xl: 32px;
   --text-4xl: 40px;
   --text-5xl: 48px;
+  /* Spacing (UX.md §1). A 4 px base with steps about 1.5 times apart, so
+     each step is visibly different. Components use the role tokens below,
+     which say what the space separates; the numbered steps are for the
+     margin utilities and the projector's larger scale. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
-  /* Control heights for the button scale (UC-X-13) and the touch minimum
-     (UC-X-12). */
-  --control-h: 34px;
-  --control-h-sm: 26px;
-  --control-h-xs: 20px;
-  --control-px: 14px;
-  --control-px-sm: 10px;
-  --control-px-xs: 8px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --gap-tight: var(--space-1);    /* inside a control; a badge beside its text */
+  --gap-related: var(--space-2);  /* controls in a toolbar; actions in a row; list items */
+  --gap-group: var(--space-3);    /* form fields; a card's header to its content */
+  --pad-card: var(--space-4);     /* inside a card, panel or banner */
+  --gap-section: var(--space-5);  /* between cards and sections */
+  --pad-page: var(--space-5);     /* the page gutter */
+  --pad-projector: var(--space-6) var(--space-7);
+
+  /* Control heights on the 8 px grid (UX.md §10, UC-X-13). The smallest
+     meets WCAG 2.2's 24 x 24 px minimum target; touch screens raise every
+     control to --tap-min (UC-X-12). */
+  --control-h: 40px;
+  --control-h-sm: 32px;
+  --control-h-xs: 24px;
+  --control-px: var(--space-4);
+  --control-px-sm: var(--space-3);
+  --control-px-xs: var(--space-2);
   --tap-min: 32px;
+}
+
+/* Phones: a narrower gutter and tighter section spacing keep content wide. */
+@media (max-width: 720px) {
+  :root {
+    --pad-page: var(--space-4);
+    --gap-section: var(--space-4);
+  }
 }

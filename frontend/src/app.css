@@ -16,45 +16,47 @@ main.proj { max-width: none; }
 .qr-box.qr-lg { width: 220px; }
 .qr-svg { display: block; width: 100%; height: auto; background: var(--qr-bg); border-radius: var(--radius-lg); }
 .qr-svg.qr-svg-full { height: 100%; }
-.url-box { display: block; padding: var(--space-2); background: var(--panel-2); border-radius: var(--radius-md); word-break: break-all; }
+.url-box { display: block; padding: var(--gap-related); background: var(--panel-2); border-radius: var(--radius-md); word-break: break-all; }
 section.card.inset { background: var(--panel-2); }
-.field { margin: 8px 0; }
-.field label { display: block; font-size: var(--text-md); color: var(--muted); margin-bottom: 4px; }
+.field { margin: var(--gap-group) 0; }
+.field label { display: block; font-size: var(--text-md); color: var(--muted); margin-bottom: var(--gap-tight); }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 body { min-height: 100vh; }
 a { color: var(--accent-2); }
 header.top {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--panel);
+  padding: var(--gap-group) var(--pad-page); border-bottom: 1px solid var(--border); background: var(--panel);
 }
 header.top h1 { margin: 0; font-size: var(--text-lg); }
 header.top .meta { color: var(--muted); font-size: var(--text-md); }
-main { max-width: 900px; margin: 0 auto; padding: 20px; }
+main { max-width: 900px; margin: 0 auto; padding: var(--pad-page); }
 main.wide { max-width: 1200px; }
 .page-nav {
   position: sticky; top: 0; z-index: 30;
-  max-width: 900px; margin: 0 auto; padding: 8px 20px;
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 900px; margin: 0 auto; padding: var(--gap-related) var(--pad-page);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--gap-group);
   background: var(--nav-bg); border-bottom: 1px solid var(--border);
 }
 .page-nav.wide { max-width: 1200px; }
 .breadcrumbs ol {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--gap-tight);
   margin: 0; padding: 0; list-style: none; font-size: var(--text-sm);
 }
-.breadcrumbs li:not(:last-child)::after { content: "/"; margin-left: 6px; color: var(--muted); }
+.breadcrumbs li:not(:last-child)::after { content: "/"; margin-left: var(--gap-tight); color: var(--muted); }
 .breadcrumbs [aria-current="page"] { color: var(--text); font-weight: var(--weight-semibold); }
-.section-links { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; font-size: var(--text-sm); }
+.section-links { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--gap-group); font-size: var(--text-sm); }
 .section-links a { white-space: nowrap; }
-section.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 16px; margin-bottom: 16px; }
+section.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: var(--pad-card); margin-bottom: var(--gap-section); }
 /* Keep cards clear of the sticky page-nav when scrolled to (section links,
    detail cards opened from a list). */
 section.card, details.card, details.setup { scroll-margin-top: 64px; }
 h2 { margin-top: 0; font-size: var(--text-body); color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 input, textarea, select {
-  width: 100%; padding: 10px 12px; border-radius: var(--radius-lg); border: 1px solid var(--border);
-  background: var(--panel-2); color: var(--text); font: inherit;
+  width: 100%; border-radius: var(--radius-lg); border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); font: inherit; line-height: 1.3;
+  /* Same height as a default control beside it. */
+  padding: calc((var(--control-h) - 1.3em - 2px) / 2) var(--gap-group);
 }
 textarea { min-height: 70px; resize: vertical; }
 /* Controls (UX.md §10, UC-X-13). Buttons and menu triggers share one
@@ -91,27 +93,27 @@ button.danger:hover:not(:disabled) { border-color: var(--bad); background: var(-
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Rows wrap by default so controls never push a page sideways on phones
    (UX.md §4). Mark a row .nowrap only when it must stay on one line. */
-.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.row { display: flex; flex-wrap: wrap; gap: var(--gap-related); align-items: center; }
 .row.nowrap { flex-wrap: nowrap; }
 .spacer { flex: 1; }
 .muted { color: var(--muted); }
 .small { font-size: var(--text-md); }
 
 .question {
-  display: flex; flex-wrap: nowrap; gap: 12px; padding: 12px; border-radius: var(--radius-lg);
-  background: var(--panel-2); margin-bottom: 8px; align-items: flex-start;
+  display: flex; flex-wrap: nowrap; gap: var(--gap-group); padding: var(--gap-group); border-radius: var(--radius-lg);
+  background: var(--panel-2); margin-bottom: var(--gap-related); align-items: flex-start;
 }
 .question.answered { border-left: 3px solid var(--good); }
 .question.hidden-q { opacity: 0.45; }
 .question .body { flex: 1; }
 .question .text { white-space: pre-wrap; }
 .question .answer {
-  margin-top: 8px; padding: 8px; border-radius: var(--radius-md);
+  margin-top: var(--gap-related); padding: var(--gap-related); border-radius: var(--radius-md);
   background: var(--good-bg); border-left: 2px solid var(--good); font-size: var(--text-base);
 }
 .vote-btn {
   display: flex; flex-direction: column; align-items: center;
-  padding: 6px 10px; min-width: 52px; border-radius: var(--radius-lg);
+  padding: var(--gap-tight) var(--gap-related); min-width: 52px; border-radius: var(--radius-lg);
   background: var(--panel); border: 1px solid var(--border); cursor: pointer; color: var(--text);
 }
 .vote-btn.voted { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
@@ -123,17 +125,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Session feedback — interactive star rating (participant) + read-only
    display (moderator / admin). */
-.stars { display: flex; flex-wrap: nowrap; gap: 4px; }
-.star { background: none; border: none; cursor: pointer; padding: 2px;
+.stars { display: flex; flex-wrap: nowrap; gap: var(--gap-tight); }
+.star { background: none; border: none; cursor: pointer; padding: 0;
   font-size: var(--text-3xl); line-height: 1; color: var(--muted); }
 /* .filled is driven in JS so hovering the Nth star lights stars 1..N. */
 .star.filled { color: var(--star); }
 /* Collapsed attendee profile CTA (participant). */
-details#profile-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 16px; margin-bottom: 16px; }
+details#profile-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: var(--pad-card); margin-bottom: var(--gap-section); }
 details#profile-card > summary { cursor: pointer; list-style: none; margin-bottom: 0; }
 details#profile-card > summary::-webkit-details-marker { display: none; }
 details#profile-card > summary:hover .profile-cta { border-color: var(--accent-2); background: var(--accent-2); }
-details#profile-card[open] > summary { margin-bottom: 8px; }
+details#profile-card[open] > summary { margin-bottom: var(--gap-group); }
 .profile-title { color: var(--text); font-size: var(--text-body); font-weight: var(--weight-bold); }
 .profile-title-open { display: none; }
 details#profile-card[open] .profile-title-closed { display: none; }
@@ -148,7 +150,7 @@ details#profile-card .fb-chevron { margin-left: 0; }
 .profile-photo-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--gap-group);
   flex-wrap: wrap;
 }
 .profile-photo-preview {
@@ -164,24 +166,24 @@ details#profile-card .fb-chevron { margin-left: 0; }
 /* Same box model as section.card (1px border + 16px padding) so the header
    aligns with the other cards; the accent stripe is an inset shadow (no
    layout impact) instead of a border that would shift the content. */
-details#feedback-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 16px; margin-bottom: 24px; box-shadow: inset 3px 0 0 var(--accent); }
+details#feedback-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: var(--pad-card); margin-bottom: var(--gap-section); box-shadow: inset 3px 0 0 var(--accent); }
 details#feedback-card > summary { cursor: pointer; list-style: none; }
 details#feedback-card > summary::-webkit-details-marker { display: none; }
 .fb-chevron { margin-left: auto; color: var(--muted); }
 .fb-chevron::before { content: "▾"; }
 details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
-.fb-rate-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.fb-rate-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-group); }
 .fb-rate-row #fb-clear, .fb-rate-row #fb-clear-confirm { margin-left: auto; }
-#fb-clear-confirm button { margin-left: 4px; }
+#fb-clear-confirm button { margin-left: var(--gap-related); }
 .fb-avg { font-size: var(--text-body); font-weight: var(--weight-semibold); color: var(--star); }
 .fb-stars-static { color: var(--star); letter-spacing: 1px; }
-.fb-item { padding: 8px 0; border-top: 1px solid var(--border); }
+.fb-item { padding: var(--gap-related) 0; border-top: 1px solid var(--border); }
 .fb-item:first-child { border-top: none; }
 
 .option {
-  display: flex; flex-wrap: nowrap; gap: 12px; align-items: center;
-  padding: 12px; border-radius: var(--radius-lg); border: 2px solid var(--border);
-  background: var(--panel-2); margin-bottom: 8px; cursor: pointer;
+  display: flex; flex-wrap: nowrap; gap: var(--gap-group); align-items: center;
+  padding: var(--gap-group); border-radius: var(--radius-lg); border: 2px solid var(--border);
+  background: var(--panel-2); margin-bottom: var(--gap-related); cursor: pointer;
   position: relative; overflow: hidden;
   width: 100%; color: var(--text); font: inherit; text-align: left;
 }
@@ -201,41 +203,41 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 .option .opt-chosen { position: relative; z-index: 1; font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--accent-2); white-space: nowrap; }
 .option .opt-pct { position: relative; z-index: 1; font-weight: var(--weight-semibold); color: var(--accent-2); }
 .option img.opt-img { max-height: 80px; max-width: 120px; border-radius: var(--radius-sm); position: relative; z-index: 1; }
-.q-image { max-width: 100%; max-height: 280px; border-radius: var(--radius-lg); margin: 8px 0; display: block; }
+.q-image { max-width: 100%; max-height: 280px; border-radius: var(--radius-lg); margin: var(--gap-related) 0; display: block; }
 
-.proj { padding: 40px 60px; }
-.proj h1 { font-size: var(--text-5xl); margin: 0 0 12px; }
-.proj .code-display { font-size: var(--text-3xl); color: var(--muted); margin-bottom: 24px; }
-.proj .question { font-size: var(--text-xl); padding: 16px; }
-.proj .option { font-size: var(--text-2xl); padding: 20px; }
+.proj { padding: var(--pad-projector); }
+.proj h1 { font-size: var(--text-5xl); margin: 0 0 var(--gap-group); }
+.proj .code-display { font-size: var(--text-3xl); color: var(--muted); margin-bottom: var(--gap-section); }
+.proj .question { font-size: var(--text-xl); padding: var(--pad-card); }
+.proj .option { font-size: var(--text-2xl); padding: var(--space-5); }
 .proj .option .opt-correct { font-size: var(--text-xl); }
 .proj .q-image { max-height: 360px; }
 /* The question as written: no inherited h2 uppercase/muted styling, so long
    questions stay readable from the back of the room (UC-D-06). */
-.proj .proj-lobby-title { font-size: var(--text-4xl); margin: 8px 0 24px; }
-.proj .proj-question { font-size: var(--text-3xl); margin: 12px 0; line-height: 1.25; color: var(--text); text-transform: none; letter-spacing: normal; }
+.proj .proj-lobby-title { font-size: var(--text-4xl); margin: var(--gap-related) 0 var(--gap-section); }
+.proj .proj-question { font-size: var(--text-3xl); margin: var(--gap-group) 0; line-height: 1.25; color: var(--text); text-transform: none; letter-spacing: normal; }
 
 /* Compact card variant for admin tables */
-section.card.compact { padding: 12px 14px; margin-bottom: 12px; }
+section.card.compact { padding: var(--gap-group) var(--pad-card); }
 section.card.compact h2 { font-size: var(--text-sm); margin: 0; }
-.card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
+.card-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-group); margin-bottom: var(--gap-group); }
 /* A collapsed card is just its header line. */
 details:not([open]) > summary.card-head { margin-bottom: 0; }
-.card-head .card-tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.card-head .card-tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: var(--gap-related); align-items: center; }
 
 /* Collapsible "Set up" disclosure — groups the creational cards
    (invite, add-a-quiz) so the operational surface stays uncluttered. */
-details.setup { margin-bottom: 16px; }
+details.setup { margin-bottom: var(--gap-section); }
 details.setup > summary {
   cursor: pointer; list-style: none;
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
-  padding: 10px 14px; border: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-related);
+  padding: var(--gap-group) var(--pad-card); border: 1px solid var(--border);
   border-radius: var(--radius-xl); background: var(--panel);
 }
 details.setup > summary::-webkit-details-marker { display: none; }
 details.setup > summary::before { content: "▸"; color: var(--muted); font-size: var(--text-xs); align-self: center; }
 details.setup[open] > summary::before { content: "▾"; }
-details.setup[open] > summary { margin-bottom: 12px; }
+details.setup[open] > summary { margin-bottom: var(--gap-group); }
 .setup-title { font-size: var(--text-body); color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: var(--weight-semibold); }
 
 /* ⋯ overflow menu — secondary row actions kept off the main row. */
@@ -245,16 +247,18 @@ details.menu > summary::-webkit-details-marker { display: none; }
 details.menu[open] > summary { border-color: var(--muted); }
 details.menu > .menu-panel {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
-  display: flex; flex-direction: column; gap: 4px; min-width: 210px;
-  padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-xl);
+  display: flex; flex-direction: column; gap: var(--gap-tight); min-width: 210px;
+  padding: var(--gap-related); border: 1px solid var(--border); border-radius: var(--radius-xl);
   background: var(--panel); box-shadow: var(--shadow-menu);
 }
 details.menu > .menu-panel button { width: 100%; text-align: left; white-space: nowrap; }
-details.menu > .menu-panel label { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding: 2px 0; }
-details.menu > .menu-panel .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+details.menu > .menu-panel label { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--gap-related); padding: var(--gap-tight) 0; }
+details.menu > .menu-panel .menu-sep { height: 1px; background: var(--border); margin: var(--gap-tight) 0; }
 /* Download links in a menu (UC-A-30) read like the menu's ghost buttons. */
 details.menu > .menu-panel a.menu-link {
-  display: block; padding: 4px 10px; border-radius: var(--radius-md); text-align: left;
+  display: block; border-radius: var(--radius-md); text-align: left; line-height: 1.3;
+  /* As tall as a .small control; links have no border. */
+  padding: calc((var(--control-h-sm) - 1.3em) / 2) var(--control-px-sm);
   font-size: var(--text-md); font-weight: var(--weight-medium); color: var(--text); text-decoration: none; white-space: nowrap;
 }
 details.menu > .menu-panel a.menu-link:hover, details.menu > .menu-panel a.menu-link:focus-visible { background: var(--panel-2); }
@@ -265,7 +269,7 @@ details.menu.export-menu > .menu-panel { min-width: 140px; }
    the small control height. */
 input.inline, select.inline {
   width: auto; font-size: var(--text-md); line-height: 1.3;
-  padding: calc((var(--control-h-sm) - 1.3em - 2px) / 2) var(--control-px-xs);
+  padding: calc((var(--control-h-sm) - 1.3em - 2px) / 2) var(--control-px-sm);
 }
 select.inline.narrow { min-width: 100px; }
 
@@ -273,17 +277,17 @@ select.inline.narrow { min-width: 100px; }
 .table-scroll { overflow-x: auto; }
 .ctable { width: 100%; border-collapse: collapse; font-size: var(--text-md); }
 .ctable th { text-align: left; font-weight: var(--weight-medium); color: var(--muted); font-size: var(--text-xs);
-  text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.ctable td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  text-transform: uppercase; letter-spacing: 0.5px; padding: var(--gap-tight) var(--gap-related); border-bottom: 1px solid var(--border); }
+.ctable td { padding: var(--gap-tight) var(--gap-related); border-bottom: 1px solid var(--border); vertical-align: middle; }
 .ctable tr:last-child td { border-bottom: none; }
 .ctable td.num, .ctable th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .ctable td.actions, .ctable th.actions { text-align: right; white-space: nowrap; }
-.ctable td.actions button, .ctable td.actions a { margin-left: 8px; }
+.ctable td.actions button, .ctable td.actions a { margin-left: var(--gap-related); }
 .ctable td.actions a:first-child { margin-left: 0; }
 .ctable tr.rowable { cursor: pointer; }
 .ctable tr.rowable:hover { background: var(--hover-bg); }
 .ctable tr.rowable.selected { background: var(--accent-bg); }
-.ctable code { font-size: var(--text-sm); background: var(--panel-2); padding: 1px 5px; border-radius: var(--radius-sm); }
+.ctable code { font-size: var(--text-sm); background: var(--panel-2); padding: 0 var(--gap-tight); border-radius: var(--radius-sm); }
 .sessions-table th, .sessions-table td { white-space: nowrap; }
 .sessions-table th:first-child, .sessions-table td:first-child { min-width: 18ch; }
 .sessions-table th:nth-child(6), .sessions-table td:nth-child(6) { min-width: 16ch; }
@@ -291,34 +295,34 @@ select.inline.narrow { min-width: 100px; }
 /* Alternate quiz-run report views. */
 .run-view-switcher { flex-wrap: wrap; justify-content: flex-end; }
 .view-option[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-#qs-view-summary { margin: 0 0 8px; }
+#qs-view-summary { margin: 0 0 var(--gap-related); }
 .run-group {
-  margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius-xl);
+  margin-top: var(--gap-group); border: 1px solid var(--border); border-radius: var(--radius-xl);
   background: var(--hover-bg); overflow: hidden;
 }
 .run-group > summary {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; cursor: pointer; list-style: none;
-  padding: 9px 10px; background: var(--panel-2);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-related); cursor: pointer; list-style: none;
+  padding: var(--gap-related) var(--gap-group); background: var(--panel-2);
 }
 .run-group > summary::-webkit-details-marker { display: none; }
 .run-group > summary::before { content: "▸"; color: var(--muted); font-size: var(--text-xs); }
 .run-group[open] > summary::before { content: "▾"; }
 .run-group-title { font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .run-group-meta { margin-left: auto; color: var(--muted); font-size: var(--text-sm); }
-.run-group .table-scroll { padding: 0 4px 4px; }
+.run-group .table-scroll { padding: 0 var(--gap-tight) var(--gap-tight); }
 
 /* Compact editor inside detail pane */
-.row.gap { gap: 8px; }
-.field-row { margin: 6px 0; }
-.editor-q.compact { background: var(--panel-2); padding: 10px 12px; border-radius: var(--radius-lg); margin-top: 10px; }
+.row.gap { gap: var(--gap-related); }
+.field-row { margin: var(--gap-related) 0; }
+.editor-q.compact { background: var(--panel-2); padding: var(--gap-group); border-radius: var(--radius-lg); margin-top: var(--gap-group); }
 .editor-q.compact textarea { min-height: 50px; font-size: var(--text-base); }
-.editor-q.compact .options { margin-top: 6px; }
+.editor-q.compact .options { margin-top: var(--gap-related); }
 .question-head { align-items: center; }
 .poll-toggle {
   display: inline-flex; flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
-  min-height: 30px;
+  gap: var(--gap-related);
+  min-height: var(--control-h-sm);
   white-space: nowrap;
 }
 .poll-toggle input[type="checkbox"] {
@@ -327,19 +331,18 @@ select.inline.narrow { min-width: 100px; }
 }
 /* Quiz-run header on the session page: wraps instead of pushing its
    controls off a phone screen (UC-X-12). */
-.run-head { gap: 6px; margin-bottom: 8px; }
+.run-head { gap: var(--gap-related); margin-bottom: var(--gap-related); }
 /* Moderator response box: one line until used. */
 .question textarea.response-input { min-height: 38px; }
 .question textarea.response-input:focus,
 .question textarea.response-input:not(:placeholder-shown) { min-height: 70px; }
-.editor-opt { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0; }
+.editor-opt { display: flex; flex-wrap: wrap; gap: var(--gap-related); align-items: center; padding: var(--gap-tight) 0; }
 .editor-opt input[type="text"] { flex: 1; min-width: 80px; }
 
 /* Reorder (UX.md §7): drag handle + move buttons. touch-action keeps touch
    drags from scrolling the page. */
 .drag-handle { cursor: grab; touch-action: none; }
 .drag-handle:active { cursor: grabbing; }
-.move-btn { padding-left: 6px; padding-right: 6px; }
 .move-btn:disabled { opacity: 0.35; cursor: default; }
 .dragging { opacity: 0.7; outline: 2px dashed var(--accent); outline-offset: 2px; }
 
@@ -349,7 +352,7 @@ select.inline.narrow { min-width: 100px; }
 .editor-q-slot > .editor-q.compact { margin-top: 0; }
 button.insert-point {
   display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-2);
-  width: 100%; height: var(--control-h-xs); margin: var(--space-1) 0; padding: 0;
+  width: 100%; height: var(--control-h-xs); margin: var(--gap-tight) 0; padding: 0;
   border: 0; border-radius: var(--radius-md); background: transparent;
   color: var(--muted); opacity: 0.6; font-size: var(--text-md); line-height: 1;
 }
@@ -369,11 +372,11 @@ button.insert-point:focus-visible .insert-plus { border-color: var(--accent); }
 .dragging .insert-point { visibility: hidden; }
 
 /* Row menus in the quiz library and the session picker. */
-.ctable td.actions details.menu { margin-left: 8px; }
+.ctable td.actions details.menu { margin-left: var(--gap-related); }
 /* The ⋯ glyph needs a larger font to read; the height stays on the scale. */
 .ctable td.actions details.menu.row-more > summary { font-size: var(--text-base); }
 details.menu > .menu-panel.session-picker { min-width: 260px; max-width: 360px; white-space: normal; }
-details.menu > .menu-panel.session-picker button { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+details.menu > .menu-panel.session-picker button { display: flex; gap: var(--gap-related); align-items: center; flex-wrap: wrap; }
 details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; font-size: var(--text-sm); color: var(--muted); }
 #quiz-select { max-width: 320px; }
 .thumb { max-height: 60px; max-width: 100px; border-radius: var(--radius-sm); }
@@ -381,10 +384,10 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 
 
 /* Drill-down results */
-.result-q { background: var(--panel-2); padding: 10px 12px; border-radius: var(--radius-lg); margin-top: 10px; }
+.result-q { background: var(--panel-2); padding: var(--gap-group); border-radius: var(--radius-lg); margin-top: var(--gap-group); }
 .result-opt {
-  position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
-  padding: 6px 10px; margin-top: 4px; border-radius: var(--radius-md);
+  position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--gap-related);
+  padding: var(--gap-related) var(--gap-group); margin-top: var(--gap-tight); border-radius: var(--radius-md);
   background: var(--panel); overflow: hidden;
 }
 .result-opt.correct { box-shadow: inset 2px 0 0 var(--good); }
@@ -394,15 +397,15 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 .result-text { flex: 1; }
 .result-num { color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 
-.toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel-2); border: 1px solid var(--border); padding: 10px 16px; border-radius: var(--radius-lg); max-width: 360px; font-size: var(--text-base); box-shadow: var(--shadow-toast); z-index: 100; }
+.toast { position: fixed; bottom: var(--gap-section); right: var(--gap-section); background: var(--panel-2); border: 1px solid var(--border); padding: var(--gap-group) var(--pad-card); border-radius: var(--radius-lg); max-width: 360px; font-size: var(--text-base); box-shadow: var(--shadow-toast); z-index: 100; }
 .toast-error { border-color: var(--bad); color: var(--bad); background: var(--bad-bg); }
-.error-banner { background: var(--bad-bg); border: 1px solid var(--bad); color: var(--bad); padding: 10px 14px; border-radius: var(--radius-lg); margin-bottom: 12px; font-size: var(--text-base); }
-.info-banner { background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent-2); padding: 10px 14px; border-radius: var(--radius-lg); margin-bottom: 12px; font-size: var(--text-md); }
+.error-banner { background: var(--bad-bg); border: 1px solid var(--bad); color: var(--bad); padding: var(--gap-group) var(--pad-card); border-radius: var(--radius-lg); margin-bottom: var(--gap-group); font-size: var(--text-base); }
+.info-banner { background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent-2); padding: var(--gap-group) var(--pad-card); border-radius: var(--radius-lg); margin-bottom: var(--gap-group); font-size: var(--text-md); }
 /* Status badges (UX.md §11): one shape, a tint and a text colour by
    meaning. Green: running or usable. Indigo: waiting to run. Orange: needs
    work. Neutral: not started (bright text) or finished (muted text). */
 .badge {
-  display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill);
+  display: inline-block; padding: 0 var(--gap-related); line-height: 1.6; border-radius: var(--radius-pill);
   font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: 0.4px;
   text-transform: uppercase; vertical-align: middle;
   background: var(--neutral-bg); color: var(--muted);
@@ -415,13 +418,13 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 /* QR lightbox — any QR rendered via renderQR is click-to-enlarge for scanning. */
 .qr-expandable { cursor: zoom-in; }
 .qr-expandable:hover, .qr-expandable:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-lg); }
-.qr-lightbox { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; padding: 40px; }
+.qr-lightbox { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; padding: var(--space-7); }
 .qr-lightbox-inner { width: min(90vh, 90vw); height: min(90vh, 90vw); display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; }
 .qr-lightbox-inner svg { width: 100%; height: 100%; }
 .qr-lightbox-hint { position: fixed; bottom: 28px; left: 0; right: 0; text-align: center; color: var(--overlay-text); font-size: var(--text-md); }
 
 @media (max-width: 720px) {
-  header.top { align-items: flex-start; gap: 10px; }
+  header.top { align-items: flex-start; gap: var(--gap-related); }
   .page-nav { position: static; align-items: flex-start; flex-direction: column; }
   .section-links { justify-content: flex-start; }
   .card-head { align-items: flex-start; }
@@ -429,7 +432,7 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
   .run-view-switcher { justify-content: flex-start; }
   /* Let row actions wrap instead of widening the table past the screen. */
   .ctable td.actions { white-space: normal; }
-  .ctable td.actions > * { margin: 2px 0 2px 6px; }
+  .ctable td.actions > * { margin: var(--gap-tight) 0 var(--gap-tight) var(--gap-related); }
   /* The composer takes the full card width; the picker shrinks to fit. */
   #quiz-composer { width: 100%; }
   #quiz-select { flex: 1 1 0; min-width: 0; max-width: none; }
@@ -438,7 +441,7 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
   .editor-opt input[type="text"] { flex: 1 1 60%; }
   /* iOS Safari zooms into focused fields under 16 px (UX.md §16a). */
   input, textarea, select, input.inline, select.inline, .editor-q.compact textarea { font-size: var(--text-body); }
-  .proj { padding: 16px; }
+  .proj { padding: var(--pad-card); }
   .proj h1 { font-size: var(--text-2xl); }
   .proj .code-display { font-size: var(--text-xl); }
   .proj .proj-question { font-size: var(--text-2xl); }
@@ -446,7 +449,7 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 
 /* Small phones: tighter table cells so 4-column tables fit 360 px. */
 @media (max-width: 400px) {
-  .ctable th, .ctable td { padding: 6px 4px; }
+  .ctable th, .ctable td { padding: var(--gap-tight); }
 }
 
 /* Touch devices: tap targets at least 32 px tall (UC-X-12). */

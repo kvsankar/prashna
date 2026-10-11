@@ -22,24 +22,45 @@ The component styles in `frontend/src/app.css` use the tokens through
 | Text | `--text`, `--muted`, `--on-accent`, `--on-accent-muted` | Primary text, secondary text, text on an accent fill |
 | Roles | `--accent`, `--accent-2`, `--good`, `--warn`, `--bad` | Primary action, links and hover, success, needs work, destructive |
 | Tints | `--accent-bg`, `--good-bg`, `--warn-bg`, `--bad-bg`, `--neutral-bg`, `--hover-bg` | Badge, banner, selection and result-bar backgrounds |
-| Controls | `--control-bg`, `--control-bg-hover`; `--control-h`, `--control-h-sm`, `--control-h-xs`; `--control-px*`; `--tap-min` | Control fill, the three control heights and their side padding (§10), the touch minimum (§16a) |
+| Controls | `--control-bg`, `--control-bg-hover`; `--control-h` 40, `--control-h-sm` 32, `--control-h-xs` 24; `--control-px*`; `--tap-min` 32 | Control fill, the three control heights and their side padding (§10), the touch minimum (§16a) |
 | Corners | `--radius-sm` 4, `--radius-md` 6, `--radius-lg` 8, `--radius-xl` 12, `--radius-pill`, `--radius-round` | Chips and images; extra-small controls and menu items; controls, inputs and rows; cards and panels; badges; avatars |
 | Weights | `--weight-medium` 500, `--weight-semibold` 600, `--weight-bold` 700 | Controls; labels and badges; titles |
 | Type | `--text-xs` 11 … `--text-5xl` 48 | 11 badge, 12 table header, 13 dense body, 14 body, 16 section, 18 page, 24+ projector |
-| Spacing | `--space-1` 4 … `--space-5` 24 | Margins and gaps (utilities `.mt-2` and so on) |
+| Spacing roles | `--gap-tight` 4, `--gap-related` 8, `--gap-group` 12, `--pad-card` 16, `--gap-section` 24, `--pad-page` 24, `--pad-projector` | See "Spacing" below |
+| Spacing steps | `--space-1` 4, `--space-2` 8, `--space-3` 12, `--space-4` 16, `--space-5` 24, `--space-6` 32, `--space-7` 48 | The margin utilities (`.mt-2` and so on) and the projector's larger scale |
 | Other | `--shadow-menu`, `--shadow-toast`, `--nav-bg`, `--overlay-bg`, `--overlay-text`, `--star`, `--qr-bg`, `--proj-bg`, `--proj-hint` | Menus, toasts, sticky nav, QR lightbox, star ratings, QR codes, projector |
 
-Add a token rather than a one-off value. Spacing (`padding`, `margin`,
-`gap`) still uses raw pixel values on the rough 4 / 6 / 8 / 12 / 16 / 20 /
-28 / 40 px scale; use those multiples.
+Add a token rather than a one-off value.
+
+### Spacing
+
+Spacing says how things relate. Space inside a component is smaller than
+space between related items, which is smaller than space between groups
+and between sections. Pick the role, not a pixel value:
+
+| Role | Size | Use |
+| --- | --- | --- |
+| `--gap-tight` | 4 px | Inside a control; a badge beside its text; a label above its field |
+| `--gap-related` | 8 px | Controls in a toolbar; actions in a row; items in a list |
+| `--gap-group` | 12 px | Form fields; a card's header to its content; padding inside a list item |
+| `--pad-card` | 16 px | Inside a card, panel, banner or toast |
+| `--gap-section` | 24 px | Between cards and sections |
+| `--pad-page` | 24 px | The page gutter |
+
+The steps (4, 8, 12, 16, 24, 32, 48 px) grow by about 1.5 times, so each
+is visibly different from the next; in-between values add rules without
+adding meaning. On phones (720 px and narrower) `--pad-page` and
+`--gap-section` drop to 16 px, so content keeps its width.
 
 ### How the tokens are enforced
 
 - **Stylelint** (`.stylelintrc.json`, run by `npm run lint`, pre-commit and
   CI) rejects, in every stylesheet except `tokens.css`: hex colours,
   named colours, colour functions (`rgb()`, `rgba()`, `hsl()` and so on),
-  and any `font-size`, `font-weight`, `border-radius` or `box-shadow` that
-  is not the matching token. An inset accent stripe
+  any `font-size`, `font-weight`, `border-radius` or `box-shadow` that is
+  not the matching token, and any `padding`, `margin` or `gap` that is not
+  a spacing token, `0` or `auto` (controls derive their padding from
+  their height). An inset accent stripe
   (`box-shadow: inset 3px 0 0 var(--accent)`) is allowed.
 - **No styles outside stylesheets.** Pages have no `<style>` blocks, and
   markup and scripts never set inline styles. Use a class: a spacing
@@ -488,16 +509,20 @@ a link as a button or use a button only to navigate.
 
 | Size      | Text  | Height | Use                                              |
 | --------- | ----- | ------ | ------------------------------------------------ |
-| default   | 14 px | ~34 px | A card's own actions (Submit, Ask, Join, Log in) |
-| `.small`  | 13 px | ~26 px | `card-tools`, dense lists                        |
-| `.xsmall` | 11 px | ~20 px | Row actions in `.ctable`                         |
+| default   | 14 px | 40 px  | A card's own actions (Submit, Ask, Join, Log in) |
+| `.small`  | 13 px | 32 px  | Card tools, menus, the header, editor rows, buttons inside a card's content |
+| `.xsmall` | 11 px | 24 px  | Row actions in `.ctable` tables only             |
 
 - Buttons and menu triggers (`details.menu > summary`: Export ▾, Add to
   session ▾, ⋯) share one recipe in `frontend/src/app.css`. A size sets the height,
   side padding, font size and corners; a variant sets the colours. Menu
   triggers take the `.small` size, or `.xsmall` inside `.ctable` rows, so
-  they match the buttons beside them. Inline fields in card tools
-  (`input.inline`, `select.inline`) take the `.small` height.
+  they match the buttons beside them. Inline fields (`input.inline`,
+  `select.inline`) take the `.small` height; full-width fields take the
+  default height.
+- Controls in one row share one height: buttons beside an inline field are
+  `.small`. The heights sit on the 8 px grid, and the smallest meets
+  WCAG 2.2's 24 × 24 px minimum target.
 - All of a card's own actions share one size; never mix default and
   `.small` for the same kind of action on a page.
 - A custom call-to-action that isn't a `<button>` (e.g. the profile

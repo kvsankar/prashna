@@ -448,7 +448,7 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
     dragHandle(slot, "question", saveOrder),
     el("strong", {}, `Q${idx + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
     ...moveButtons(ids, idx, "question", saveOrder),
-    guardClick(el("button", { class: "danger ghost xsmall" }, "Delete") as HTMLButtonElement, async () => {
+    guardClick(el("button", { class: "danger ghost small" }, "Delete") as HTMLButtonElement, async () => {
       if (!confirm("Delete this question?")) return;
       await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" });
       void openQuizDetail(quizId);
@@ -463,7 +463,7 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
     if (url) { await patchQuestion(qq.id, { image_url: url }); void openQuizDetail(quizId); }
   }));
   if (qq.image_url) {
-    imgRow.appendChild(el("button", { class: "ghost xsmall", onclick: async () => {
+    imgRow.appendChild(el("button", { class: "ghost small", onclick: async () => {
       await patchQuestion(qq.id, { image_url: null }); void openQuizDetail(quizId);
     } }, "Clear"));
   }
@@ -473,7 +473,7 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
   qq.answers.forEach((op, aIdx) => opts.appendChild(renderAnswer(qq, op, aIdx)));
   wrap.appendChild(opts);
   wrap.appendChild(guardClick(
-    el("button", { class: "ghost xsmall mt-1" }, "+ Answer") as HTMLButtonElement,
+    el("button", { class: "ghost small mt-1" }, "+ Answer") as HTMLButtonElement,
     async () => {
       await api(`/api/quiz_questions/${qq.id}/answers`, { method: "POST", body: { text: "New answer" } });
       void openQuizDetail(quizId);
@@ -503,13 +503,13 @@ function renderAnswer(qq: EditorQuestion, op: EditorAnswer, idx: number): HTMLEl
   }));
   if (op.image_url) {
     row.appendChild(el("button", {
-      class: "ghost xsmall", "aria-label": "Clear answer image",
+      class: "ghost small", "aria-label": "Clear answer image",
       onclick: async () => { await patchAnswer(op.id, { image_url: null }); void openQuizDetail(quizId); },
     }, "Clear"));
   }
   for (const btn of moveButtons(ids, idx, "answer", saveOrder)) row.appendChild(btn);
   row.appendChild(guardClick(
-    el("button", { class: "danger ghost xsmall", "aria-label": "Delete answer" }, "✕") as HTMLButtonElement,
+    el("button", { class: "danger ghost small", "aria-label": "Delete answer" }, "✕") as HTMLButtonElement,
     async () => {
       await api(`/api/quiz_answers/${op.id}`, { method: "DELETE" });
       void openQuizDetail(quizId);
@@ -543,7 +543,7 @@ function moveButtons(ids: number[], idx: number, noun: string, save: SaveOrder):
   };
   const make = (label: string, glyph: string, target: number): HTMLButtonElement => {
     const btn = el("button", {
-      class: "ghost xsmall move-btn", "aria-label": `Move ${noun} ${label}`, title: `Move ${noun} ${label}`,
+      class: "ghost small move-btn", "aria-label": `Move ${noun} ${label}`, title: `Move ${noun} ${label}`,
     }, glyph) as HTMLButtonElement;
     if (target < 0 || target >= ids.length) {
       btn.disabled = true;
@@ -558,7 +558,7 @@ function moveButtons(ids: number[], idx: number, noun: string, save: SaveOrder):
  *  with mouse and touch), then saves the new order of the siblings' ids. */
 function dragHandle(item: HTMLElement, noun: string, save: SaveOrder): HTMLElement {
   const handle = el("button", {
-    class: "ghost xsmall drag-handle", type: "button",
+    class: "ghost small drag-handle", type: "button",
     "aria-label": `Drag to reorder ${noun}`, title: "Drag to reorder",
   }, "⠿");
   handle.addEventListener("pointerdown", (down: PointerEvent) => {
@@ -633,7 +633,7 @@ function imagePicker(hasImage: boolean, inputLabel: string, onFile: (file: File)
     const file = input.files?.[0];
     if (file) void onFile(file);
   });
-  const button = el("button", { class: "ghost xsmall", type: "button", title: inputLabel },
+  const button = el("button", { class: "ghost small", type: "button", title: inputLabel },
     hasImage ? "Change image" : "Add image");
   button.addEventListener("click", () => input.click());
   return [button, input];

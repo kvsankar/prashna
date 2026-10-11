@@ -41,14 +41,14 @@ PAGE_CHECKS_JS = """(opts) => {
       .map(e => name(e) + ' ' + getComputedStyle(e).fontSize);
   }
   if (opts.desk) {
-    const scale = [34, 26, 20];
+    const scale = [40, 32, 24];
     const offScale = h => !scale.some(s => Math.abs(h - s) <= 1);
     out.offScale = [...document.querySelectorAll('button')].filter(vis)
       .filter(e => !e.closest('.option, .stars, .vote-btn') && !e.classList.contains('option'))
       .filter(e => offScale(e.getBoundingClientRect().height))
       .map(e => name(e) + ' ' + Math.round(e.getBoundingClientRect().height));
     out.offScale.push(...[...document.querySelectorAll('.profile-cta')].filter(vis)
-      .filter(e => Math.abs(e.getBoundingClientRect().height - 34) > 1).map(e => 'profile-cta'));
+      .filter(e => Math.abs(e.getBoundingClientRect().height - 40) > 1).map(e => 'profile-cta'));
   }
   if (opts.touch) {
     out.shortTargets = [...document.querySelectorAll('button, details.menu > summary, .section-links a')].filter(vis)
@@ -171,7 +171,7 @@ SIZES_JS = """(sels) => sels.map(s => { const e = document.querySelector(s); con
 def _assert_same_scale(sizes):
     heights = [x["h"] for x in sizes]
     assert max(heights) - min(heights) <= 1, sizes
-    assert max(heights) <= 36, sizes
+    assert abs(max(heights) - 40) <= 1, sizes
     assert all(x["fs"] == "14px" for x in sizes), sizes
 
 
