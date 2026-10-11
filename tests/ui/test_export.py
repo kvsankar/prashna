@@ -34,9 +34,11 @@ def test_uc_a_30_sessions_list_exports_all_sessions(base_url, admin_setup, page)
     api_make_session(c, f"UI-A30 {secrets.token_hex(3)}")
     try:
         admin_login_via_ui(page, base_url)
-        menu = page.locator("#sessions-export")
+        menu = page.locator("#all-export")
         expect(menu).to_be_visible()
-        assert _download(page, menu, "Excel") == f"prashna-all-sessions-{_today()}.xlsx"
+        expect(menu.locator("summary")).to_have_text("Export all data ▾")
+        expect(page.get_by_role("link", name="Open quiz library →")).to_have_attribute("href", "/quizzes")
+        assert _download(page, menu, "Excel") == f"prashna-all-data-{_today()}.xlsx"
     finally:
         c.close()
 
@@ -91,5 +93,5 @@ def test_uc_a_30_quiz_library_exports_quiz_and_run(base_url, admin_setup, page):
 
 def test_uc_a_30_export_link_needs_the_admin_cookie(base_url, admin_setup):
     """UC-A-30: the download URL behind the menu refuses a cookieless request."""
-    r = httpx.get(f"{base_url}/api/export/sessions?format=json", timeout=5.0)
+    r = httpx.get(f"{base_url}/api/export/all?format=json", timeout=5.0)
     assert r.status_code == 401

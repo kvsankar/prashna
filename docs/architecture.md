@@ -158,7 +158,7 @@ flowchart TB
   `POST /api/sessions/{code}/me/photo` without an admin login. Both paths use
   one helper with the same extension allowlist and 5 MB cap, and both return
   a `/uploads/<uuid>.<ext>` URL.
-- **Data export.** `GET /api/export/sessions`, `/api/sessions/{code}/export`,
+- **Data export.** `GET /api/export/all`, `/api/sessions/{code}/export`,
   `/api/quiz_runs/{id}/export`, and `/api/quizzes/{id}/export` take
   `format=json|xlsx` (and `part` for a session) and return an attachment.
   They need the owner's admin cookie; the moderator key never reaches them.

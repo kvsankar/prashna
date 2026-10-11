@@ -837,7 +837,7 @@ scope narrows with `part`.
 
 | Scope | Contains | Endpoint | Where in the UI |
 | --- | --- | --- | --- |
-| All sessions | Every session the admin owns, each with all of its data (as "One session") | `GET /api/export/sessions` | `/`, Your sessions card (`#sessions-export`) |
+| All data | Every session the admin owns, each with all of its data (as "One session"), and every quiz in the admin's quiz library (as "One quiz") | `GET /api/export/all` | `/`, Your sessions card (`#all-export`, labelled "Export all data") |
 | One session | The session's details, every participant, its Q&A questions, its quiz runs with each participant's answers, and its feedback | `GET /api/sessions/{code}/export` (`part=all`, the default) | Session page, Session settings card (`#session-export`) |
 | One session's attendee profiles | The participants who gave any profile field or a photograph (UC-M-13) | `…/export?part=profiles` | Session page, Attendee profiles card (`#profiles-export`) |
 | One session's feedback | Each participant's current rating and comments (UC-P-13) | `…/export?part=feedback` | Session page, Feedback card (`#feedback-export`) |
@@ -862,16 +862,18 @@ scope narrows with `part`.
   names or contact details, a note that it contains personal data.
   Sheets for one session: About, Session, Participants, Questions, Quiz
   runs, Quiz answers (one row per participant and question, with the
-  chosen answers and whether they were correct), Feedback. All sessions
+  chosen answers and whether they were correct), Feedback. All data
   uses the same tables with a Sessions sheet and a Session code column
-  on each. A part export has About, Session, and that part's sheets
+  on each, then the quiz library: Quizzes, Quiz questions, and Answer
+  options (each with a Quiz ID column). "Answer options" are a quiz's
+  possible answers; "Quiz answers" are what participants chose. A part export has About, Session, and that part's sheets
   (Participants; Feedback; Questions; or Quiz runs and Quiz answers). A
   quiz run has About, Quiz run, Results, Quiz answers. A quiz template
   has About, Quiz, Questions, Answers, Versions.
 - In both formats, timestamps are ISO 8601 in UTC with a `Z` suffix;
   participants are identified by an export-local participant ID (their
   row id) and their name when given; the Participants table, present only
-  in the all-sessions, one-session and profiles exports, adds the other
+  in the all-data, one-session and profiles exports, adds the other
   profile fields; uploaded images appear
   as their `/uploads/…` URL path. Excel cells hold text as text: a
   participant's entry that starts with `=` is never a formula.
@@ -888,7 +890,7 @@ hash or any other secret, and moderator keys.
 
 **Downloads.** Each response is an attachment named
 `prashna-<scope>-<identifier>-<YYYYMMDD>.<ext>` (UTC date): for example
-`prashna-all-sessions-20261011.json`,
+`prashna-all-data-20261011.json`,
 `prashna-session-ABC123-20261011.xlsx`,
 `prashna-profiles-ABC123-20261011.xlsx`,
 `prashna-quiz-run-17-20261011.json`, `prashna-quiz-5-20261011.xlsx`
@@ -903,7 +905,7 @@ hash or any other secret, and moderator keys.
 - `GET /api/sessions/{code}/export?format=json` → `200`, `Content-Type: application/json`, `Content-Disposition: attachment; filename="prashna-session-<code>-<YYYYMMDD>.json"`, `Cache-Control: no-store`; the body has `export` (`scope: "session"`, `part: "all"`, `session_code`, `exported_at`, `prashna_version`, `contains_personal_data: true`) and `session` with `participants`, `questions`, `quiz_runs` (each with `questions` and `responses`), and `feedback`. Auth: admin cookie.
 - The same with `format=xlsx` → a workbook that openpyxl opens, with sheets About, Session, Participants, Questions, Quiz runs, Quiz answers, Feedback in that order, the documented header rows, and the session's data (a question's votes, a participant's chosen answer and correctness, a rating).
 - `part=profiles`, `part=feedback`, `part=qna`, `part=quiz_runs` each return only that part (JSON keys and Excel sheets), named `prashna-<part>-<code>-<YYYYMMDD>.<ext>` (`quiz-runs` for `quiz_runs`); `part=profiles` lists only participants with profile data.
-- `GET /api/export/sessions` in both formats covers every owned session, not another admin's, and each Excel table carries a Session code column; the file is `prashna-all-sessions-<YYYYMMDD>.<ext>`.
+- `GET /api/export/all` in both formats covers every owned session and every owned quiz, not another admin's; each session table carries a Session code column, and the quiz library adds Quizzes, Quiz questions and Answer options sheets (each with a Quiz ID column); the JSON has `sessions` and `quizzes`; the file is `prashna-all-data-<YYYYMMDD>.<ext>`.
 - `GET /api/quiz_runs/{id}/export` in both formats holds the frozen quiz title and version, per-answer counts with correctness, and each participant's chosen answers; another admin's run → `404`.
 - `GET /api/quizzes/{id}/export` in both formats holds the questions, the answers with correctness, and the versions with run counts; another admin's quiz → `404`; the About sheet carries no personal-data note.
 - No export, in either format, contains a participant's voter token, the admin's password hash, or the session's mod_key (searched in the JSON text and in every Excel cell).
@@ -912,7 +914,7 @@ hash or any other secret, and moderator keys.
 - `format=csv` → `400 "format must be json or xlsx"`; `part=everything` → `400 "part must be one of all, profiles, feedback, qna, quiz_runs"`.
 
 **Tests (UI)**
-- On `/` (authed), `#sessions-export` offers JSON and Excel; choosing Excel downloads `prashna-all-sessions-<YYYYMMDD>.xlsx`.
+- On `/` (authed), `#all-export` reads "Export all data ▾" and offers JSON and Excel; choosing Excel downloads `prashna-all-data-<YYYYMMDD>.xlsx`. The quiz library card's link reads "Open quiz library →".
 - On `/m/<code>` as the owner, `#session-export` (Session settings), `#profiles-export` (Attendee profiles) and `#feedback-export` (Feedback) are visible; choosing JSON in each downloads `prashna-session-<code>-…json`, `prashna-profiles-<code>-…json`, and `prashna-feedback-<code>-…json`.
 - On `/m/<code>#k=<mod_key>` as a delegate, none of the export menus are shown.
 - On `/quizzes`, a quiz row's ⋯ menu Export Excel downloads `prashna-quiz-<id>-<YYYYMMDD>.xlsx`, and the open run report's `#results-export` JSON downloads `prashna-quiz-run-<id>-<YYYYMMDD>.json`.

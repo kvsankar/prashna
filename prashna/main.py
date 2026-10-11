@@ -2740,14 +2740,14 @@ def _export_response(result: data_export.Export, scope: str) -> Response:
     )
 
 
-@app.get("/api/export/sessions")
-def export_all_sessions(
+@app.get("/api/export/all")
+def export_all_data(
     format: str = "json",
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
     fmt = _export_format(format)
-    return _export_response(data_export.export_sessions(db, me, fmt), "sessions")
+    return _export_response(data_export.export_all(db, me, fmt), "all")
 
 
 @app.get("/api/sessions/{code}/export")

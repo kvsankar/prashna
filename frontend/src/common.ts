@@ -435,9 +435,9 @@ export function exportLinks(url: string, prefix = ""): HTMLAnchorElement[] {
 
 /** A quiet "Export ▾" menu offering JSON and Excel (UC-A-30). Picking a
  *  format closes the menu, so one click starts one download. */
-export function exportMenu(id: string, url: string, title: string): HTMLDetailsElement {
+export function exportMenu(id: string, url: string, title: string, label = "Export ▾"): HTMLDetailsElement {
   const details = el("details", { class: "menu export-menu", id },
-    el("summary", { title, "aria-label": title }, "Export ▾"),
+    el("summary", { title, "aria-label": title }, label),
     el("div", { class: "menu-panel" }, exportLinks(url))) as HTMLDetailsElement;
   details.addEventListener("click", (e) => {
     if ((e.target as Element).closest("a")) details.open = false;

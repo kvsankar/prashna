@@ -26,7 +26,7 @@ $("#join-code").addEventListener("input", () => { setVisible($("#bad-code-msg"),
 
 // ----- export every owned session (UC-A-30) -----
 $("#sessions-card .card-tools").appendChild(
-  exportMenu("sessions-export", "/api/export/sessions", "Export all your sessions"));
+  exportMenu("all-export", "/api/export/all", "Export all your sessions and quizzes", "Export all data ▾"));
 bindMenuDismiss();
 
 // ----- visibility helpers -----

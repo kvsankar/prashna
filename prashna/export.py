@@ -486,6 +486,20 @@ def quiz_run_sheets(run: dict) -> list[Sheet]:
     ]
 
 
+def library_sheets(quizzes: list[dict]) -> list[Sheet]:
+    """The quiz library for the all-data export: every table starts with Quiz ID.
+    "Answer options" are a quiz's possible answers, not participants' choices."""
+    questions = [{**q, "quiz_id": z["id"]} for z in quizzes for q in z["questions"]]
+    options = [{**a, "quiz_id": z["id"], "question_number": q["number"]}
+               for z in quizzes for q in z["questions"] for a in q["answers"]]
+    quiz_id: Column = ("Quiz ID", _key("quiz_id"))
+    return [
+        Sheet("Quizzes", QUIZ_COLUMNS, quizzes),
+        Sheet("Quiz questions", [quiz_id, *TEMPLATE_QUESTION_COLUMNS], questions),
+        Sheet("Answer options", [quiz_id, *TEMPLATE_ANSWER_COLUMNS], options),
+    ]
+
+
 def quiz_sheets(quiz: dict) -> list[Sheet]:
     return [
         Sheet("Quiz", QUIZ_COLUMNS, [quiz]),
@@ -587,17 +601,33 @@ PART_DESCRIPTIONS = {
 }
 
 
-def export_sessions(db: DbSession, owner: m.User, fmt: str) -> Export:
+def _run_counts(db: DbSession, version_ids: list[int]) -> dict[int, int]:
+    """How many quiz runs used each quiz version."""
+    counts: dict[int, int] = defaultdict(int)
+    if version_ids:
+        for vid in db.scalars(select(m.QuizRun.quiz_version_id).where(m.QuizRun.quiz_version_id.in_(version_ids))):
+            counts[vid] += 1
+    return counts
+
+
+def export_all(db: DbSession, owner: m.User, fmt: str) -> Export:
+    """Everything the admin owns: every session with all its data, and the quiz library."""
     rows = db.scalars(
         select(m.Session).where(m.Session.owner_user_id == owner.id)
         .order_by(m.Session.created_at.desc(), m.Session.id.desc())
     ).all()
     sessions = [build_session(db, s) for s in rows]
-    document = {"export": meta("sessions", personal=True, session_count=len(sessions)),
-                "sessions": sessions}
-    sheets = session_sheets(sessions, many=True)
-    return render(fmt, document, "All sessions", [("Sessions", len(sessions))],
-                  sheets, "all-sessions", None)
+    owned_quizzes = db.scalars(
+        select(m.Quiz).where(m.Quiz.owner_user_id == owner.id)
+        .order_by(m.Quiz.created_at.desc(), m.Quiz.id.desc())
+    ).all()
+    counts = _run_counts(db, [v.id for z in owned_quizzes for v in z.versions])
+    quizzes = [build_quiz(z, counts) for z in owned_quizzes]
+    document = {"export": meta("all", personal=True, session_count=len(sessions), quiz_count=len(quizzes)),
+                "sessions": sessions, "quizzes": quizzes}
+    sheets = session_sheets(sessions, many=True) + library_sheets(quizzes)
+    return render(fmt, document, "All data", [("Sessions", len(sessions)), ("Quizzes", len(quizzes))],
+                  sheets, "all-data", None)
 
 
 def export_session(db: DbSession, s: m.Session, fmt: str, part: str) -> Export:
@@ -618,12 +648,7 @@ def export_quiz_run(db: DbSession, run: m.QuizRun, fmt: str) -> Export:
 
 
 def export_quiz(db: DbSession, quiz: m.Quiz, fmt: str) -> Export:
-    version_ids = [v.id for v in quiz.versions]
-    run_counts: dict[int, int] = defaultdict(int)
-    if version_ids:
-        for vid in db.scalars(select(m.QuizRun.quiz_version_id).where(m.QuizRun.quiz_version_id.in_(version_ids))):
-            run_counts[vid] += 1
-    body = build_quiz(quiz, run_counts)
+    body = build_quiz(quiz, _run_counts(db, [v.id for v in quiz.versions]))
     document = {"export": meta("quiz", personal=False, quiz_id=quiz.id), "quiz": body}
     identifiers = [("Quiz ID", quiz.id), ("Quiz", quiz.title)]
     return render(fmt, document, "One quiz", identifiers, quiz_sheets(body), "quiz", quiz.id)

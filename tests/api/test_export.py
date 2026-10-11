@@ -289,35 +289,47 @@ def test_uc_a_30_profiles_part_lists_only_participants_with_profiles(admin_clien
 
 # ---------- all sessions ----------
 
-def test_uc_a_30_all_sessions(admin_client, populated, make_session):
-    """UC-A-30: all owned sessions, each with all its data; others' sessions excluded."""
+def test_uc_a_30_all_data(admin_client, populated, make_session, make_quiz):
+    """UC-A-30: all owned sessions with all their data, plus the owned quiz
+    library; other admins' sessions and quizzes are excluded."""
     mine = make_session("Second")["code"]
     theirs = make_session("Not mine")["code"]
-    _give_to_other_admin(session_code=theirs)
+    other_quiz = make_quiz("Their quiz")["id"]
+    _give_to_other_admin(session_code=theirs, quiz_id=other_quiz)
 
-    r = admin_client.get("/api/export/sessions?format=json")
-    _assert_download(r, f"prashna-all-sessions-{_today()}.json", "application/json")
+    r = admin_client.get("/api/export/all?format=json")
+    _assert_download(r, f"prashna-all-data-{_today()}.json", "application/json")
     body = r.json()
-    assert body["export"]["scope"] == "sessions"
+    assert body["export"]["scope"] == "all"
     assert body["export"]["session_count"] == 2
-    codes = {s["code"] for s in body["sessions"]}
-    assert codes == {populated["code"], mine}
+    assert {s["code"] for s in body["sessions"]} == {populated["code"], mine}
     full = next(s for s in body["sessions"] if s["code"] == populated["code"])
     assert {"participants", "questions", "quiz_runs", "feedback"} <= set(full)
+    quiz_ids = {q["id"] for q in body["quizzes"]}
+    assert populated["quiz_id"] in quiz_ids and other_quiz not in quiz_ids
+    assert body["export"]["quiz_count"] == len(body["quizzes"])
+    exported = next(q for q in body["quizzes"] if q["id"] == populated["quiz_id"])
+    assert exported["questions"] and exported["questions"][0]["answers"]
 
-    r = admin_client.get("/api/export/sessions?format=xlsx")
-    _assert_download(r, f"prashna-all-sessions-{_today()}.xlsx", XLSX_TYPE)
+    r = admin_client.get("/api/export/all?format=xlsx")
+    _assert_download(r, f"prashna-all-data-{_today()}.xlsx", XLSX_TYPE)
     order = _sheet_order(r.content)
-    assert order == ["About", "Sessions", "Participants", "Questions", "Quiz runs", "Quiz answers", "Feedback"]
+    assert order == ["About", "Sessions", "Participants", "Questions", "Quiz runs", "Quiz answers", "Feedback",
+                     "Quizzes", "Quiz questions", "Answer options"]
     sheets = _sheets(r.content)
-    assert _about(sheets["About"])["Export"] == "All sessions"
+    assert _about(sheets["About"])["Export"] == "All data"
     assert list(sheets["Sessions"][0]) == SESSION_HEADERS
-    for name in order[2:]:
+    for name in order[2:7]:
         assert sheets[name][0][0] == "Session code", name
+    for name in order[8:]:
+        assert sheets[name][0][0] == "Quiz ID", name
     assert list(sheets["Participants"][0][1:]) == PARTICIPANT_HEADERS
     assert list(sheets["Quiz answers"][0][1:]) == ANSWER_HEADERS
     assert {row[0] for row in sheets["Sessions"][1:]} == {populated["code"], mine}
     assert {row[0] for row in sheets["Questions"][1:]} == {populated["code"]}
+    assert populated["quiz_id"] in {row[0] for row in sheets["Quizzes"][1:]}
+    assert other_quiz not in {row[0] for row in sheets["Quizzes"][1:]}
+    assert any(row[0] == populated["quiz_id"] for row in sheets["Answer options"][1:])
 
 
 # ---------- one quiz run ----------
@@ -400,7 +412,7 @@ def test_uc_a_30_quiz_template_other_admin_404(admin_client, make_quiz):
 
 def _all_exports(admin_client, populated):
     code = populated["code"]
-    urls = ["/api/export/sessions", f"/api/quiz_runs/{populated['run_id']}/export",
+    urls = ["/api/export/all", f"/api/quiz_runs/{populated['run_id']}/export",
             f"/api/quizzes/{populated['quiz_id']}/export"]
     urls += [f"/api/sessions/{code}/export?part={p}" for p in ("all", "profiles", "feedback", "qna", "quiz_runs")]
     for url in urls:
@@ -451,7 +463,7 @@ def test_uc_a_30_delegate_mod_key_refused(client, admin_client, populated, mod_h
 
 
 @pytest.mark.parametrize("path", [
-    "/api/export/sessions",
+    "/api/export/all",
     "/api/sessions/{code}/export",
     "/api/quiz_runs/{run_id}/export",
     "/api/quizzes/{quiz_id}/export",
@@ -477,7 +489,7 @@ def test_uc_a_30_unknown_session_404(admin_client):
 
 
 @pytest.mark.parametrize("path", [
-    "/api/export/sessions?format=csv",
+    "/api/export/all?format=csv",
     "/api/sessions/{code}/export?format=csv",
     "/api/quiz_runs/{run_id}/export?format=csv",
     "/api/quizzes/{quiz_id}/export?format=csv",
