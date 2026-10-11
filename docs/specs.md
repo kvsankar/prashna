@@ -216,7 +216,7 @@ public can't be claimed by its first visitor.
 - On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
 - Most-recently-created session appears at the top.
 - Authenticated admin chrome shows `#admin-page-nav` with an Admin breadcrumb and links to Sessions and Quiz library.
-- Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL. The Actions column has, in order, Participant (`/s/<code>`), Projector (`/p/<code>`), a **Start** button while the session is not started, and Delete, all as extra-small buttons (`test_uc_a_04_row_actions_and_title_link`).
+- Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL. The Actions column has, in order, the links Participant (`/s/<code>`) and Projector (`/p/<code>`, a new tab), then the extra-small buttons **Start** (while the session is not started) and Delete. The views are plain links and the actions are buttons (UX.md §10) (`test_uc_a_04_row_actions_and_title_link`).
 - Clicking **Start** on a not-started row starts the session (`POST /api/sessions/{code}/start`, UC-M-01) without leaving the list; the row then shows the Live badge and no Start button. Start is guarded against repeat clicks (`test_uc_a_04_start_from_the_list`).
 - Opening `/?session=<owned-code>` as an authenticated admin redirects to `/m/<code>` (older bookmarks keep working).
 

@@ -96,7 +96,7 @@ def test_uc_a_04_list_shows_owned_sessions(base_url, admin_setup, page):
 
 
 def test_uc_a_04_row_actions_and_title_link(base_url, admin_setup, page):
-    """UC-A-04: the title opens the session page; the row offers Participant, Projector, Start, Delete."""
+    """UC-A-04: the title opens the session page; the row links Participant and Projector and offers Start and Delete."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A04m {secrets.token_hex(3)}")
     try:
@@ -106,6 +106,11 @@ def test_uc_a_04_row_actions_and_title_link(base_url, admin_setup, page):
         expect(actions.locator("a, button")).to_have_text(["Participant", "Projector", "Start", "Delete"])
         expect(actions.get_by_role("link", name="Participant")).to_have_attribute("href", f"/s/{s['code']}")
         expect(actions.get_by_role("link", name="Projector")).to_have_attribute("href", f"/p/{s['code']}")
+        # Views are plain links, actions are buttons (UX.md §10).
+        for view in ("Participant", "Projector"):
+            link = actions.get_by_role("link", name=view)
+            expect(link).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+            expect(link).to_have_css("border-top-width", "0px")
         row.get_by_role("link", name=s["title"]).click()
         page.wait_for_url(f"**/m/{s['code']}")
     finally:

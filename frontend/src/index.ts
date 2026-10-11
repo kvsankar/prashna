@@ -163,8 +163,8 @@ async function loadSessions(): Promise<void> {
 
       const actions = el("td", { class: "actions" });
       actions.addEventListener("click", (e) => e.stopPropagation());
-      actions.appendChild(el("a", { class: "btn xsmall", href: `/s/${s.code}` }, "Participant"));
-      actions.appendChild(el("a", { class: "btn xsmall", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
+      actions.appendChild(el("a", { class: "small", href: `/s/${s.code}` }, "Participant"));
+      actions.appendChild(el("a", { class: "small", href: `/p/${s.code}`, target: "_blank" }, "Projector"));
       if (s.status === "planning") {
         const startBtn = el("button", { class: "xsmall" }, "Start") as HTMLButtonElement;
         guardClick(startBtn, async () => {

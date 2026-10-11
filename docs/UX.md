@@ -472,6 +472,12 @@ launch; past runs keep the version they used."
 
 ## 10. Buttons
 
+**Views are links, actions are buttons.** A control that only opens
+another page or view (Participant, Projector, "Open quiz library →") is a
+plain link, styled like every other link. A control that changes
+something (Start, Delete, + New session, Export) is a button. Never style
+a link as a button or use a button only to navigate.
+
 | Class           | Use                                                       |
 | --------------- | --------------------------------------------------------- |
 | `.primary`      | The single most important action on the surface           |
