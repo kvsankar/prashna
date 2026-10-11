@@ -13,8 +13,8 @@ here *before* shipping a one-off.
 
 Every colour, tint, corner radius, font weight, shadow, type size and
 control size is a CSS custom property in `frontend/src/tokens.css`.
-Other stylesheets use the tokens through `var(...)`; they never hold the
-raw value.
+The component styles in `frontend/src/app.css` use the tokens through
+`var(...)`; they never hold the raw value.
 
 | Group | Tokens | Use |
 | --- | --- | --- |
@@ -493,7 +493,7 @@ a link as a button or use a button only to navigate.
 | `.xsmall` | 11 px | ~20 px | Row actions in `.ctable`                         |
 
 - Buttons and menu triggers (`details.menu > summary`: Export ▾, Add to
-  session ▾, ⋯) share one recipe in `app.css`. A size sets the height,
+  session ▾, ⋯) share one recipe in `frontend/src/app.css`. A size sets the height,
   side padding, font size and corners; a variant sets the colours. Menu
   triggers take the `.small` size, or `.xsmall` inside `.ctable` rows, so
   they match the buttons beside them. Inline fields in card tools

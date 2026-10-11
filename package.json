@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint:js": "eslint frontend/src",
-    "lint:css": "stylelint \"frontend/**/*.css\"",
+    "lint:css": "stylelint \"frontend/src/**/*.css\"",
     "lint": "npm run typecheck && npm run lint:js && npm run lint:css"
   },
   "devDependencies": {
