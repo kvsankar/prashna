@@ -272,6 +272,7 @@ input.inline, select.inline {
   padding: calc((var(--control-h-sm) - 1.3em - 2px) / 2) var(--control-px-sm);
 }
 select.inline.narrow { min-width: 100px; }
+input.limit-input { width: 10ch; text-align: right; }
 
 /* Compact admin table */
 .table-scroll { overflow-x: auto; }

@@ -921,6 +921,48 @@ hash or any other secret, and moderator keys.
 - On `/m/<code>#k=<mod_key>` as a delegate, none of the export menus are shown.
 - On `/quizzes`, a quiz row's ⋯ menu Export Excel downloads `prashna-quiz-<id>-<YYYYMMDD>.xlsx`, and the open run report's `#results-export` JSON downloads `prashna-quiz-run-<id>-<YYYYMMDD>.json`.
 
+### UC-A-31: Adjust limits
+
+The admin changes how much one person, or one network, may do before
+Prashna slows them down (UC-X-08), for example when a large room shares
+one Wi-Fi connection.
+
+- **Given** the admin is signed in on `/`
+- **Then** a **Limits** card (`#limits-card`) lists, for asking questions,
+  voting on questions, answering quiz questions and rating the session,
+  how many times one person may do it at once and then per minute; and,
+  for joining, how many people may share one network and how many more
+  may join per minute. Each field shows its default as a tooltip.
+- **When** the admin changes a value and leaves the field
+- **Then** it is saved, a "Saved" toast appears, and the next request
+  uses it, without a restart; the value survives a restart, because it is
+  stored in the database
+- **And** **Reset to defaults** restores every value
+- **And** a value that is not a whole number from 1 to 100000 is refused
+  with the server's message, and the field shows the saved value again
+
+**Values** (the API names, defaults in brackets): `network_size` (300),
+`join_per_minute` (120), `ask_burst` (6), `ask_per_minute` (6),
+`vote_burst` (30), `vote_per_minute` (120), `submit_burst` (20),
+`submit_per_minute` (30), `feedback_burst` (10), `feedback_per_minute`
+(30). Login and the performance beacon are not adjustable.
+
+**API.** `GET /api/admin/limits` returns `{"values": {...}, "defaults":
+{...}}`. `PUT /api/admin/limits` takes any subset of the values, saves
+them, applies them at once, and returns the same shape. Only the signed-in
+admin may call either (`401` otherwise). A value outside 1–100000 or not
+an integer returns `400 "<name> must be a whole number from 1 to
+100000"`; an unknown name returns `400 "unknown limit: <name>"`.
+
+**Tests (API)**
+- `GET /api/admin/limits` → `200` with `values` equal to `defaults`, which match the list above; without the admin cookie → `401`.
+- `PUT {"ask_burst": 3, "network_size": 50}` → `200` with those values and the others unchanged; a following `GET` returns them; after the server reloads its limits from the database (as at start), they are still in effect.
+- `PUT {"ask_burst": 0}`, `{"ask_burst": 2.5}`, `{"ask_burst": "4"}`, `{"ask_burst": 100001}` → `400` with the message above; `PUT {"speed": 1}` → `400 "unknown limit: speed"`; nothing is saved by a refused request.
+- `PUT` without the admin cookie → `401`.
+
+**Tests (UI)**
+- On `/` (authed), `#limits-card` shows the joining row's "at once" field as 300; changing the asking "at once" field to 3 and leaving it shows a "Saved" toast, and after a reload the field reads 3; **Reset to defaults** sets it back to 6.
+
 ---
 
 ## Moderator
@@ -1730,7 +1772,7 @@ when the run is no longer live.
   an integer 1–5 or the POST returns `400`
 - **And** each comment is trimmed and cut to 2000 characters; a blank
   comment is stored as `null`
-- **And** feedback submissions are rate-limited per client IP (UC-X-08)
+- **And** feedback submissions are rate-limited per person (UC-X-08)
 - **And** submitting broadcasts `{type: "feedback"}` (UC-X-01) so the
   host's view (UC-M-12) updates live
 
@@ -2113,39 +2155,57 @@ chosen once at process start.
 ### UC-X-08: Rate limiting
 
 A single-process, in-memory token-bucket limiter (`prashna/ratelimit.py`)
-throttles abuse-prone routes. Each bucket is keyed by client IP; the
-capacity is the allowed burst and refill is the sustained rate.
+slows down anyone who sends too much too fast. Each bucket allows a burst
+("at once") and then refills at a steady rate ("per minute").
+
+A room often reaches the internet through one shared network address
+(corporate Wi-Fi, mobile carrier NAT), so actions by people who already
+have a participant cookie are limited **per person**, not per address.
 
 - **Given** the limiter is enabled (default; disable with
   `PRASHNA_RATELIMIT=off`)
-- **Then** the following per-IP buckets apply. An exhausted bucket returns
-  `429` with a human-readable `detail`, except the performance beacon,
-  which drops the sample and still returns `204`:
+- **Then** these buckets apply. The values marked "admin" are defaults the
+  admin can change while the server runs (UC-A-31). An exhausted bucket
+  returns `429` with a human-readable `detail`, except the performance
+  beacon, which drops the sample and still returns `204`:
 
-  | Route | Burst | Sustained | Notes |
-  | --- | --- | --- | --- |
-  | `POST /api/admin/login` | 8 | 1 / 30s | Checked **before** `verify_password` (bcrypt is costly); a successful login clears the bucket so a legitimate admin is never locked out |
-  | new `Participant` row (in participant resolution) | 15 | 1 / 20s | Bounds row growth / presence inflation from a token-rotating flooder |
-  | `POST .../queries` | 6 | 1 / 10s | |
-  | `POST .../queries/{id}/vote` | 30 | 2 / s | |
-  | `POST .../quiz_runs/{id}/submit` | 20 | 1 / 2s | |
-  | `POST .../feedback` | 10 | 1 / 2s | Checked after the rating-open check (UC-P-13) |
-  | `POST /api/diagnostics/performance` | 10 | 1 / 5s | Excess samples are dropped silently (UC-X-11) |
+  | Action | Keyed on | At once | Then | Admin | Notes |
+  | --- | --- | --- | --- | --- | --- |
+  | `POST .../queries` (ask) | person, and an address ceiling | 6 | 6 per minute | yes | `detail` says "too fast" |
+  | `POST .../queries/{id}/vote` | person, and an address ceiling | 30 | 120 per minute | yes | |
+  | `POST .../quiz_runs/{id}/submit` | person, and an address ceiling | 20 | 30 per minute | yes | |
+  | `POST .../feedback` | person, and an address ceiling | 10 | 30 per minute | yes | Checked after the rating-open check (UC-P-13) |
+  | new `Participant` row (joining) | address | 300 (people on one network) | 120 per minute | yes | Bounds row growth from a cookie-rotating script |
+  | `POST /api/admin/login` | address | 8 | 1 per 30 s | no | Checked **before** `verify_password` (bcrypt is costly); a successful login clears the bucket |
+  | `POST /api/diagnostics/performance` | address | 10 | 1 per 5 s | no | Excess samples are dropped silently (UC-X-11) |
 
+- **Person** is the request's `voter_token` cookie; a request without one
+  is keyed on its address (it creates a participant, which the joining
+  bucket bounds).
+- **Address ceiling.** For each per-person action, one network address may
+  use "people on one network" (default 300) times one person's allowance,
+  at once and per minute. A room never shares one person's budget, and a
+  script that rotates cookies is still bounded.
+- **Changes apply at once.** When the admin saves new values, every bucket
+  is cleared, so the next request uses them; no restart is needed.
 - **Client IP** is the socket peer by default. Behind a reverse proxy
   set `PRASHNA_TRUSTED_PROXY_HOPS=N` (N = number of trusted hops; `1`
   for ngrok or the bundled nginx) so the limiter keys on the entry the
   outermost trusted proxy recorded in `X-Forwarded-For` — a
   client-supplied prefix to its left is ignored (spoof-resistant).
 - **Scope:** this stops single-source floods and login brute-forcing.
-  A distributed (many-IP) flood is out of scope for an in-process
+  A distributed (many-address) flood is out of scope for an in-process
   limiter. WebSocket connects are not rate-limited.
 
 **Tests (API)**
 - Token bucket: allows `capacity` calls then denies; refills at the configured rate (deterministic injected clock); keys are independent; `enabled=False` always allows; `reset`/`clear` restore a fresh bucket.
 - `enabled_from_env`: `None`/`"on"`/`"1"` → enabled; `"off"`/`"0"`/`"false"`/`"no"` (any case) → disabled.
 - `_client_ip`: with hops=0 returns the socket peer; with hops=1 returns the rightmost `X-Forwarded-For` entry even when a spoofed value precedes it; with hops=2 the second-from-right; with hops>0 and no XFF falls back to the peer.
-- Endpoint floods (limiter re-enabled for the test): login → `429` after the burst, and a correct login resets the throttle; `POST queries` / `vote` / `submit` each return `429` under a sustained flood; rapid fresh `voter_token`s eventually `429` on participant creation. With the limiter off (suite default) none of these `429`.
+- Endpoint floods (limiter re-enabled for the test): login → `429` after the burst, and a correct login resets the throttle; one participant's `POST queries` / `vote` / `submit` each return `429` under a sustained flood.
+- A room on one address: 40 participants with their own cookies each ask a question and submit a quiz answer, and every request succeeds; 40 fresh cookies from one address all join (`GET /me` → `200`).
+- The address ceiling: with "people on one network" set to 1, a second participant on the same address gets `429` once the first has used the allowance; with it set to 5, the sixth fresh cookie from one address gets `429` on joining.
+- Changes apply at once: after `PUT /api/admin/limits {"ask_burst": 2}`, a participant's third question returns `429` without a restart.
+- With the limiter off (suite default) none of these `429`.
 
 ### UC-X-09: Local operation through an ngrok tunnel
 

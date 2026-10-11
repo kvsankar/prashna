@@ -131,7 +131,7 @@ def test_uc_x_08_login_throttled_then_clears_on_success(admin_client, app_module
 
 
 def test_uc_x_08_ask_throttled(make_session, client, app_module, monkeypatch):
-    """UC-X-08: query submissions are flood-limited per IP."""
+    """UC-X-08: one person's questions are flood-limited."""
     s = make_session()
     _enable(app_module, monkeypatch)
     saw_429 = False
@@ -146,7 +146,7 @@ def test_uc_x_08_ask_throttled(make_session, client, app_module, monkeypatch):
 
 
 def test_uc_x_08_vote_throttled(make_session, admin_client, client, app_module, monkeypatch):
-    """UC-X-08: vote toggles are flood-limited per IP."""
+    """UC-X-08: one person's vote toggles are flood-limited."""
     s = make_session()
     q = admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "Q?"}).json()
     _enable(app_module, monkeypatch)
@@ -158,7 +158,7 @@ def test_uc_x_08_vote_throttled(make_session, admin_client, client, app_module, 
 
 
 def test_uc_x_08_submit_throttled(make_quiz, make_session, admin_client, app_module, monkeypatch):
-    """UC-X-08: quiz-answer submissions are flood-limited per IP."""
+    """UC-X-08: one person's quiz-answer submissions are flood-limited."""
     q = make_quiz()
     s = make_session()
     run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
@@ -176,19 +176,62 @@ def test_uc_x_08_submit_throttled(make_quiz, make_session, admin_client, app_mod
     assert saw_429
 
 
-def test_uc_x_08_new_participant_throttled(make_session, client, app_module, monkeypatch):
-    """UC-X-08 (S4): fresh Participant creation is bounded per IP."""
+def _start_run(admin_client, make_quiz, make_session):
+    q = make_quiz()
+    s = make_session()
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]}).json()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
+    g = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    return s, run, g["current_question"]["id"], g["current_question"]["answers"][0]["id"]
+
+
+def test_uc_x_08_room_on_one_address_all_succeed(make_quiz, make_session, admin_client, app_module, monkeypatch):
+    """UC-X-08: 40 people behind one address each join, ask and answer; none is refused."""
+    s, run, qid, aid = _start_run(admin_client, make_quiz, make_session)
+    _enable(app_module, monkeypatch)
+    for i in range(40):
+        admin_client.cookies.set("voter_token", f"room{i}")
+        assert admin_client.get(f"/api/sessions/{s['code']}/me").status_code == 200
+        assert admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": f"q{i}"}).status_code == 200
+        r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/submit",
+                              json={"question_id": qid, "answer_ids": [aid]})
+        assert r.status_code == 200, r.text
+
+
+def test_uc_x_08_address_ceiling(make_session, admin_client, app_module, monkeypatch):
+    """UC-X-08: one address gets "people on one network" times one person's allowance."""
+    s = make_session()
+    assert admin_client.put("/api/admin/limits", json={"network_size": 1}).status_code == 200
+    _enable(app_module, monkeypatch)
+    admin_client.cookies.set("voter_token", "first")
+    for i in range(6):  # one person's burst, which is also the whole address's
+        assert admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": f"a{i}"}).status_code == 200
+    admin_client.cookies.set("voter_token", "second")
+    r = admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "b"})
+    assert r.status_code == 429
+
+
+def test_uc_x_08_join_ceiling_follows_network_size(make_session, admin_client, client, app_module, monkeypatch):
+    """UC-X-08: joining from one address allows "people on one network" at once."""
+    s = make_session()
+    assert admin_client.put("/api/admin/limits", json={"network_size": 5}).status_code == 200
+    _enable(app_module, monkeypatch)
+    codes = []
+    for i in range(6):
+        client.cookies.set("voter_token", f"tok{i}")
+        codes.append(client.get(f"/api/sessions/{s['code']}/me").status_code)
+    assert codes == [200] * 5 + [429]
+
+
+def test_uc_x_08_changes_apply_at_once(make_session, admin_client, app_module, monkeypatch):
+    """UC-X-08: a saved limit applies to the next request, without a restart."""
     s = make_session()
     _enable(app_module, monkeypatch)
-    saw_429 = False
-    for i in range(40):
-        client.cookies.set("voter_token", f"tok{i}")
-        r = client.get(f"/api/sessions/{s['code']}/me")
-        if r.status_code == 429:
-            saw_429 = True
-            break
-        assert r.status_code == 200
-    assert saw_429
+    assert admin_client.put("/api/admin/limits", json={"ask_burst": 2}).status_code == 200
+    admin_client.cookies.set("voter_token", "asker")
+    codes = [admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": f"q{i}"}).status_code
+             for i in range(3)]
+    assert codes == [200, 200, 429]
 
 
 def test_uc_x_08_disabled_passes_through(make_session, client, app_module):

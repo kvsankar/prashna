@@ -1,6 +1,7 @@
 """Prashna — live Q&A + quiz tool for training sessions."""
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -41,7 +42,7 @@ from . import export as data_export
 from . import models as m
 from .db import SessionLocal, default_data_dir, get_db, init_db
 from .diagnostics import log_diagnostic
-from .ratelimit import TokenBucketLimiter, enabled_from_env
+from .ratelimit import DEFAULT_LIMITS, TokenBucketLimiter, enabled_from_env, validated_limits
 from .ws import hub
 
 # Vite build output (the TypeScript frontend). Produced by `npm run build`
@@ -58,7 +59,7 @@ PRESENCE_WINDOW = timedelta(seconds=30)
 LAST_SEEN_THROTTLE = timedelta(seconds=5)
 
 # ---------- rate limiting (UC-X-08) ----------
-# Single-process in-memory limiter. Keyed by client IP. See prashna/ratelimit.py.
+# Single-process in-memory limiter. See prashna/ratelimit.py.
 limiter = TokenBucketLimiter(enabled=enabled_from_env(os.environ.get("PRASHNA_RATELIMIT")))
 
 # Number of trusted reverse-proxy hops in front of the app. 0 (default) =
@@ -68,15 +69,35 @@ limiter = TokenBucketLimiter(enabled=enabled_from_env(os.environ.get("PRASHNA_RA
 # spoofable X-Forwarded-For prefix.
 TRUSTED_PROXY_HOPS = max(0, int(os.environ.get("PRASHNA_TRUSTED_PROXY_HOPS") or 0))
 
-# (capacity = burst, refill = tokens/second). Generous for a human,
-# hostile to a script. Tunable here; not per-deployment config by design.
+# Fixed per-address buckets: (capacity = burst, refill = tokens/second).
 RL_LOGIN = (8, 1 / 30)       # admin login attempts per IP
-RL_NEW_PARTICIPANT = (15, 1 / 20)  # fresh Participant rows per IP
-RL_ASK = (6, 1 / 10)         # query submissions per IP
-RL_VOTE = (30, 2.0)          # query vote toggles per IP
-RL_SUBMIT = (20, 0.5)        # quiz-answer submissions per IP
-RL_FEEDBACK = (10, 0.5)      # session-feedback submissions per IP
 RL_PERFORMANCE = (10, 0.2)   # non-blocking usable-UI samples per IP
+
+# The adjustable limits (UC-A-31): the defaults until load_limits() reads
+# the admin's saved values at start; PUT /api/admin/limits updates them in
+# place, so a change applies to the next request.
+limits: dict[str, int] = dict(DEFAULT_LIMITS)
+
+
+def load_limits(db: DbSession) -> None:
+    row = db.get(m.Setting, "limits")
+    saved = json.loads(row.value) if row else {}
+    try:
+        limits.update(validated_limits(DEFAULT_LIMITS, {k: v for k, v in saved.items() if k in DEFAULT_LIMITS}))
+    except ValueError:
+        logger.warning("Saved limits are invalid; using the defaults (UC-A-31).")
+        limits.update(DEFAULT_LIMITS)
+
+
+def allow_person(action: str, request: Request, voter_token: str | None) -> bool:
+    """One person's bucket, then the address ceiling: "network_size" people's
+    allowance, so a room behind one address never shares a budget (UC-X-08)."""
+    burst = limits[f"{action}_burst"]
+    rate = limits[f"{action}_per_minute"] / 60
+    people = limits["network_size"]
+    ip = _client_ip(request)
+    return (limiter.allow(f"{action}:person:{voter_token or ip}", burst, rate)
+            and limiter.allow(f"{action}:address:{ip}", burst * people, rate * people))
 
 PAGE_BROWSER_CACHE = "public, max-age=0, must-revalidate"
 PAGE_CDN_CACHE = "public, s-maxage=300, stale-while-revalidate=60"
@@ -132,6 +153,7 @@ async def lifespan(_app: FastAPI):
             auth.SECRET_KEY_FILE,
         )
     with SessionLocal() as db:
+        load_limits(db)
         token = auth.setup_token(db)
     if token and ANNOUNCE_SETUP_LINK:
         # The only place the first-admin link appears (UC-A-01).
@@ -338,7 +360,8 @@ def current_participant(
         # Bound fresh-row creation per IP: a flooder rotating voter_token
         # cookies could otherwise mint unbounded Participants and inflate
         # presence counts (UC-X-08 / S4).
-        if not limiter.allow(f"newp:{_client_ip(request)}", *RL_NEW_PARTICIPANT):
+        if not limiter.allow(f"newp:{_client_ip(request)}", limits["network_size"],
+                             limits["join_per_minute"] / 60):
             raise HTTPException(429, "Too many new participants from your network — slow down")
         p = m.Participant(session_id=session.id, voter_token=token)
         db.add(p)
@@ -1037,6 +1060,32 @@ def admin_change_password(
     return {"ok": True}
 
 
+# ---------- routes: adjustable limits (UC-A-31) ----------
+
+@app.get("/api/admin/limits")
+def get_limits(_me: m.User = Depends(auth.current_admin)):
+    return {"values": dict(limits), "defaults": dict(DEFAULT_LIMITS)}
+
+
+@app.put("/api/admin/limits")
+def put_limits(payload: dict, db: DbSession = Depends(get_db), me: m.User = Depends(auth.current_admin)):
+    try:
+        new = validated_limits(limits, payload)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    row = db.get(m.Setting, "limits")
+    if row:
+        row.value = json.dumps(new, sort_keys=True)
+    else:
+        db.add(m.Setting(key="limits", value=json.dumps(new, sort_keys=True)))
+    db.commit()
+    limits.update(new)
+    # Fresh buckets, so the next request from everyone uses the new values.
+    limiter.clear()
+    log_diagnostic("limits.update", outcome="success", actor_id=me.id, changed=sorted(payload))
+    return {"values": dict(limits), "defaults": dict(DEFAULT_LIMITS)}
+
+
 # ---------- routes: sessions ----------
 
 @app.get("/api/sessions")
@@ -1490,7 +1539,7 @@ async def submit_feedback(
     s = get_session_by_code(db, code)
     if not s.feedback_enabled:
         raise HTTPException(403, "feedback is not enabled")
-    if not limiter.allow(f"fb:{_client_ip(request)}", *RL_FEEDBACK):
+    if not allow_person("feedback", request, voter_token):
         raise HTTPException(429, "You're submitting feedback too fast — wait a moment and try again")
     rating = payload.get("rating")
     if not isinstance(rating, int) or isinstance(rating, bool) or rating < 1 or rating > 5:
@@ -1632,7 +1681,7 @@ async def create_query(
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
-    if not limiter.allow(f"ask:{_client_ip(request)}", *RL_ASK):
+    if not allow_person("ask", request, voter_token):
         raise HTTPException(429, "You're asking too fast — wait a moment and try again")
     text = (payload.get("text") or "").strip()
     if not text:
@@ -1664,7 +1713,7 @@ async def toggle_vote(
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
-    if not limiter.allow(f"vote:{_client_ip(request)}", *RL_VOTE):
+    if not allow_person("vote", request, voter_token):
         raise HTTPException(429, "Too many votes — slow down and try again")
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
@@ -2653,7 +2702,7 @@ async def submit_quiz_run(
     s = get_session_by_code(db, code)
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
-    if not limiter.allow(f"submit:{_client_ip(request)}", *RL_SUBMIT):
+    if not allow_person("submit", request, voter_token):
         raise HTTPException(429, "Too many submissions — slow down and try again")
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id or run.status != "live":

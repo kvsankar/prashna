@@ -105,6 +105,20 @@
       <p class="muted small m-0">Reusable quiz templates that you can launch inside any session.</p>
     </section>
 
+    <section hidden class="card compact" id="limits-card">
+      <div class="card-head">
+        <h2>Limits</h2>
+        <div class="card-tools"><button class="ghost small" id="limits-reset">Reset to defaults</button></div>
+      </div>
+      <p class="muted small m-0 mb-2">Prashna slows down anyone who sends too much too fast. Each person may do an action this many times at once, then this many times per minute. If a large room shares one Wi-Fi connection, raise the number of people on one network. Changes apply straight away.</p>
+      <div class="table-scroll">
+        <table class="ctable">
+          <thead><tr><th>Action</th><th class="num">At once</th><th class="num">Then per minute</th></tr></thead>
+          <tbody id="limit-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section hidden class="card compact" id="change-pw-card">
       <div class="card-head">
         <h2>Change password</h2>

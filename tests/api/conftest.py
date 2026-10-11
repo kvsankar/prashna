@@ -56,8 +56,10 @@ def client(_live_client, app_module) -> TestClient:
             conn.execute(table.delete())
     # Clear any cookies (admin / voter) from prior test.
     _live_client.cookies.clear()
-    # Reset rate-limit buckets so a re-enabled limiter starts fresh per test.
+    # Reset rate-limit buckets so a re-enabled limiter starts fresh per test,
+    # and the adjustable limits to their defaults (UC-A-31).
     app_module.limiter.clear()
+    app_module.limits.update(app_module.DEFAULT_LIMITS)
     return _live_client
 
 

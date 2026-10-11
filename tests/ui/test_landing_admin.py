@@ -469,3 +469,25 @@ def test_uc_a_25_change_password_success_toasts_and_closes(base_url, admin_setup
         json={"current_password": new_pw, "new_password": admin_setup["password"]},
     )
     c.close()
+
+
+def test_uc_a_31_admin_adjusts_limits(base_url, admin_setup, page):
+    """UC-A-31: the Limits card saves a value on leaving the field and resets to defaults."""
+    try:
+        admin_login_via_ui(page, base_url)
+        card = page.locator("#limits-card")
+        expect(card).to_be_visible()
+        expect(page.locator("#limit-network_size")).to_have_value("300")
+        ask = page.locator("#limit-ask_burst")
+        expect(ask).to_have_value("6")
+        ask.fill("3")
+        ask.blur()
+        expect(page.locator(".toast:not(.toast-error)")).to_have_text("Saved")
+        page.reload()
+        expect(page.locator("#limit-ask_burst")).to_have_value("3")
+        page.locator("#limits-reset").click()
+        expect(page.locator("#limit-ask_burst")).to_have_value("6")
+    finally:
+        c = api_login(base_url)
+        c.put("/api/admin/limits", json={"ask_burst": 6})
+        c.close()

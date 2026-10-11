@@ -98,6 +98,12 @@ export interface AdminStatus {
   username: string | null;
 }
 
+/** GET/PUT /api/admin/limits (UC-A-31). */
+export interface Limits {
+  values: Record<string, number>;
+  defaults: Record<string, number>;
+}
+
 export interface ParticipantBootstrap {
   session: Session;
   me: ParticipantProfile;

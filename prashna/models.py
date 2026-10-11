@@ -20,6 +20,16 @@ def now() -> datetime:
     return datetime.utcnow()
 
 
+# ---------- settings ----------
+
+class Setting(Base):
+    """An instance-wide setting the admin can change, as JSON text. The
+    "limits" row holds the rate limits (UC-A-31)."""
+    __tablename__ = "settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 # ---------- users ----------
 
 class User(Base):

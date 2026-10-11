@@ -333,6 +333,7 @@ erDiagram
 | `QuizVersion`, `QuizVersionQuestion`, `QuizVersionAnswer` | Immutable, denormalized snapshots of a quiz. A launch captures a new version only when the quiz changed since the latest version. |
 | `QuizRun` | One playthrough of a `QuizVersion` inside a `Session`: status, current question index, reveal and live-count flags, and timestamps. Lifecycle: `queued → live → closed`. At most one run per session is `live`, enforced by the partial unique index `uq_session_live_run`. |
 | `QuizSubmission` | A participant's selected answer for a question in a run. |
+| `Setting` | An instance-wide value the admin can change, stored as JSON text by key. The `limits` row holds the adjustable rate limits (UC-A-31); the server loads it at start and keeps it in memory. |
 | Upload files | Image files stored outside SQLite and referenced by URL from quiz questions, answers, or participant photographs. |
 
 Two pairs of names are easy to confuse:

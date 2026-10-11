@@ -1,5 +1,5 @@
 import { $, api, bindMenuDismiss, el, errorToast, escapeHtml, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
-import type { AdminStatus, SessionRow } from "./types";
+import type { AdminStatus, Limits, SessionRow } from "./types";
 
 // `?session=<code>` is an older link to a session; the session page is now
 // `/m/<code>` (UC-A-04). `?delete=<code>` comes from the session page's
@@ -37,6 +37,7 @@ const cards: Record<string, HTMLElement> = {
   login: $("#login-card"),
   sessions: $("#sessions-card"),
   library: $("#library-card"),
+  limits: $("#limits-card"),
   confirmDelete: $("#confirm-delete-card"),
   changePw: $("#change-pw-card"),
 };
@@ -84,8 +85,9 @@ async function refresh(): Promise<void> {
     location.replace(`/m/${encodeURIComponent(requestedSessionCode)}`);
     return;
   }
-  show("sessions", "library");
+  show("sessions", "library", "limits");
   void loadSessions();
+  void loadLimits();
 }
 
 // ----- join -----
@@ -273,6 +275,64 @@ async function submitChangePassword(): Promise<void> {
 }
 guardClick($<HTMLButtonElement>("#cp-submit"), submitChangePassword);
 $("#cp-new2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void submitChangePassword(); });
+
+// ----- limits (UC-A-31) -----
+// Each row: what people do, its "at once" value, its "per minute" value.
+const LIMIT_ROWS: [string, string, string][] = [
+  ["Asking questions", "ask_burst", "ask_per_minute"],
+  ["Voting on questions", "vote_burst", "vote_per_minute"],
+  ["Answering quiz questions", "submit_burst", "submit_per_minute"],
+  ["Rating the session", "feedback_burst", "feedback_per_minute"],
+  ["Joining: people on one network", "network_size", "join_per_minute"],
+];
+let savedLimits: Record<string, number> = {};
+
+function limitInput(name: string, label: string, defaults: Record<string, number>): HTMLInputElement {
+  const input = el("input", {
+    id: `limit-${name}`, class: "inline limit-input", type: "number", min: "1", max: "100000", step: "1",
+    "aria-label": label, title: `Default: ${defaults[name]}`,
+  }) as HTMLInputElement;
+  input.value = String(savedLimits[name]);
+  // Persist when the field is left (UX.md §7, Update); `change` fires only if edited.
+  input.addEventListener("change", () => void saveLimit(input, name));
+  return input;
+}
+
+function renderLimits(data: Limits): void {
+  savedLimits = data.values;
+  const rows = $("#limit-rows");
+  rows.innerHTML = "";
+  for (const [label, burst, perMinute] of LIMIT_ROWS) {
+    rows.appendChild(el("tr", {},
+      el("td", {}, label),
+      el("td", { class: "num" }, limitInput(burst, `${label}: at once`, data.defaults)),
+      el("td", { class: "num" }, limitInput(perMinute, `${label}: per minute`, data.defaults))));
+  }
+}
+
+async function loadLimits(): Promise<void> {
+  try { renderLimits(await api<Limits>("/api/admin/limits")); } catch (e) { errorToast((e as Error).message); }
+}
+
+async function saveLimit(input: HTMLInputElement, name: string): Promise<void> {
+  try {
+    const data = await api<Limits>("/api/admin/limits", { method: "PUT", body: { [name]: Number(input.value) } });
+    savedLimits = data.values;
+    input.value = String(data.values[name]);
+    toast("Saved");
+  } catch (e) {
+    input.value = String(savedLimits[name]);
+    errorToast((e as Error).message);
+  }
+}
+
+$("#limits-reset").addEventListener("click", async () => {
+  try {
+    const current = await api<Limits>("/api/admin/limits");
+    renderLimits(await api<Limits>("/api/admin/limits", { method: "PUT", body: current.defaults }));
+    toast("Limits reset to defaults");
+  } catch (e) { errorToast((e as Error).message); }
+});
 
 // Escape closes whichever drill-down is open.
 document.addEventListener("keydown", (e) => {

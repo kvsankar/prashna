@@ -25,6 +25,33 @@ def enabled_from_env(value: str | None) -> bool:
     return value.strip().lower() not in ("off", "0", "false", "no")
 
 
+# Limits the admin can change while the server runs (UC-A-31); these are
+# the defaults. "network_size" is how many people may share one network
+# address: it is the joining burst, and each per-person action's address
+# ceiling is that many people's allowance (UC-X-08).
+DEFAULT_LIMITS: dict[str, int] = {
+    "network_size": 300, "join_per_minute": 120,
+    "ask_burst": 6, "ask_per_minute": 6,
+    "vote_burst": 30, "vote_per_minute": 120,
+    "submit_burst": 20, "submit_per_minute": 30,
+    "feedback_burst": 10, "feedback_per_minute": 30,
+}
+LIMIT_MAX = 100_000
+
+
+def validated_limits(current: dict[str, int], updates: dict) -> dict[str, int]:
+    """Return `current` with `updates` applied, or raise ValueError with the
+    message the API shows (UC-A-31)."""
+    merged = dict(current)
+    for name, value in updates.items():
+        if name not in DEFAULT_LIMITS:
+            raise ValueError(f"unknown limit: {name}")
+        if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= LIMIT_MAX:
+            raise ValueError(f"{name} must be a whole number from 1 to {LIMIT_MAX}")
+        merged[name] = value
+    return merged
+
+
 # Buckets idle longer than this are evicted on the next opportunistic sweep,
 # so memory doesn't grow with unique IPs across a long-running event.
 _IDLE_EVICT_SECS = 3600.0
