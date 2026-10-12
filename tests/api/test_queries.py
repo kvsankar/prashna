@@ -313,6 +313,16 @@ def test_uc_m_09_vote_removed_404(client, admin_client, make_session):
     assert r.status_code == 404
 
 
+def test_uc_m_09_vote_on_removed_question_names_it(client, admin_client, make_session):
+    """UC-M-09: the 404 names the question, because participants see it as received."""
+    s = make_session()
+    q = admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "Q?"}).json()
+    admin_client.post(f"/api/sessions/{s['code']}/queries/{q['id']}/remove", json={})
+    admin_client.cookies.clear()
+    r = client.post(f"/api/sessions/{s['code']}/queries/{q['id']}/vote")
+    assert r.json() == {"detail": "Question not found"}
+
+
 def test_uc_m_09_no_auth_403(client, admin_client, make_session):
     """UC-M-09: no auth → 403."""
     s = make_session()

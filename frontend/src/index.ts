@@ -13,6 +13,12 @@ let requestedDeleteCode = pageParams.get("delete")?.toUpperCase() ?? null;
 // and drop it from the address bar so it doesn't linger in history.
 const setupToken = new URLSearchParams(location.hash.slice(1)).get("setup");
 if (setupToken) history.replaceState(null, "", location.pathname + location.search);
+// A setup link pasted into this tab changes only the part after "#", which
+// doesn't reload the page; reload so the token above is read. The section
+// link #sessions-card stays an ordinary jump.
+window.addEventListener("hashchange", () => {
+  if (new URLSearchParams(location.hash.slice(1)).get("setup")) location.reload();
+});
 
 // ----- bad code banner from /s/BOGUS redirect -----
 const bad = new URLSearchParams(location.search).get("bad_code");

@@ -47,7 +47,7 @@ function renderLobby(run: QuizRun): void {
   body.innerHTML = "";
   body.appendChild(el("div", { class: "muted" }, "Next up:"));
   body.appendChild(el("h2", { class: "proj-lobby-title" }, run.quiz_title));
-  body.appendChild(el("div", { class: "muted" }, "Scan to join — quiz starts when the moderator clicks Start."));
+  body.appendChild(el("div", { class: "muted" }, "Scan the code to join — the quiz starts soon."));
 }
 
 function renderQueries(qs: Query[]): void {

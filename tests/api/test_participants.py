@@ -281,7 +281,7 @@ def test_uc_p_03_profile_photo_rejects_unsupported_type(
         files={"file": ("bad.svg", b"<svg/>", "image/svg+xml")},
     )
     assert r.status_code == 400
-    assert r.json() == {"detail": "unsupported image type"}
+    assert r.json() == {"detail": "Images must be PNG, JPEG, GIF or WebP"}
 
 
 def test_uc_p_03_profile_photo_url_cannot_be_set_directly(

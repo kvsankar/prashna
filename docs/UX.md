@@ -72,6 +72,13 @@ adding meaning. On phones (720 px and narrower) `--pad-page` and
   e.g. a result bar's `--share`.
 - `tests/api/test_frontend_contracts.py` enforces the last three rules and
   that the control sizes come from the control-height tokens.
+- **Text contrast.** Text colours meet WCAG AA (4.5:1) on the surfaces
+  they sit on: `--on-accent` on `--accent` (primary buttons), `--bad` on
+  `--panel`, `--panel-2` and an error banner's tint, and `--muted` on
+  `--panel-2`. Don't use `--accent` for text; use `--accent-2` for links
+  and `--text` for a state cue such as "voting closed".
+  `test_text_colours_meet_wcag_contrast` computes the ratios from
+  `tokens.css`.
 
 ---
 
@@ -143,7 +150,9 @@ Answer options are one component: `answerOption()` in `common.ts`
 it a button), `share`/`count` (result bar and "n (p%)"), `correct`/`wrong`
 (after reveal), `selected` + `chosenLabel`. Don't build `.option` markup
 by hand. A correct answer always says "✓ Correct" in text, so correctness
-never depends on colour alone.
+never depends on colour alone. The same holds for the viewer's own pick
+after reveal: a wrong pick shows ✗ and "Your answer · wrong", never the ✓
+of a chosen answer.
 
 ### Rows wrap by default
 
@@ -311,7 +320,7 @@ one detail card is open at a time per page.
   contents in place.
 - Detail content uses the same density as the parent list.
 - If a single page needs two distinct drill-downs (e.g., one for
-  quizzes, one for quiz sessions), use two separate detail cards —
+  quizzes, one for quiz runs), use two separate detail cards —
   don't time-share one slot.
 
 **Alternative when content is small:** inline expansion of the row
@@ -458,7 +467,7 @@ create affordance.
 
 | Kind                 | Surface                                                      |
 | -------------------- | ------------------------------------------------------------ |
-| Transient action     | Toast (bottom right), 2.5s                                   |
+| Transient action     | Toast (bottom right), 2.8 s; an error toast stays 4 s        |
 | Form / sticky error  | `.error-banner` *inside* the affected card, until dismissed  |
 | Blocking failure     | Banner on the page; no modal                                 |
 | Session deleted      | `#session-deleted` banner replaces the page's content (`showSessionDeleted()`, UC-X-01) |
@@ -469,8 +478,9 @@ Never use `alert()` or `prompt()`.
 ### Info / lifecycle hint
 
 `.info-banner` inside the detail pane, for a sticky, non-error note about
-the entity's state, e.g., "This quiz is Ready. Edits apply to the next
-launch; past runs keep the version they used."
+the entity's state, e.g., "Can't be added to a session yet: Question 2
+needs at least 2 answers" on a Ready quiz that an edit broke (UC-A-10).
+Its text uses `--text`, so it stays readable on the tint.
 
 ---
 
@@ -645,7 +655,9 @@ are. Check every change at 390 px wide (UC-X-12).
 - **16 px inputs on narrow screens.** iOS Safari zooms the page when a
   focused field's font is under 16 px.
 - **Tap targets ≥ 32 px tall on touch** (`@media (pointer: coarse)`),
-  including `.xsmall` buttons, menu toggles, and section links.
+  including `.xsmall` buttons, menu toggles, section links, breadcrumb
+  and header links, and the links in a table's actions column. A link
+  inside a sentence is exempt, as in WCAG 2.2.
 - **Bring opened detail cards into view** (`scrollIntoView`), and place
   a detail card right after the list it belongs to.
 - **Most urgent content first.** Keep collapsed or below the fold what

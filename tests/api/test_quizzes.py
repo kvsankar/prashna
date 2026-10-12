@@ -179,17 +179,20 @@ def test_uc_a_11_non_owner_404(admin_client, make_quiz):
 
 
 def test_uc_a_11_nonexistent_404(admin_client):
-    """UC-A-11: nonexistent id → 404."""
+    """UC-A-11: nonexistent id → 404 that names the quiz."""
     r = admin_client.get("/api/quizzes/99999")
     assert r.status_code == 404
+    assert r.json() == {"detail": "Quiz not found"}
 
 
-def test_uc_a_11_no_auth_404(client, admin_client, make_quiz):
-    """UC-A-11: no auth → 404 (handler returns 404 for non-owner)."""
+def test_uc_a_11_get_quiz_signed_out_is_401(client, admin_client, make_quiz):
+    """UC-A-11: signed out → 401 like the other quiz routes, so an expired
+    sign-in in the editor redirects to /."""
     q = make_quiz()
     admin_client.cookies.clear()
     r = client.get(f"/api/quizzes/{q['id']}")
-    assert r.status_code == 404
+    assert r.status_code == 401
+    assert r.json() == {"detail": "Not authenticated"}
 
 
 # ---------- UC-A-12: Rename quiz ----------
@@ -206,13 +209,22 @@ def test_uc_a_12_rename(admin_client, make_quiz):
     assert g["title"] == "New"
 
 
-def test_uc_a_12_empty_title_no_op(admin_client, make_quiz):
-    """UC-A-12: empty title → title unchanged."""
+def test_uc_a_12_empty_title_is_refused(admin_client, make_quiz):
+    """UC-A-12: an empty or blank title → 400 "Quiz title is required"; the
+    title and last_edited_at are unchanged."""
+    from prashna import models as m
+    from prashna.db import SessionLocal
     q = make_quiz("orig")
-    r = admin_client.patch(f"/api/quizzes/{q['id']}", json={"title": ""})
-    assert r.status_code == 200
+    with SessionLocal() as db:
+        before = db.get_one(m.Quiz, q["id"]).last_edited_at
+    for blank in ("", "   "):
+        r = admin_client.patch(f"/api/quizzes/{q['id']}", json={"title": blank})
+        assert r.status_code == 400
+        assert r.json() == {"detail": "Quiz title is required"}
     g = admin_client.get(f"/api/quizzes/{q['id']}").json()
     assert g["title"] == "orig"
+    with SessionLocal() as db:
+        assert db.get_one(m.Quiz, q["id"]).last_edited_at == before
 
 
 def test_uc_a_12_same_title_no_op(admin_client, make_quiz):
@@ -932,11 +944,11 @@ def test_uc_a_20_upload_jpg_gif_webp(admin_client):
 
 
 def test_uc_a_20_upload_svg_400(admin_client):
-    """UC-A-20: svg → 400 unsupported image type."""
+    """UC-A-20: svg → 400 naming the allowed image types."""
     files = {"file": ("a.svg", b"<svg/>", "image/svg+xml")}
     r = admin_client.post("/api/uploads", files=files)
     assert r.status_code == 400
-    assert r.json() == {"detail": "unsupported image type"}
+    assert r.json() == {"detail": "Images must be PNG, JPEG, GIF or WebP"}
 
 
 def test_uc_a_20_upload_exe_400(admin_client):
@@ -944,7 +956,7 @@ def test_uc_a_20_upload_exe_400(admin_client):
     files = {"file": ("a.exe", b"\x4d\x5a", "application/octet-stream")}
     r = admin_client.post("/api/uploads", files=files)
     assert r.status_code == 400
-    assert r.json() == {"detail": "unsupported image type"}
+    assert r.json() == {"detail": "Images must be PNG, JPEG, GIF or WebP"}
 
 
 def test_uc_a_20_upload_no_ext_400(admin_client):
@@ -955,12 +967,12 @@ def test_uc_a_20_upload_no_ext_400(admin_client):
 
 
 def test_uc_a_20_upload_6mb_content_length_400(admin_client):
-    """UC-A-20: 6MB Content-Length → 400 max 5MB."""
+    """UC-A-20: 6MB Content-Length → 400 naming the 5 MB cap."""
     big = b"\x00" * (6 * 1024 * 1024)
     files = {"file": ("a.png", big, "image/png")}
     r = admin_client.post("/api/uploads", files=files)
     assert r.status_code == 400
-    assert r.json() == {"detail": "max 5MB"}
+    assert r.json() == {"detail": "Images must be 5 MB or smaller"}
 
 
 def test_uc_a_20_upload_no_auth_401(client):

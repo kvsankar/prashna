@@ -316,9 +316,9 @@ def _hash_password(password: str) -> str:
 def _validate_credentials(username: str, password: str) -> tuple[str, str]:
     u = username.strip()
     if not u or len(u) > MAX_USERNAME_LEN:
-        raise HTTPException(400, "username required")
+        raise HTTPException(400, "Username is required")
     if not password or len(password) < MIN_PASSWORD_LEN:
-        raise HTTPException(400, f"password must be at least {MIN_PASSWORD_LEN} characters")
+        raise HTTPException(400, f"Password must be at least {MIN_PASSWORD_LEN} characters")
     return u, password
 
 
@@ -510,7 +510,7 @@ def participant_has_profile(p: m.Participant) -> bool:
     )
 
 
-def serialize_query(q: m.Query, viewer_participant_id: int | None, is_mod: bool) -> dict:
+def serialize_query(q: m.Query, viewer_participant_id: int | None) -> dict:
     return {
         "id": q.id,
         "text": q.text,
@@ -662,7 +662,7 @@ def serialize_session_queries(
     if not is_mod:
         rows = [row for row in rows if row.removed_at is None]
     return [
-        serialize_query(row, viewer_participant_id, is_mod)
+        serialize_query(row, viewer_participant_id)
         for row in rows
     ]
 
@@ -1120,7 +1120,7 @@ def admin_change_password(
             outcome="invalid_new",
             actor_id=me.id,
         )
-        raise HTTPException(400, f"new password must be at least {MIN_PASSWORD_LEN} characters")
+        raise HTTPException(400, f"New password must be at least {MIN_PASSWORD_LEN} characters")
     me.password_hash = _hash_password(new)
     # Bumping session_version invalidates every cookie issued under the old
     # version — anywhere the old password may have been stored stops working.
@@ -1414,6 +1414,7 @@ async def set_feedback_enabled(
         "session.lifecycle",
         action="feedback_enabled",
         outcome="success",
+        actor_id=me.id if me else None,
         session_id=s.id,
         session_code=s.code,
         enabled=s.feedback_enabled,
@@ -1448,6 +1449,7 @@ async def start_session(
             "session.lifecycle",
             action="start",
             outcome="success",
+            actor_id=me.id if me else None,
             session_id=s.id,
             session_code=s.code,
         )
@@ -1474,6 +1476,7 @@ async def end_session(
             "session.lifecycle",
             action="end",
             outcome="success",
+            actor_id=me.id if me else None,
             session_id=s.id,
             session_code=s.code,
         )
@@ -1810,7 +1813,7 @@ async def create_query(
     db.refresh(q)
     db.refresh(q, ["votes", "participant"])
     await broadcast_session(s, "query_new")
-    return serialize_query(q, p.id, False)
+    return serialize_query(q, p.id)
 
 
 @app.post("/api/sessions/{code}/queries/{qid}/vote")
@@ -1829,9 +1832,9 @@ async def toggle_vote(
         raise HTTPException(429, "Too many votes — slow down and try again")
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Question not found")
     if q.removed_at is not None:
-        raise HTTPException(404)
+        raise HTTPException(404, "Question not found")
     p = current_participant(s, request, response, voter_token, db)
     existing = db.scalar(
         select(m.QueryVote).where(
@@ -1873,7 +1876,7 @@ async def respond_to_query(
     require_mod_or_owner(s, x_mod_key, me)
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Question not found")
     q.response_text = _text(payload, "response_text").strip() or None
     q.responded_at = datetime.utcnow() if payload.get("responded", True) else None
     db.commit()
@@ -1903,7 +1906,7 @@ async def remove_query(
     require_mod_or_owner(s, x_mod_key, me)
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Question not found")
     if payload.get("removed", True):
         q.removed_at = datetime.utcnow()
     else:
@@ -1935,7 +1938,7 @@ async def delete_query(
     require_session_owner(s, me)
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Question not found")
     query_id = q.id
     db.delete(q)
     db.commit()
@@ -2002,7 +2005,7 @@ def create_quiz(
 def _owned_quiz_or_404(db: DbSession, quiz_id: int, user: m.User) -> m.Quiz:
     quiz = db.get(m.Quiz, quiz_id)
     if not quiz or quiz.owner_user_id != user.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Quiz not found")
     return quiz
 
 
@@ -2011,13 +2014,9 @@ def get_quiz(
     quiz_id: int,
     include_correct: bool = False,
     db: DbSession = Depends(get_db),
-    me: m.User | None = Depends(auth.optional_admin),
+    me: m.User = Depends(auth.current_admin),
 ):
-    quiz = db.get(m.Quiz, quiz_id)
-    if not quiz:
-        raise HTTPException(404)
-    if not me or quiz.owner_user_id != me.id:
-        raise HTTPException(404)
+    quiz = _owned_quiz_or_404(db, quiz_id, me)
     return serialize_quiz(quiz, include_correct=include_correct)
 
 
@@ -2055,7 +2054,9 @@ def update_quiz(
 ):
     quiz = _owned_quiz_or_404(db, quiz_id, me)
     if "title" in payload:
-        new_title = _text(payload, "title").strip() or quiz.title
+        new_title = _text(payload, "title").strip()
+        if not new_title:
+            raise HTTPException(400, "Quiz title is required")
         if new_title != quiz.title:
             quiz.title = new_title
             _mark_quiz_edited(quiz)
@@ -2174,7 +2175,7 @@ def add_quiz_question(
 def _owned_quiz_question_or_404(db: DbSession, question_id: int, user: m.User) -> m.Question:
     qq = db.get(m.Question, question_id)
     if not qq or qq.quiz.owner_user_id != user.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Question not found")
     return qq
 
 
@@ -2299,7 +2300,7 @@ def add_quiz_answer(
 def _owned_quiz_answer_or_404(db: DbSession, answer_id: int, user: m.User) -> m.Answer:
     a = db.get(m.Answer, answer_id)
     if not a or a.question.quiz.owner_user_id != user.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Answer not found")
     return a
 
 
@@ -2350,7 +2351,7 @@ async def store_uploaded_image(file: UploadFile, *, actor: str) -> str:
             reason="extension",
             extension=ext,
         )
-        raise HTTPException(400, "unsupported image type")
+        raise HTTPException(400, "Images must be PNG, JPEG, GIF or WebP")
     if file.size is not None and file.size > MAX_UPLOAD_BYTES:
         log_diagnostic(
             "upload.reject",
@@ -2358,7 +2359,7 @@ async def store_uploaded_image(file: UploadFile, *, actor: str) -> str:
             reason="size",
             size=file.size,
         )
-        raise HTTPException(400, "max 5MB")
+        raise HTTPException(400, "Images must be 5 MB or smaller")
     buf = bytearray()
     while True:
         chunk = await file.read(64 * 1024)
@@ -2372,7 +2373,7 @@ async def store_uploaded_image(file: UploadFile, *, actor: str) -> str:
                 reason="size",
                 size=len(buf),
             )
-            raise HTTPException(400, "max 5MB")
+            raise HTTPException(400, "Images must be 5 MB or smaller")
     name = f"{uuid.uuid4().hex}{ext}"
     (UPLOADS / name).write_bytes(bytes(buf))
     log_diagnostic(
@@ -2462,7 +2463,7 @@ def quiz_run_results(
 ):
     run = db.get(m.QuizRun, run_id)
     if not run or run.session.owner_user_id != me.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Quiz run not found")
     version = run.quiz_version
     questions = []
     for vq in version.questions:
@@ -2555,7 +2556,7 @@ async def create_quiz_run(
     quiz_id = payload.get("quiz_id")
     quiz = db.get(m.Quiz, quiz_id) if quiz_id else None
     if not quiz or quiz.owner_user_id != s.owner_user_id:
-        raise HTTPException(404, "quiz not found")
+        raise HTTPException(404, "Quiz not found")
     if quiz.status != "ready":
         if not payload.get("publish"):
             raise HTTPException(400, "Quiz is still a draft — publish it first")
@@ -2593,7 +2594,7 @@ def _get_run_mod(
     require_mod_or_owner(s, mod_key, user)
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Quiz run not found")
     return s, run
 
 
@@ -2640,6 +2641,7 @@ async def start_quiz_run(
             "session.lifecycle",
             action="start",
             outcome="success",
+            actor_id=me.id if me else None,
             session_id=s.id,
             session_code=s.code,
         )
@@ -2834,9 +2836,9 @@ def get_quiz_run(
     p = current_participant(s, request, response, voter_token, db)
     run = db.get(m.QuizRun, run_id)
     if not run or run.session_id != s.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Quiz run not found")
     if not is_mod and run.status not in ("live", "closed"):
-        raise HTTPException(404)
+        raise HTTPException(404, "Quiz run not found")
     return serialize_quiz_run(db, run, viewer_participant_id=p.id, is_mod=is_mod)
 
 
@@ -2976,7 +2978,7 @@ def export_quiz_run(
 ):
     run = db.get(m.QuizRun, run_id)
     if not run or run.session.owner_user_id != me.id:
-        raise HTTPException(404)
+        raise HTTPException(404, "Quiz run not found")
     fmt = _export_format(format)
     return _export_response(data_export.export_quiz_run(db, run, fmt), "quiz_run")
 

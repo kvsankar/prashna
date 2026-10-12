@@ -1004,3 +1004,84 @@ def test_uc_x_11_live_update_during_bootstrap_is_kept(base_url, admin_setup, pag
         expect(page.locator("#queries")).to_contain_text("asked-during-boot")
     finally:
         c.close()
+
+
+# ---------- review batch 5: words, not only colour ----------
+
+
+def test_uc_p_09_wrong_pick_says_wrong_in_words(base_url, admin_setup, page):
+    """UC-P-08/09: after reveal a wrong pick shows ✗ and "Your answer · wrong",
+    never the ✓ of a chosen answer."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-P09w {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-P09ws {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#quiz-card:visible")
+        page.locator("#quiz-body button.option").first.click()  # "3": wrong
+        page.locator("#quiz-body button.primary").click()
+        expect(page.locator("#quiz-body")).to_contain_text("recorded", timeout=5000)
+        c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/reveal",
+               json={"reveal": True}).raise_for_status()
+        wrong = page.locator("#quiz-body .option.wrong")
+        expect(wrong).to_be_visible(timeout=5000)
+        expect(wrong.locator(".opt-mark")).to_have_text("✗")
+        expect(wrong.locator(".opt-chosen")).to_have_text("Your answer · wrong")
+        expect(wrong).not_to_contain_text("✓")
+        expect(page.locator("#quiz-body .option.correct .opt-correct")).to_have_text("✓ Correct")
+    finally:
+        c.close()
+
+
+def test_uc_p_11_ended_session_votes_are_not_buttons(base_url, admin_setup, page):
+    """UC-P-11: on an ended session the vote counts are plain text."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P11v {secrets.token_hex(3)}")
+    ask_query_api(base_url, s["code"], "asked-before-the-end")
+    api_end_session(c, s["code"])
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        expect(page.locator("#queries .question")).to_have_count(1, timeout=5000)
+        expect(page.locator("#queries .vote-btn")).to_have_count(1)
+        expect(page.locator("#queries button")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def test_uc_p_06_own_questions_say_your_question(base_url, admin_setup, page):
+    """UC-P-06: the participant's own question says "Your question"; others' don't."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P06m {secrets.token_hex(3)}")
+    ask_query_api(base_url, s["code"], "someone-else-asked-this")
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.fill("#query-text", "i-asked-this-one")
+        page.click("#ask-btn")
+        mine = page.locator("#queries .question").filter(has_text="i-asked-this-one")
+        expect(mine.locator(".mine-marker")).to_have_text("Your question", timeout=5000)
+        other = page.locator("#queries .question").filter(has_text="someone-else-asked-this")
+        expect(other.locator(".mine-marker")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def test_uc_x_01_failed_live_refetch_shows_an_error(base_url, admin_setup, page):
+    """UC-X-01: a live-update refetch that fails shows the server's message;
+    nothing goes unhandled."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-X01p {secrets.token_hex(3)}")
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        expect(page.locator("#queries")).to_contain_text("No questions yet", timeout=5000)
+        page.route(f"**/api/sessions/{s['code']}/queries", lambda route: route.fulfill(
+            status=503, content_type="application/json", body='{"detail": "Server is restarting"}')
+            if route.request.method == "GET" else route.continue_())
+        ask_query_api(base_url, s["code"], "triggers-a-refetch")
+        expect(page.locator(".toast-error")).to_contain_text("Server is restarting", timeout=5000)
+        assert errors == []
+    finally:
+        c.close()

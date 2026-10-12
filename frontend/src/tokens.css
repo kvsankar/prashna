@@ -7,10 +7,12 @@
   --panel-2: #273449;
   --text: #e2e8f0;
   --muted: #94a3b8;
-  --accent: #6366f1;
+  /* Dark enough for white text at 4.5:1 (UX.md §1 Text contrast). */
+  --accent: #5f63f0;
   --accent-2: #818cf8;
   --good: #22c55e;
-  --bad: #ef4444;
+  /* Light enough for 4.5:1 on cards, rows and the error banner's tint. */
+  --bad: #fa8080;
   --warn: #f59e0b;
   --border: #334155;
   --proj-bg: #000;

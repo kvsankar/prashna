@@ -35,7 +35,7 @@ export interface Answer {
 export interface Question {
   id: number;
   text: string;
-  qtype: string; // single | multiple
+  qtype: string; // single | multi
   image_url: string | null;
   answers: Answer[];
 }
@@ -214,6 +214,7 @@ export interface ResultQuestion {
 
 export interface QuizRunResults {
   quiz_title: string;
+  version_no: number;
   session_code: string;
   session_title: string;
   status: string;

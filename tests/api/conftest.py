@@ -96,8 +96,10 @@ def make_quiz(admin_client: TestClient):
         r = admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": "2+2?", "qtype": "single"})
         assert r.status_code == 200
         question_id = r.json()["id"]
-        admin_client.post(f"/api/quiz_questions/{question_id}/answers", json={"text": "3", "is_correct": False})
-        admin_client.post(f"/api/quiz_questions/{question_id}/answers", json={"text": "4", "is_correct": True})
+        for text, correct in (("3", False), ("4", True)):
+            r = admin_client.post(f"/api/quiz_questions/{question_id}/answers",
+                                  json={"text": text, "is_correct": correct})
+            assert r.status_code == 200, r.text
         r = admin_client.post(f"/api/quizzes/{qid}/publish")
         assert r.status_code == 200, r.text
         return {"id": qid, "title": title, "question_id": question_id}

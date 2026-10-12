@@ -127,10 +127,11 @@ def test_flex_containers_declare_wrapping():
 
 def test_answer_options_come_from_one_renderer():
     """UC-X-14: surfaces call answerOption() instead of building .option markup."""
-    for rel in ("participant.ts", "moderator.ts", "projector.ts"):
+    for rel in ("participant.ts", "moderator.ts", "projector.ts", "quizzes.ts"):
         src = (ROOT / "frontend/src" / rel).read_text()
         assert not re.search(r'class:\s*"option\b', src), rel
         assert '"opt-text"' not in src, rel
+        assert "answerOption(" in src, rel
     assert "export function answerOption(" in (ROOT / "frontend/src/common.ts").read_text()
 
 
@@ -158,3 +159,63 @@ def test_keyboard_shortcuts_submit_through_the_guarded_button():
             assert match, (rel, field)
             handler = match.group(1)
             assert f'"{button}").click()' in handler, (rel, field, handler)
+
+
+def _tokens() -> dict[str, str]:
+    css = (ROOT / "frontend/src/tokens.css").read_text()
+    root = css.split(":root", 1)[1].split("}", 1)[0]
+    return dict(re.findall(r"(--[\w-]+):\s*([^;]+);", root))
+
+
+def _rgb(value: str) -> tuple[float, float, float, float]:
+    value = value.strip()
+    if value.startswith("#"):
+        h = value[1:]
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 1.0)
+    parts = [float(x) for x in re.findall(r"[\d.]+", value)]
+    return (parts[0], parts[1], parts[2], parts[3] if len(parts) > 3 else 1.0)
+
+
+def _over(fg: tuple[float, float, float, float], bg: tuple[float, float, float, float]):
+    a = fg[3]
+    return tuple(fg[i] * a + bg[i] * (1 - a) for i in range(3)) + (1.0,)
+
+
+def _contrast(a, b) -> float:
+    def lum(c):
+        ch = [x / 255 for x in c[:3]]
+        ch = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in ch]
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_text_colours_meet_wcag_contrast():
+    """UX.md §1 Text contrast: text tokens reach WCAG AA (4.5:1) on the
+    surfaces they sit on, computed from tokens.css."""
+    t = {k: _rgb(v) for k, v in _tokens().items() if v.strip().startswith(("#", "rgb"))}
+    panel, panel2 = t["--panel"], t["--panel-2"]
+    pairs = {
+        "white on primary button": (t["--on-accent"], t["--accent"]),
+        "danger text on a card": (t["--bad"], panel),
+        "danger text on a row": (t["--bad"], panel2),
+        "error banner text": (t["--bad"], _over(t["--bad-bg"], panel)),
+        "muted text on a row": (t["--muted"], panel2),
+        "body text on a row": (t["--text"], panel2),
+        "info banner text": (t["--text"], _over(t["--accent-bg"], panel)),
+    }
+    low = {name: round(_contrast(fg, bg), 2) for name, (fg, bg) in pairs.items() if _contrast(fg, bg) < 4.5}
+    assert low == {}
+
+
+def test_state_cues_do_not_use_the_accent_as_text():
+    """UX.md §1: --accent is a fill, too dark for text on the dark surfaces;
+    the session page's "voting closed" cue uses the text colour."""
+    ts = (ROOT / "frontend/src/moderator.ts").read_text()
+    assert "accent-text" not in ts
+    css = (ROOT / "frontend/src/app.css").read_text()
+    assert ".accent-text" not in css
+    # The info banner's text is --text, the colour the contrast check covers.
+    assert re.search(r"\.info-banner \{[^}]*[^-]color: var\(--text\)", css)

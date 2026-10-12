@@ -366,7 +366,7 @@ def test_uc_x_04_svg_400(admin_client):
     """UC-X-04: svg → 400."""
     r = admin_client.post("/api/uploads", files={"file": ("a.svg", b"<svg/>", "image/svg+xml")})
     assert r.status_code == 400
-    assert r.json() == {"detail": "unsupported image type"}
+    assert r.json() == {"detail": "Images must be PNG, JPEG, GIF or WebP"}
 
 
 def test_uc_x_04_distinct_filenames(admin_client):
@@ -826,3 +826,31 @@ def test_uc_x_05_order_index_must_be_an_integer_on_create(admin_client):
     assert [a["text"] for a in body["questions"][0]["answers"]] == ["b"]
     # An integer order_index is still accepted.
     assert admin_client.post(f"/api/quizzes/{quiz}/questions", json={"text": "c", "order_index": 5}).status_code == 200
+
+
+def test_404s_name_the_missing_thing(admin_client, make_session):
+    """Conventions (Error responses): a 404 names what is missing, never the
+    bare "Not Found", because the frontend shows it as received."""
+    s = make_session()
+    code = s["code"]
+    cases = [
+        ("post", f"/api/sessions/{code}/queries/99999/vote", "Question not found"),
+        ("post", f"/api/sessions/{code}/queries/99999/respond", "Question not found"),
+        ("post", f"/api/sessions/{code}/queries/99999/remove", "Question not found"),
+        ("delete", f"/api/sessions/{code}/queries/99999", "Question not found"),
+        ("get", "/api/quizzes/99999", "Quiz not found"),
+        ("post", "/api/quizzes/99999/publish", "Quiz not found"),
+        ("patch", "/api/quiz_questions/99999", "Question not found"),
+        ("patch", "/api/quiz_answers/99999", "Answer not found"),
+        ("post", f"/api/sessions/{code}/quiz_runs", "Quiz not found"),
+        ("post", f"/api/sessions/{code}/quiz_runs/99999/start", "Quiz run not found"),
+        ("get", f"/api/sessions/{code}/quiz_runs/99999", "Quiz run not found"),
+        ("get", "/api/quiz_runs/99999/results", "Quiz run not found"),
+        ("get", "/api/quiz_runs/99999/export", "Quiz run not found"),
+        ("get", "/api/sessions/NOPE99/queries", "Session not found"),
+    ]
+    bodies = {"patch": {}, "post": {"quiz_id": 99999}}
+    for method, path, detail in cases:
+        kwargs = {"json": bodies[method]} if method in bodies else {}
+        r = getattr(admin_client, method)(path, **kwargs)
+        assert (r.status_code, r.json()) == (404, {"detail": detail}), (method, path, r.text)

@@ -929,3 +929,141 @@ def test_uc_m_04_run_start_shows_session_live_in_other_tabs(base_url, admin_setu
         expect(page.locator("#session-status")).to_have_text("Live", timeout=5000)
     finally:
         c.close()
+
+
+# ---------- review batch 5: session page wording and states ----------
+
+
+def test_uc_m_01_key_gate_shows_no_session_chrome(base_url, admin_setup, page):
+    """UC-M-01: the key gate names the session by code and hides the header
+    meta, the Sessions breadcrumb, and any mention of the URL fragment."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M01gate {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#modkey-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#title")).to_have_text(f"Session {s['code']}")
+        expect(page.locator("header.top .meta")).to_be_hidden()
+        expect(page.locator("#moderator-breadcrumbs li").first).to_be_hidden()
+        expect(page.locator("#modkey-card")).not_to_contain_text("#k=")
+    finally:
+        c.close()
+
+
+def test_uc_m_01_moderator_link_pasted_into_an_open_tab(base_url, admin_setup, page):
+    """UC-M-01: going to the moderator link in a tab that shows the key gate
+    for the same session loads the moderator surface."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M01paste {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#modkey-card")).to_be_visible(timeout=5000)
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        expect(page.locator("#lifecycle-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#modkey-card")).to_be_hidden()
+    finally:
+        c.close()
+
+
+def test_uc_a_08_base_url_help_follows_the_field(base_url, admin_setup, page):
+    """UC-A-08: a delegate sees neither the Base URL field nor its help; the
+    owner sees both, with a neutral placeholder."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A08help {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        expect(page.locator("#invite-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#base-url")).to_be_hidden()
+        expect(page.locator("#base-url-help")).to_be_hidden()
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#settings-card")).to_be_visible(timeout=5000)
+        expect(page.locator("#base-url-help")).to_be_visible()
+        expect(page.locator("#base-url")).to_have_attribute("placeholder", "e.g. https://quiz.example.org")
+    finally:
+        c.close()
+
+
+def test_uc_m_02_hint_matches_the_badge(base_url, admin_setup, page):
+    """UC-M-02: a not-started session's hint uses the badge's words."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M02hint {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#lifecycle-hint")).to_have_text("Not started yet. Start it when the audience is ready.")
+    finally:
+        c.close()
+
+
+def test_uc_m_03_picker_counts_questions_in_words(base_url, admin_setup, page):
+    """UC-M-03: one question reads "(1 question)", not "(1 questions)"."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M03one {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M03ones {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        option = page.locator("#quiz-select option").filter(has_text=quiz["title"])
+        expect(option).to_contain_text(f"{quiz['title']} (1 question)")
+        expect(option).not_to_contain_text("questions")
+    finally:
+        c.close()
+
+
+def test_uc_m_09_removed_question_offers_only_restore(base_url, admin_setup, page):
+    """UC-M-08/09: Mark responded isn't a primary button, and a removed
+    question offers only Restore."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M09only {secrets.token_hex(3)}")
+    kept = ask_query_api(base_url, s["code"], "kept-question")
+    gone = ask_query_api(base_url, s["code"], "removed-question")
+    c.post(f"/api/sessions/{s['code']}/queries/{gone['id']}/remove", json={}).raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        removed = page.locator("#queries .question.hidden-q").filter(has_text="removed-question")
+        expect(removed).to_be_visible(timeout=5000)
+        expect(removed.locator("button")).to_have_text(["Restore"])
+        row = page.locator("#queries .question").filter(has_text=kept["text"])
+        expect(row.locator("button", has_text="Mark responded")).to_be_visible()
+        expect(page.locator("#queries button.primary")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def test_uc_a_07_delete_on_a_live_session_page_stays_put(base_url, admin_setup, page):
+    """UC-A-07: Delete session… on a live session says why in place."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A07live {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.locator(".section-links a", has_text="Set up").click()
+        page.click("#set-delete")
+        expect(page.locator(".toast-error")).to_contain_text("End the session before deleting it.")
+        page.wait_for_timeout(300)
+        assert page.url.endswith(f"/m/{s['code']}") or f"/m/{s['code']}#" in page.url, page.url
+    finally:
+        c.close()
+
+
+def test_uc_x_01_failed_live_refetch_shows_an_error_on_the_session_page(base_url, admin_setup, page):
+    """UC-X-01: a refetch that a live update triggers and that fails shows
+    the server's message; nothing goes unhandled."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-X01mod {secrets.token_hex(3)}")
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#queries")).to_contain_text("No questions yet", timeout=5000)
+        page.route(f"**/api/sessions/{s['code']}/queries?display=true", lambda route: route.fulfill(
+            status=503, content_type="application/json", body='{"detail": "Server is restarting"}'))
+        ask_query_api(base_url, s["code"], "triggers-a-refetch")
+        expect(page.locator(".toast-error")).to_contain_text("Server is restarting", timeout=5000)
+        assert errors == []
+    finally:
+        c.close()

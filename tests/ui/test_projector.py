@@ -385,6 +385,9 @@ def test_uc_d_07_queued_run_shows_lobby(base_url, admin_setup, page):
         expect(page.locator("#quiz-section")).to_be_visible(timeout=5000)
         expect(page.locator("#quiz-body")).to_contain_text("Next up:")
         expect(page.locator("#quiz-body")).to_contain_text(quiz["title"])
+        # The room screen invites people in; it doesn't describe operator controls.
+        expect(page.locator("#quiz-body")).to_contain_text("Scan the code to join — the quiz starts soon.")
+        expect(page.locator("#quiz-body")).not_to_contain_text("moderator")
     finally:
         c.close()
 
@@ -577,5 +580,45 @@ def test_uc_d_05_projector_polls_while_a_quiz_is_live(base_url, admin_setup, pag
         expect(page.locator("#quiz-body")).to_contain_text("0 respondent", timeout=5000)
         _vote_as_new_participant(base_url, s["code"], run["id"])
         expect(page.locator("#quiz-body")).to_contain_text("1 respondent", timeout=8000)
+    finally:
+        c.close()
+
+
+def test_uc_d_01_room_text_is_display_size(base_url, admin_setup, page):
+    """UC-D-01: text the room reads is at least 20 px at 1920x1080, and the
+    lobby title is in the main text colour, not uppercase."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-D01size {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-D01sizes {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/reveal", json={"reveal": True}).raise_for_status()
+    httpx.post(f"{base_url}/api/sessions/{s['code']}/queries",
+               json={"text": "Who wrote this?", "author_name": "Asha"}, timeout=5.0).raise_for_status()
+    lobby_session = api_make_session(c, f"UI-D01lobby {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, lobby_session["code"], quiz["id"])
+    size = "e => parseFloat(getComputedStyle(e).fontSize)"
+    try:
+        page.set_viewport_size({"width": 1920, "height": 1080})
+        page.goto(f"{base_url}/p/{s['code']}")
+        expect(page.locator("#quiz-body .option.correct")).to_be_visible(timeout=5000)
+        expect(page.locator("#queries")).to_contain_text("Asha", timeout=5000)
+        small = {
+            "question line": page.locator("#quiz-body > .muted").first,
+            "respondents": page.locator("#quiz-body > .muted").last,
+            "author": page.locator("#queries .question .body .small").first,
+            "votes label": page.locator("#queries .vote-btn .label").first,
+        }
+        sizes = {name: loc.evaluate(size) for name, loc in small.items()}
+        assert all(v >= 20 for v in sizes.values()), sizes
+
+        page.goto(f"{base_url}/p/{lobby_session['code']}")
+        expect(page.locator("#quiz-body")).to_contain_text("Next up:", timeout=5000)
+        assert page.locator("#quiz-body > .muted").first.evaluate(size) >= 20
+        title = page.locator("#quiz-body .proj-lobby-title")
+        assert title.evaluate("e => getComputedStyle(e).textTransform") == "none"
+        assert title.evaluate("e => getComputedStyle(e).color") == page.locator("#title").evaluate(
+            "e => getComputedStyle(e).color")
     finally:
         c.close()

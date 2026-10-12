@@ -100,6 +100,30 @@ text"` and changes nothing, never `500`
 must be an integer, also on create (`400 "order_index must be an
 integer"`).
 
+**Error responses.** An error's `detail` is a plain sentence that starts
+with a capital letter, because the frontend shows it as received.
+- A `404` names the missing thing ("Question not found", "Quiz not
+  found", "Quiz run not found", "Session not found"), never the bare
+  "Not Found" (`test_404s_name_the_missing_thing`).
+- `400` refuses a request that the current state or the input doesn't
+  allow ("Session has ended"). `409` is kept for two requests competing
+  for one slot, where only one can win: first-run setup ("Admin already
+  initialized") and a second live quiz run in a session.
+- A route addressed by session code answers a signed-in admin who
+  doesn't own the session with `403 "Not your session"`. A route
+  addressed by an id (a quiz, a quiz question or answer, a quiz run)
+  answers with that id's `404`, so it doesn't reveal that the id exists.
+  Admin-only id routes answer a signed-out caller with `401 "Not
+  authenticated"` first, so an expired sign-in redirects to `/`.
+
+**Route names.** Path segments are lower-case `snake_case` nouns
+(`quiz_runs`, `participant_base_url`, `question_order`), and an action
+on a resource is the last segment (`/start`, `/reveal`, `/export`). The
+role bootstraps (`participant-bootstrap`, `moderator-bootstrap`,
+`display-bootstrap`) and `/api/export/all` predate this rule and keep
+their names, because existing clients use them. New routes follow the
+rule.
+
 **Timestamps.** Every timestamp in an API response is UTC in ISO 8601
 with a `Z` suffix and whole seconds (`2026-10-11T04:30:00Z`), the same
 form as the exports, so a browser shows it in the viewer's own time zone
@@ -154,12 +178,13 @@ public can't be claimed by its first visitor.
 - `POST /api/admin/setup` a second time → `409 "Admin already initialized"`.
 - Race: two concurrent setup calls with **different usernames** — exactly one returns `200`, the other returns `409`. Serialized by a process-wide `threading.Lock` around the check+insert (Prashna is single-process, see `docs/architecture.md`, so this is a real invariant). Test: `test_uc_a_01_concurrent_setup_different_usernames`.
 - Same-username conflict path is also caught via `try/except IntegrityError` and surfaces as `409`.
-- `POST /api/admin/setup` with `{"username": "alice", "password": "short", ...}` → `400 "password must be at least 8 characters"`.
-- `POST /api/admin/setup` with `{"username": "", "password": "longenough", ...}` → `400 "username required"`.
+- `POST /api/admin/setup` with `{"username": "alice", "password": "short", ...}` → `400 "Password must be at least 8 characters"`.
+- `POST /api/admin/setup` with `{"username": "", "password": "longenough", ...}` → `400 "Username is required"`.
 - Starting the server on a fresh database without `PRASHNA_SETUP_TOKEN` writes `setup-token` (mode `0600`, value starting `prashna_st_`) beside the database, logs `/#setup=<that token>`, and reuses the same token after a restart; a successful setup deletes the file.
 
 **Tests (UI)**
 - On `/` with no admin and no `#setup=` in the address, `#setup-needed-card` is visible and explains the server-log link; `#setup-card`, `#login-card`, and `#sessions-card` are hidden.
+- Pasting `/#setup=<token>` into a tab that already shows `/` loads it: the tab reloads and shows `#setup-card` (`test_uc_a_01_setup_link_pasted_into_an_open_tab`). The landing page reloads only for a `#setup=` link; its section links (`#sessions-card`) stay ordinary jumps.
 - On `/#setup=<token>` with no admin, `#setup-card` is visible; filling `#su-user`, `#su-pass`, `#su-pass2` (matching) and clicking `#su-btn` swaps the page to the authed view (`#sessions-card` visible).
 - Mismatched `#su-pass`/`#su-pass2` shows an error toast without an API call.
 - A password shorter than 8 chars surfaces a `400` toast and leaves `#setup-card` visible.
@@ -355,6 +380,7 @@ public can't be claimed by its first visitor.
 - Clicking `#cd-go` twice in quick succession sends one `DELETE` and shows no error toast (`test_uc_a_07_double_click_delete_sends_once`).
 - `#cd-cancel` closes the confirm card without deleting.
 - On `/m/<code>` as the admin owner, clicking `#set-delete` on an empty `planning` session opens `/?delete=<code>`, fires the native `confirm()`, and, once accepted, the row is gone from `#session-rows`.
+- On `/m/<code>` of a `live` session, clicking `#set-delete` shows the toast "End the session before deleting it." in place and stays on the session page (`test_uc_a_07_delete_on_a_live_session_page_stays_put`).
 
 ### UC-A-08: The admin session page
 
@@ -373,7 +399,8 @@ owner-only controls; a delegate sees the same page without them.
   Session lifecycle card, in every state
 - **And** the owner sees the Base URL field in the Invite card (UC-A-06)
 - **And** a delegate (mod_key, no admin cookie) sees neither the
-  Session settings card nor the Base URL field
+  Session settings card nor the Base URL field, nor the sentence that
+  explains the field (`#base-url-help`)
 - **And** "Share moderator URL" fetches the key on click from
   `GET /api/sessions` (owner-only) and copies `<origin>/m/<code>#k=<mod_key>`;
   the key is never rendered into the DOM
@@ -386,7 +413,7 @@ owner-only controls; a delegate sees the same page without them.
 **Tests (UI)**
 - On `/` (authed), clicking a row in `#session-rows` navigates to `/m/<code>`; the moderator surface loads with no `#modkey-card` gate, and `#settings-card` is visible.
 - Clicking `#set-share-mod` copies the moderator URL (with `#k=<mod_key>` fragment) to clipboard and toasts confirmation.
-- Opening `/m/<code>#k=<mod_key>` as a delegate (no admin cookie) hides `#settings-card`.
+- Opening `/m/<code>#k=<mod_key>` as a delegate (no admin cookie) hides `#settings-card`, `#base-url`, and `#base-url-help`; the owner sees `#base-url-help` and the `#base-url` placeholder "e.g. https://quiz.example.org" (`test_uc_a_08_base_url_help_follows_the_field`).
 - Start and End on the session page are covered by UC-M-02.
 
 ---
@@ -409,6 +436,7 @@ own use case so tests and PRs can cite one ID per behavior.
 **Tests (UI)**
 - On `/quizzes` (authed), typing a title in `#new-quiz-title` and clicking `#create-quiz` adds a row to `#quiz-rows` and opens `#editor-card` with that quiz.
 - Pressing Enter in `#new-quiz-title` submits.
+- Clicking `#create-quiz` with an empty title shows the error toast "Quiz title is required" and creates nothing (`test_uc_a_09_empty_title_says_title_is_required`).
 - Pressing Enter twice in quick succession in `#new-quiz-title` creates one quiz (`test_uc_a_09_double_enter_creates_one_quiz`).
 
 ### UC-A-10: Browse the quiz library
@@ -437,6 +465,7 @@ own use case so tests and PRs can cite one ID per behavior.
 **Tests (UI)**
 - On `/quizzes` (authed), `#quiz-rows` contains a row per owned quiz with title, status badge, and question count.
 - A Ready quiz with a `problem` shows `.badge-ready` and `.badge-needs-fixing` ("Needs fixing") in its row; a valid Ready quiz shows no `.badge-needs-fixing` (`test_uc_a_10_needs_fixing_badge`).
+- The open editor says the same, so the author sees it while editing: after an edit that breaks a publish rule (for example inserting a blank question into a Ready quiz), `#editor-body` shows `.badge-needs-fixing` beside the Ready badge and `#editor-problem` reads "Can't be added to a session yet: <problem>"; fixing or removing the cause hides both (`test_uc_a_10_editor_warns_when_an_edit_breaks_a_publish_rule`).
 - Order: most recently created first.
 
 ### UC-A-11: Open a quiz for editing
@@ -453,18 +482,25 @@ own use case so tests and PRs can cite one ID per behavior.
 - `include_correct=false` (default) omits `is_correct` from answer objects.
 - `GET /api/quizzes/{id}` for a quiz owned by another admin → `404`.
 - `GET /api/quizzes/{id}` for a non-existent id → `404`.
-- `GET /api/quizzes/{id}` with no auth → `404`.
+- `GET /api/quizzes/{id}` with no auth → `401 "Not authenticated"`, as for the other quiz routes, so an expired sign-in in the editor redirects to `/` (`test_uc_a_11_get_quiz_signed_out_is_401`).
 
 The editor card sits directly below the quiz list and scrolls into view
 when it opens, so on a phone the editor appears where the admin is
 looking. Every editor control has an accessible name ("Question 1 text",
 "Question 1 type", "Answer 1 text", "Answer 1 is correct"), and images
 are added with an **Add image** button rather than a bare file input.
+Controls whose meaning matters on a touch screen carry visible words,
+not only a tooltip: each answer's checkbox reads "Correct", the Poll
+checkbox reads "Poll (no correct answer)", and the question type reads
+"Single choice" or "Multiple choice". The hint under the badge says
+"Changes apply the next time you add this quiz to a session; past
+results stay as they were."
 
 **Tests (UI)**
 - On `/quizzes`, clicking a row in `#quiz-rows` opens `#editor-card`, populates `#editor-title`, and `#editor-body` lists each question with its answers and a correctness marker per answer.
 - `#editor-card` immediately follows `#quiz-library-card` in the page and is in the viewport after opening, at desktop and phone widths.
 - The first question's text box is reachable by role as "Question 1 text", its first answer as "Answer 1 text", and that answer's checkbox as "Answer 1 is correct".
+- Each answer row of a graded question shows the visible word "Correct" beside its checkbox; the Poll toggle reads "Poll (no correct answer)"; the type select offers "Single choice" and "Multiple choice"; the hint doesn't mention "Launch" (`test_uc_a_11_editor_controls_have_visible_words`).
 
 ### UC-A-12: Rename a quiz
 
@@ -472,19 +508,22 @@ are added with an **Add image** button rather than a bare file input.
 - **When** the admin edits the title input and blurs
 - **Then** `PATCH /api/quizzes/{id}` updates the title and advances
   `last_edited_at`
-- **And** an empty title is silently ignored (existing title kept)
+- **And** an empty title is refused with `400 "Quiz title is required"`
+  (as for sessions, UC-A-05); the existing title is kept, and the editor
+  shows the message and puts the saved title back in the field
 - **And** status does **not** auto-revert from `ready` → `draft`
   (versioning protects history)
 
 **Tests (API)**
 - `PATCH /api/quizzes/{id}` with `{"title": "New"}` (different from current) → `200 {ok: true, status}`; updates `title` and advances `last_edited_at`. Auth: admin cookie.
-- `PATCH /api/quizzes/{id}` with `{"title": ""}` → `200`; title stays unchanged AND `last_edited_at` does NOT advance (the no-op branch skips `_mark_quiz_edited`).
+- `PATCH /api/quizzes/{id}` with `{"title": ""}` or `{"title": "   "}` → `400 "Quiz title is required"`; title stays unchanged AND `last_edited_at` does NOT advance.
 - `PATCH /api/quizzes/{id}` with `{"title": "<same as current>"}` → `200`; same no-op behavior (no change, no edit bump).
 - After PATCH on a `ready` quiz, `GET /api/quizzes/{id}` still returns `status: "ready"`.
 - `PATCH /api/quizzes/{id}` for a non-owner quiz → `404`.
 
 **Tests (UI)**
 - In `#editor-card`, editing the title input and blurring updates the row's title in `#quiz-rows`.
+- Clearing the title and blurring shows the error toast "Quiz title is required", puts the saved title back in the field and in `#editor-title`, and leaves the row unchanged (`test_uc_a_12_empty_title_is_refused_and_restored`).
 
 ### UC-A-13: Delete a quiz template
 
@@ -667,6 +706,7 @@ are added with an **Add image** button rather than a bare file input.
 
 **Tests (UI)**
 - In `#editor-body`, clicking ✕ on an answer removes its row.
+- When the delete fails (the server answers with an error), the editor shows the server's message in an error toast and keeps the row; no error goes unhandled. Title changes, question deletes, and **+ Answer** behave the same way (`test_uc_a_19_failed_answer_delete_shows_the_error`).
 
 ### UC-A-28: Reorder questions and answers
 
@@ -721,16 +761,17 @@ Used by question and answer editors to set `image_url`.
 **Tests (API)**
 - `POST /api/uploads` (multipart `file`) with a valid `.png` ≤ 5 MB → `200 {url: "/uploads/<uuid>.png"}`. Auth: admin cookie.
 - `.jpg`, `.jpeg`, `.gif`, `.webp` are also accepted.
-- `.svg` → `400 "unsupported image type"`.
-- `.exe` or no extension → `400 "unsupported image type"`.
-- 6 MB file (Content-Length header set) → `400 "max 5MB"`.
-- 6 MB streamed payload (no Content-Length) → `400 "max 5MB"`.
+- `.svg` → `400 "Images must be PNG, JPEG, GIF or WebP"`.
+- `.exe` or no extension → `400 "Images must be PNG, JPEG, GIF or WebP"`.
+- 6 MB file (Content-Length header set) → `400 "Images must be 5 MB or smaller"`.
+- 6 MB streamed payload (no Content-Length) → `400 "Images must be 5 MB or smaller"`.
 - `POST /api/uploads` with no auth → `401`.
 - In the editor, each question and answer offers an **Add image** button (**Change image** once set) that opens the hidden file input.
 
 **Tests (UI)**
 - In `#editor-body`, picking an image file via the question's file input uploads, then PATCHes the question with the new `image_url`, then re-renders the thumbnail.
 - Same flow under each answer row updates its thumbnail.
+- Picking a file the server refuses (for example a `.txt`) shows the server's message as an error toast ("Images must be PNG, JPEG, GIF or WebP"), not a generic "Upload failed"; the upload goes through `api()`, so an expired sign-in redirects to `/` (`test_uc_a_20_refused_upload_shows_the_reason`).
 
 ### UC-A-21: Publish a quiz
 
@@ -831,7 +872,7 @@ Used by question and answer editors to set `image_url`.
 - `GET /api/quiz_runs` with no auth → `401`.
 
 **Tests (UI)**
-- On `/quizzes`, `#qs-rows` shows one row per QuizRun across owned sessions, with quiz title, version, session code, status badge, progress, and respondents.
+- On `/quizzes`, `#qs-rows` shows one row per QuizRun across owned sessions, with quiz title, version, session code, status badge, progress, and respondents. The column headers are spelled out ("Version", "Responses"), and the view summary uses plain words (no "playthrough" or "immutable") (`test_uc_a_23_run_report_uses_plain_words`).
 - `#run-view-switcher` exposes four `aria-pressed` buttons. Selecting By quiz groups on `quiz_id`; By version groups on `(quiz_id, version_no)`; By session groups on `session_code`; selecting Flat restores `#qs-rows`.
 - The quiz-library breadcrumb links back to Admin, and its section links target the quiz library and quiz-run report cards.
 
@@ -852,6 +893,7 @@ Used by question and answer editors to set `image_url`.
 
 **Tests (UI)**
 - On `/quizzes`, clicking a row in `#qs-rows` opens `#results-card`; `#results-body` shows per-question answer counts with correctness markers.
+- `#results-title` names the thing: "Quiz run: <quiz title> · <session title>". The header line shows "Version <n>". Answers are drawn by `answerOption()` (UC-X-14): the correct one shows "✓ Correct" as text, and every count reads "<n> (<p>%)" (`test_uc_a_24_results_use_the_shared_answer_rows`).
 - `#results-card` is in the viewport after opening.
 - Opening `/quizzes?run=<run_id>` opens that run's `#results-card` directly (the session page's "View results →" link, UC-M-06).
 - `#results-close` closes the pane.
@@ -880,7 +922,7 @@ Used by question and answer editors to set `image_url`.
 **Tests (API)**
 - `POST /api/admin/change_password` with valid `{current_password, new_password}` (≥ 8 chars) → `200 {ok: true}`; re-issues the `prashna_admin` cookie; bcrypt-verifies new password. Auth: admin cookie.
 - With wrong `current_password` (but valid cookie) → `401 "Current password is incorrect"`.
-- With `new_password` shorter than 8 chars → `400 "new password must be at least 8 characters"`.
+- With `new_password` shorter than 8 chars → `400 "New password must be at least 8 characters"`.
 - With `new_password` of 73 bytes → `400 "password must be at most 72 bytes"`; `POST /api/admin/setup` with a 73-byte password gets the same `400` and creates no admin (`test_uc_a_25_password_over_72_bytes_is_refused`).
 - With no cookie at all → `401 "Not authenticated"` (from `auth.current_admin`, before the handler runs). Two distinct 401 paths.
 - **Old cookies are invalidated**: after a successful change_password call, the prior `prashna_admin` cookie no longer authenticates. Verified by capturing the pre-change cookie, changing password, then issuing an admin-only call with the captured cookie → `401`, while the re-issued cookie works (`test_uc_a_25_old_cookie_rejected_after_password_change`). (Implementation: signed cookies carry a `session_version`, bumped on each password change; `current_admin` rejects mismatched versions.)
@@ -927,7 +969,9 @@ scope narrows with `part`.
   `sessions` (a list), `session`, `quiz_run`, or `quiz` (one object), with
   child lists nested inside (`participants`, `questions`, `quiz_runs`,
   `feedback`; a run's `questions` and `responses`; a quiz's `questions`
-  and `versions`).
+  and `versions`). The same key means different things by parent: a
+  session's `questions` (and `question_count`) are its Q&A entries, while
+  a quiz's or a run's `questions` are quiz questions.
 - **Excel** is one workbook with one sheet per table and one header row
   per sheet in plain words ("Asked at", "Votes", "Responded"). The first
   sheet, **About**, lists what was exported (scope and identifiers), when
@@ -1062,6 +1106,15 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - **And** if a wrong key is stored, the boot 403s and the gate
   re-prompts with a "Couldn't load session — re-enter the moderator
   key." toast
+- **And** the key gate shows only what a visitor without access can
+  use: the header reads "Session <code>" without the status, online
+  count, and view links; the Sessions breadcrumb is hidden; and the help
+  text asks for the moderator link in plain words, without naming the
+  URL fragment
+- **And** pasting a moderator link (`/m/<code>#k=<mod_key>`) into a tab
+  that already shows `/m/<code>` loads it: the page reloads when the
+  part after `#` gains a `k=` key. Its section links (`#quizzes-card`
+  and the others) stay ordinary jumps
 
 **Tests (API)**
 - Any `mod-or-owner` route (e.g., `POST /api/sessions/{code}/start`) with valid `X-Mod-Key` header → `200`. Auth: mod-key.
@@ -1079,6 +1132,8 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - Opening `/m/<code>#k=<mod_key>` as a delegate stores the key in `localStorage` under the session code and strips `#k=` from the address bar.
 - Opening `/m/<code>` with neither cookie nor stored key renders `#modkey-card`; submitting `#modkey-input` via `#modkey-submit` boots the surface.
 - Opening `/m/<code>` with a wrong stored key renders `#modkey-card` with toast "Couldn't load session — re-enter the moderator key."
+- With `#modkey-card` showing, `#title` reads "Session <code>", `header.top .meta` and the Sessions breadcrumb are hidden, and the card's text does not mention `#k=` (`test_uc_m_01_key_gate_shows_no_session_chrome`).
+- With `#modkey-card` showing, going to `/m/<code>#k=<mod_key>` in the same tab boots the moderator surface (`test_uc_m_01_moderator_link_pasted_into_an_open_tab`).
 - `#moderator-breadcrumbs` shows Sessions → session title. The Sessions link targets `/`; the session title is the current page. The adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
 - The header links to the session's other views: `#participant-link` (`/s/<code>`) and `#projector-link` (`/p/<code>`). A delegate moderator does not see the Sessions breadcrumb, which only an admin can use (`test_uc_m_views_links_for_a_delegate`).
 
@@ -1113,6 +1168,7 @@ an integer returns `400 "<name> must be a whole number from 1 to
 
 **Tests (UI)**
 - On `/m/<code>`, when status is `planning`, `#lifecycle-actions` contains Start session; clicking it flips `#session-status` to `.badge-live`.
+- `#lifecycle-hint` uses the same words as the status badge: "Not started yet. Start it when the audience is ready." while `planning` (`test_uc_m_02_hint_matches_the_badge`).
 - When status is `live`, `#lifecycle-actions` contains End session; clicking triggers native `confirm()`, then on OK flips `#session-status` to `.badge-ended`.
 
 ### UC-M-03: Queue a quiz onto the session
@@ -1148,8 +1204,8 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - With `{"quiz_id": <invalid draft>, "publish": true}` → `400` with the publish validation message (e.g. `"Quiz needs at least one question"`); the quiz stays `draft` and no run exists.
 - With `{"quiz_id": <draft>, "publish": true}` and only a valid `X-Mod-Key` → `403 "Only the admin can publish a draft quiz"`; the quiz stays `draft`.
 - With `{"quiz_id": <ready_id>, "publish": true}` and only a valid `X-Mod-Key` → `200` (nothing to publish).
-- `POST /api/sessions/{code}/quiz_runs` with an unknown quiz_id → `404 "quiz not found"`.
-- Quiz owned by another admin → `404 "quiz not found"`.
+- `POST /api/sessions/{code}/quiz_runs` with an unknown quiz_id → `404 "Quiz not found"`.
+- Quiz owned by another admin → `404 "Quiz not found"`.
 - `POST /api/sessions/{code}/quiz_runs` on an `ended` session → `400 "Session has ended"`.
 - With no auth → `403`.
 - Success broadcasts `{type: "quiz_run_new"}`.
@@ -1168,6 +1224,7 @@ it in `#quiz-runs`.
 **Tests (UI)**
 - On `/m/<code>` as a delegate (mod_key only), `#quiz-select` lists only ready quizzes (drafts filtered).
 - On `/m/<code>` as the admin owner, `#quiz-select` lists ready quizzes and draft quizzes, with drafts labelled "draft".
+- Each option counts questions in correct English: "(1 question)", "(2 questions)" (`test_uc_m_03_picker_counts_questions_in_words`).
 - On `/m/<code>` as a delegate, a Ready quiz whose only question was deleted is a disabled option labelled "needs fixing in the quiz library" (`test_uc_m_03_needs_fixing_quiz_is_disabled_in_picker`).
 - Selecting a quiz and clicking `#add-quiz-btn` appends a queued row to `#quiz-runs` with `.badge-queued`.
 - On a `live` session, `#add-quiz-btn` is visible without opening Set up.
@@ -1359,6 +1416,7 @@ recognizes which phase the current question is in.
 
 **Tests (UI)**
 - In moderator `#queries`, clicking Mark responded on a query moves it into the answered section.
+- Mark responded is a secondary button, not `.primary`: with one per row, a primary on each would break UX.md §10's one primary per card (`test_uc_m_09_removed_question_offers_only_restore`).
 - Reopen on an answered query moves it back to the unanswered section.
 - With the caret in a query's response box, a vote from another participant redraws the list; the box keeps focus and the keystrokes typed before and after the vote all land in it (`test_uc_m_08_typing_survives_live_refresh`).
 
@@ -1375,13 +1433,13 @@ recognizes which phase the current question is in.
 - `POST /api/sessions/{code}/queries/{qid}/remove` with `{}` → `200 {ok: true}` and sets `removed_at`. Auth: mod-key OR admin cookie.
 - `POST .../remove` with `{"removed": false}` → clears `removed_at` (Restore).
 - After removal, `GET /api/sessions/{code}/queries` as a participant excludes the removed query; as moderator, includes it with `removed: true`.
-- `POST .../vote` on a removed query (as participant) → `404`.
+- `POST .../vote` on a removed query (as participant) → `404 "Question not found"`, which the participant page shows as received (`test_uc_m_09_vote_on_removed_question_names_it`).
 - Broadcasts `{type: "query_removed"}`.
 - With no auth → `403`.
 - **Hard delete is owner-only**: `DELETE /api/sessions/{code}/queries/{qid}` requires admin cookie. A delegated `mod_key` → `401`. (Soft-remove above remains mod-or-owner.)
 
 **Tests (UI)**
-- In moderator `#queries`, clicking Remove on a query marks it visually removed (still visible to moderator) with a Restore action.
+- In moderator `#queries`, clicking Remove on a query marks it visually removed (still visible to moderator) with a Restore action. A removed question offers only Restore: no Mark responded, Update response, or Reopen, which the hidden state makes useless (UX.md §16) (`test_uc_m_09_removed_question_offers_only_restore`).
 - Participant tab refreshes via WS and the query disappears from their list.
 
 ### UC-M-10: Live participant count
@@ -1624,7 +1682,7 @@ once something is saved. Every field is optional:
 - Broadcasts `{type: "participant"}` on success.
 - All eight text fields round-trip through `PATCH` and `GET .../me` with surrounding whitespace trimmed; blank values become `null` (`test_uc_p_03_profile_fields_round_trip`, `test_uc_p_03_profile_blank_fields_become_null`).
 - `POST .../me/photo` with a PNG → `200` with `photo_url` under `/uploads/`; `GET .../me` returns it; `PATCH` with `{"photo_url": null}` clears it (`test_uc_p_03_profile_photo_upload_and_clear`).
-- `POST .../me/photo` with an `.svg` file → `400 "unsupported image type"` (`test_uc_p_03_profile_photo_rejects_unsupported_type`).
+- `POST .../me/photo` with an `.svg` file → `400 "Images must be PNG, JPEG, GIF or WebP"` (`test_uc_p_03_profile_photo_rejects_unsupported_type`).
 - `PATCH` with `{"photo_url": "https://example.com/avatar.png"}` → `400 "photo must be uploaded"` (`test_uc_p_03_profile_photo_url_cannot_be_set_directly`).
 - Uploading a second photograph deletes the first one's file (its URL → `404`); clearing deletes the second (`test_uc_p_03_replaced_or_cleared_photo_file_is_deleted`).
 - `PATCH` with `linkedin_url` set to `javascript:alert(1)`, `data:text/html,x` or `www.linkedin.com/in/x` → `400 "LinkedIn profile must start with http:// or https://"`, and the stored value is unchanged; `HTTPS://www.linkedin.com/in/x` and `http://…` are accepted (`test_uc_p_03_linkedin_url_must_be_web_address`).
@@ -1714,7 +1772,7 @@ once something is saved. Every field is optional:
 
 **Tests (UI)**
 - On `/s/<CODE>`, `#queries` lists visible (non-removed) queries; unresponded appear above responded, ties broken by `vote_count` descending. This sort is performed by the participant page's JS, not the API.
-- The participant's own queries are styled with a "you" marker; voted queries show the `.voted` vote-button state.
+- The participant's own queries show the words "Your question" (`.mine-marker`), on that participant's device only; other people's queries show none. Voted queries show the `.voted` vote-button state (`test_uc_p_06_own_questions_say_your_question`).
 
 ### UC-P-07: See live quiz
 
@@ -1775,10 +1833,11 @@ once something is saved. Every field is optional:
 - Broadcasts `{type: "quiz_submission"}` on success.
 
 **Tests (UI)**
-- On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive; clicking **Submit answer** POSTs and toasts. The Submit button is **always enabled** (a disabled button reads as broken) — submitting with no selection shows a "Pick an answer first" toast instead of a no-op; a "Pick an answer, then Submit." hint shows until one is chosen. (The button reads "Submit answer", then "Update answer" after a prior submission; tests locate it via `#quiz-body button.primary`, not its text.)
+- On `/s/<CODE>` with a single-choice question live, clicking an answer makes selection exclusive; clicking **Submit answer** POSTs and the inline note changes to "Your answer is recorded." (no toast: the note sits beside the button). The Submit button is **always enabled** (a disabled button reads as broken) — submitting with no selection shows a "Pick an answer first" toast instead of a no-op; a "Pick an answer, then Submit." hint shows until one is chosen. (The button reads "Submit answer", then "Update answer" after a prior submission; tests locate it via `#quiz-body button.primary`, not its text.)
 - With multi-choice, clicking answers toggles each independently.
 - After moderator reveals, the answer inputs become disabled.
 - A chosen answer is marked by more than a border tint: it shows a ✓ and the word "Selected" (after reveal, "Your answer"); unchosen answers show neither.
+- After reveal, a chosen answer that is wrong shows ✗ (not ✓) and the words "Your answer · wrong", so the result doesn't depend on the red border alone; a chosen correct answer keeps ✓, "Your answer", and "✓ Correct" (`test_uc_p_09_wrong_pick_says_wrong_in_words`).
 
 ### UC-P-09: See results on Reveal (participant)
 
@@ -1797,7 +1856,7 @@ once something is saved. Every field is optional:
 
 **Tests (UI)**
 - On `/s/<CODE>`, after reveal `#quiz-body` shows each answer with a bar scaled to vote share and a correctness marker.
-- The participant's selected answer is visually marked correct or wrong.
+- The participant's selected answer is marked correct or wrong in words as well as colour (UC-P-08's last bullet).
 - After the moderator finishes the quiz, `#quiz-card` is hidden on the participant page (final results live on the projector — UC-D-06).
 
 ### UC-P-10: Share QR with neighbor
@@ -1829,6 +1888,7 @@ once something is saved. Every field is optional:
 **Tests (UI)**
 - On `/s/<CODE>`, after the moderator ends the session, the participant view (via WS) hides `#ask-card` and shows `#ended-card` with the "Session ended" message.
 - Existing queries in `#queries` remain visible, and `#quiz-card` stays hidden.
+- On an ended session the vote counts are plain text, not buttons (`#queries .vote-btn` are not `<button>`s), because voting is closed (`test_uc_p_11_ended_session_votes_are_not_buttons`).
 - On an ended session with no questions, `#queries` reads "No questions were asked." (not an invitation to ask).
 - The participant section links show only sections that are visible: on an ended session with no quiz and rating closed, the Ask, Quiz, and Rating links are hidden; Profile and Questions remain.
 
@@ -1982,6 +2042,7 @@ session.
 - `#queries` shows up to ~8 unanswered queries sorted by vote desc.
 - Live or closed quiz question appears in `#quiz-section` (`#quiz-body`).
 - The page has no `#ask-card`, no `#login-card`, no `#sessions-card` (no chrome).
+- Everything the room reads is display type, at least 20 px at 1920×1080 (UX.md §2): the quiz's "question n/N" line, the respondent count, "Next up:", question authors, and the "votes" label; the lobby's quiz title is in the main text colour, not uppercase (`test_uc_d_01_room_text_is_display_size`).
 
 ### UC-D-02: QR lightbox
 
@@ -2085,12 +2146,13 @@ hidden entirely.
 - **Given** a QuizRun is `queued` and none is `live`
 - **Then** the projector replaces the quiz card body with a lobby
   view: "Next up:" + quiz title in display type + a prompt to scan
-  the participant URL QR
+  the participant URL QR ("Scan the code to join — the quiz starts
+  soon."). The room screen doesn't mention the moderator's controls
 - **And** when the moderator clicks Start, the projector flips to
   UC-D-06 answering phase via WebSocket broadcast
 
 **Tests (UI)**
-- On `/p/<CODE>` with a `queued` run and no `live` run, `#quiz-body` shows "Next up:", the quiz title in display type, and a prompt to scan the participant URL QR.
+- On `/p/<CODE>` with a `queued` run and no `live` run, `#quiz-body` shows "Next up:", the quiz title in display type, and the prompt "Scan the code to join — the quiz starts soon.", with no mention of the moderator.
 - After moderator starts the run, `#quiz-body` transitions (via WS) to the answering phase (UC-D-06).
 
 ### UC-D-08: Live answer counts variant
@@ -2184,6 +2246,7 @@ are the rules every user-facing UC silently relies on.
 **Tests (UI)**
 - With `/s/<CODE>`, `/m/<CODE>`, and `/p/<CODE>` open, deleting the session shows `#session-deleted` reading "This session was deleted." on each page and no page opens another socket (`test_uc_x_01_session_deleted_shows_final_state`).
 - With the server's frames to the page swallowed after the socket opens, the page reconnects (a second socket opens) once its silence timeout passes; test builds shorten the 25 s / 60 s timings through `localStorage` `prashna:keepalive-ms` (`test_uc_x_01_silent_socket_reconnects`).
+- A refetch that a live update triggers and that fails shows the server's message in an error toast instead of failing silently, on the participant page and the session page (UX.md §8); the page raises no unhandled error (`test_uc_x_01_failed_live_refetch_shows_an_error`).
 
 ### UC-X-02: WebSocket upgrade rejections
 
@@ -2250,7 +2313,7 @@ Two tiers, applied by one middleware:
 
 **Tests (API)**
 - See UC-A-20 and UC-P-03 tests; in addition:
-- `POST /api/uploads` with `.svg` → `400 "unsupported image type"`.
+- `POST /api/uploads` with `.svg` → `400 "Images must be PNG, JPEG, GIF or WebP"`.
 - `POST /api/uploads` two times with the same source file → two distinct UUID filenames on disk.
 - Stored filename matches `^[0-9a-f]{32}\.(png|jpg|jpeg|gif|webp)$`.
 - Without signing in, a 5 MB URL-encoded body (`a&a&…` and `a;a;…`) to `POST /api/uploads` and to `POST .../me/photo` returns `400`, `401` or `422` in under 1 second, and no file is stored (`test_uc_x_04_urlencoded_flood_is_refused_quickly`).
@@ -2588,7 +2651,7 @@ out and signed in, `/quizzes` (list, editor open, run results open),
 - a visible control without an accessible name (label, `aria-label`, `title`, or text);
 - at 390 and 360 px: a visible text input, text area, or select under 16 px;
 - at 1280 px: a visible button (other than answer options, rating stars, and vote buttons) whose height is not 40, 32, or 24 px (UC-X-13), or a `.profile-cta` that isn't 40 px;
-- in a touch-emulating context at 390 px: a visible `button`, `details.menu > summary`, or `.section-links a` under 32 px tall.
+- in a touch-emulating context at 390 px: a visible `button`, `details.menu > summary`, `.section-links a`, `.breadcrumbs a`, `header.top a`, table row action link (`.ctable td.actions a`), or menu link (`a.menu-link`) under 32 px tall. Links inside a sentence are exempt, as in WCAG 2.2.
 
 ### UC-X-13: One button size scale
 
@@ -2603,8 +2666,8 @@ out and signed in, `/quizzes` (list, editor open, run results open),
 
 ### UC-X-14: One answer-option component
 
-The participant page, the session page, and the projector draw answer
-options with one shared renderer (`answerOption()` in `common.ts`,
+The participant page, the session page, the projector, and the quiz-run
+report (UC-A-24) draw answer options with one shared renderer (`answerOption()` in `common.ts`,
 [UX.md §4](UX.md#answer-options)), so a fix or style change reaches all
 three. Surfaces differ only in what
 they pass: whether the viewer can pick, whether counts show, and whether
@@ -2614,13 +2677,14 @@ correctness is revealed.
 - **Then** the correct answer shows "✓ Correct" as text (not only a green
   border), and counts read "<n> (<p>%)" with a proportional bar
 - **And** only the participant page's options are buttons; a chosen
-  answer there shows a ✓ and "Selected" / "Your answer" (UC-P-08)
+  answer there shows a ✓ and "Selected" / "Your answer", or after
+  reveal, when wrong, a ✗ and "Your answer · wrong" (UC-P-08)
 
 **Tests (UI)**
 - After reveal, `/s/<code>` (participant), `/m/<code>` (session page), and `/p/<code>` (projector) each show exactly one `.option.correct` containing `.opt-correct` with text "✓ Correct", and every `.opt-pct` matches `^\d+ \(\d+%\)$`.
 
 **Tests (static)**
-- `frontend/src/participant.ts`, `moderator.ts`, and `projector.ts` don't build `.option` elements themselves; they call `answerOption()`.
+- `frontend/src/participant.ts`, `moderator.ts`, `projector.ts`, and `quizzes.ts` don't build `.option` elements themselves; they call `answerOption()`.
 
 ### UC-X-15: Install and run with one command
 

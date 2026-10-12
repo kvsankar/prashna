@@ -41,7 +41,7 @@
   <main class="wide">
     <section hidden class="card" id="modkey-card">
       <div class="card-head"><h2>Moderator key required</h2></div>
-      <p class="muted small">Paste the moderator key for session <strong id="modkey-code"></strong>. (Find it in the moderator URL after <code>#k=</code>; the session owner copies that URL with <em>Share moderator URL</em> on the session page.)</p>
+      <p class="muted small">To moderate session <strong id="modkey-code"></strong>, ask the host for the moderator link and open it, or paste the moderator key below. If this is your session, <a href="/">sign in</a>.</p>
       <div class="field"><label for="modkey-input">Moderator key</label><input id="modkey-input" aria-label="Moderator key" placeholder="e.g. a1b2c3d4e5f6g7h8"></div>
       <button class="primary" id="modkey-submit">Continue</button>
     </section>
@@ -62,12 +62,12 @@
 
       <section class="card" id="invite-card">
         <div class="card-head"><h2>Invite participants</h2></div>
-        <p class="muted small m-0 mb-2">
-          Override the base URL if this server is reached via a different public address (e.g. a reverse proxy, LAN IP, or tunnel). Leave blank to use the tunnel's address when Prashna runs with a tunnel, otherwise the address shown in the moderator's address bar.
+        <p class="muted small m-0 mb-2" id="base-url-help">
+          Use a different web address for the join link, for example when people reach this server through a proxy or a tunnel. Leave it blank to use the tunnel's address when Prashna runs with one, or else this page's address.
         </p>
         <div class="field row gap">
           <label for="base-url" class="small muted mr-1">Base URL</label>
-          <input id="base-url" class="inline grow" aria-label="Participant base URL" placeholder="e.g. https://prashna.sankara.net">
+          <input id="base-url" class="inline grow" aria-label="Participant base URL" placeholder="e.g. https://quiz.example.org">
           <button id="base-url-clear" class="ghost small">Use default</button>
         </div>
         <div class="row gap align-start">

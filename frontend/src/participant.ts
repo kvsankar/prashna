@@ -28,7 +28,10 @@ function applySession(s: Session, refreshFeedback = true): void {
   $("#title").textContent = s.title;
   $("#code").textContent = "Code " + CODE;
   $("#participant-breadcrumb-session").textContent = s.title;
+  const wasEnded = sessionEnded;
   sessionEnded = s.status === "ended";
+  // Vote buttons become plain counts when the session ends (UC-P-11).
+  if (wasEnded !== sessionEnded) renderQueries();
   const ratingOpened = s.feedback_enabled && !feedbackEnabled;
   feedbackEnabled = s.feedback_enabled;
   setVisible($("#ask-card"), !sessionEnded);
@@ -129,8 +132,6 @@ function currentProfile(): Omit<ParticipantProfile, "id" | "photo_url"> {
 }
 
 async function saveProfile(): Promise<void> {
-  const button = $<HTMLButtonElement>("#profile-submit");
-  button.disabled = true;
   $("#profile-status").textContent = "Saving...";
   try {
     me = await api<ParticipantProfile>(`/api/sessions/${CODE}/me`, { method: "PATCH", body: currentProfile() });
@@ -148,8 +149,6 @@ async function saveProfile(): Promise<void> {
   } catch (e) {
     $("#profile-status").textContent = "Save failed";
     errorToast((e as Error).message);
-  } finally {
-    button.disabled = false;
   }
 }
 
@@ -212,10 +211,8 @@ $<HTMLButtonElement>("#my-photo-clear").addEventListener(
   "click",
   () => void clearProfilePhoto(),
 );
-$<HTMLButtonElement>("#profile-submit").addEventListener(
-  "click",
-  () => void saveProfile(),
-);
+// Guarded (UX.md §10): the photograph upload inside it is not idempotent.
+guardClick($<HTMLButtonElement>("#profile-submit"), saveProfile);
 
 async function loadQueries(): Promise<void> {
   const seq = ++latestQueriesSeq;
@@ -245,8 +242,32 @@ function renderQueries(): void {
 }
 
 function renderQuery(q: Query): HTMLElement {
+  // Voting is closed once the session ends (UC-P-11): show the count as
+  // text, not a button that would only answer "Session has ended".
+  const voteBox = sessionEnded
+    ? el("div", { class: "vote-btn" + (q.voted ? " voted" : ""), "aria-label": `${q.vote_count} votes` },
+      el("div", { class: "arrow", "aria-hidden": "true" }, "▲"),
+      el("div", { class: "count" }, String(q.vote_count)))
+    : voteButton(q);
+  // "Your question" shows only on the asker's own device (UC-P-06); the
+  // question stays anonymous to everyone else.
+  const meta = [
+    q.author_name ? "— " + q.author_name : null,
+    q.mine ? el("span", { class: "mine-marker" }, "Your question") : null,
+  ].filter(Boolean) as (string | HTMLElement)[];
+  const body = el("div", { class: "body" },
+    el("div", { class: "text" }, q.text),
+    meta.length ? el("div", { class: "small muted" }, meta.flatMap((m, i) => (i ? [" · ", m] : [m]))) : null,
+    q.responded && q.response_text
+      ? el("div", { class: "answer" }, el("strong", {}, "Response: "), q.response_text)
+      : null,
+  );
+  return el("div", { class: "question" + (q.responded ? " answered" : "") }, voteBox, body);
+}
+
+function voteButton(q: Query): HTMLElement {
   // Guarded: a vote toggles, so a double tap would vote and un-vote (UC-P-05).
-  const voteBtn = guardClick(el("button", {
+  return guardClick(el("button", {
     class: "vote-btn" + (q.voted ? " voted" : ""),
     "aria-pressed": String(!!q.voted),
     "aria-label": q.voted ? `Remove vote (currently ${q.vote_count})` : `Upvote (currently ${q.vote_count})`,
@@ -254,14 +275,6 @@ function renderQuery(q: Query): HTMLElement {
     el("div", { class: "arrow", "aria-hidden": "true" }, "▲"),
     el("div", { class: "count" }, String(q.vote_count)),
   ) as HTMLButtonElement, () => toggleVote(q.id));
-  const body = el("div", { class: "body" },
-    el("div", { class: "text" }, q.text),
-    q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
-    q.responded && q.response_text
-      ? el("div", { class: "answer" }, el("strong", {}, "Response: "), q.response_text)
-      : null,
-  );
-  return el("div", { class: "question" + (q.responded ? " answered" : "") }, voteBtn, body);
 }
 
 async function toggleVote(qid: number): Promise<void> {
@@ -300,7 +313,7 @@ async function askQuery(): Promise<void> {
     showNameBox.checked = false;
     syncAskName();
     $<HTMLTextAreaElement>("#query-text").value = "";
-    void loadQueries();
+    loadQueries().catch(reportError);
     toast("Question submitted");
   } catch (e) { errorToast((e as Error).message); }
 }
@@ -372,8 +385,9 @@ function renderQuiz(): void {
       correct: showCorrect && a.is_correct === true,
       wrong: showCorrect && selected && a.is_correct === false,
       selected,
-      // The choice is marked with a tick and words, not only a tint (UC-P-08).
-      chosenLabel: locked ? "Your answer" : "Selected",
+      // The choice is marked with a tick and words, not only a tint; after
+      // reveal a wrong pick says so in words too (UC-P-08).
+      chosenLabel: !locked ? "Selected" : (a.is_correct === false ? "Your answer · wrong" : "Your answer"),
       disabled: locked,
       onPick: () => {
         if (locked) return;
@@ -416,7 +430,7 @@ async function submitQuiz(): Promise<void> {
       method: "POST",
       body: { question_id: activeQuiz.current_question.id, answer_ids: [...pendingSelection] },
     });
-    void loadQuiz();
+    loadQuiz().catch(reportError);
   } catch (e) { errorToast((e as Error).message); }
 }
 
@@ -574,12 +588,19 @@ $("#fb-went-well").addEventListener("input", markFeedbackDirty);
 $("#fb-to-improve").addEventListener("input", markFeedbackDirty);
 guardClick($<HTMLButtonElement>("#fb-submit"), saveFeedback);
 
-function refreshAll(): void { void loadSession(); void loadQueries(); void loadQuiz(); }
+// A refetch a live update triggers is never silent when it fails (UX.md §8).
+function reportError(error: unknown): void { errorToast((error as Error).message); }
+
+function refreshAll(): void {
+  loadSession().catch(reportError);
+  loadQueries().catch(reportError);
+  loadQuiz().catch(reportError);
+}
 
 let quizCountTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleQuizRefresh(): void {
   if (quizCountTimer) return;
-  quizCountTimer = setTimeout(() => { quizCountTimer = null; void loadQuiz(); }, 1000);
+  quizCountTimer = setTimeout(() => { quizCountTimer = null; loadQuiz().catch(reportError); }, 1000);
 }
 
 /** Links to the session's other views, for its owner or a delegate moderator
@@ -599,13 +620,13 @@ function onLive(msg: LiveMessage): void {
   switch (msg.type) {
     case "query_new": case "query_vote": case "query_responded":
     case "query_removed": case "query_deleted":
-      void loadQueries(); break;
+      loadQueries().catch(reportError); break;
     case "quiz_run_new": case "quiz_run_update": case "quiz_run_deleted":
-      void loadQuiz(); break;
+      loadQuiz().catch(reportError); break;
     case "session_state":
-      void loadSession(); void loadQuiz(); break;
+      loadSession().catch(reportError); loadQuiz().catch(reportError); break;
     case "feedback_state":
-      void loadSession(); break;
+      loadSession().catch(reportError); break;
     case "quiz_submission":
       if (activeQuiz && activeQuiz.results) scheduleQuizRefresh(); break;
     case "feedback": case "participant":

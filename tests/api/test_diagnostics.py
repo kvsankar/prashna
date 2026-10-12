@@ -300,3 +300,60 @@ def test_bridge_logs_nothing_on_an_up_to_date_database(tmp_path, caplog):
     _apply_additive_migrations(bind=engine)
 
     assert "db.migration" not in _events(caplog)
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__(logging.INFO)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(record.getMessage())
+
+
+def test_diagnostic_is_written_once_through_a_configured_handler(monkeypatch, capsys):
+    """B-34: with a handler configured (the compose command's basicConfig),
+    an event is one line through it, not repeated on standard error."""
+    from prashna import diagnostics
+
+    root = logging.getLogger()
+    handler = _ListHandler()
+    monkeypatch.setattr(root, "handlers", [handler])
+    monkeypatch.setattr(diagnostics.logger, "handlers", [])
+    monkeypatch.setattr(diagnostics.logger, "propagate", True)
+    monkeypatch.setattr(diagnostics, "_log_file", None)
+    diagnostics.log_diagnostic("once.test", outcome="success")
+    written = [line for line in handler.lines if '"event":"once.test"' in line]
+    assert len(written) == 1, handler.lines
+    assert "once.test" not in capsys.readouterr().err
+
+
+def test_diagnostic_prints_when_no_handler_is_configured(monkeypatch, capsys):
+    """B-34: with no handler anywhere (plain uvicorn), the event is printed
+    to standard error once."""
+    from prashna import diagnostics
+
+    monkeypatch.setattr(logging.getLogger(), "handlers", [])
+    monkeypatch.setattr(diagnostics.logger, "handlers", [])
+    monkeypatch.setattr(diagnostics.logger, "propagate", True)
+    monkeypatch.setattr(diagnostics, "_log_file", None)
+    diagnostics.log_diagnostic("alone.test", outcome="success")
+    err = capsys.readouterr().err
+    assert err.count('"event":"alone.test"') == 1, err
+
+
+def test_session_lifecycle_events_carry_the_admin(admin_client, make_session, caplog):
+    """B-34: start, end and the rating toggle by the signed-in admin carry
+    actor_id; the same actions by a delegate carry none."""
+    caplog.set_level(logging.INFO, logger="prashna")
+    s = make_session()
+    admin_client.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True})
+    admin_client.post(f"/api/sessions/{s['code']}/start")
+    admin_client.post(f"/api/sessions/{s['code']}/end")
+    lifecycle = [
+        record.__dict__ for record in caplog.records
+        if record.__dict__.get("diag_event") == "session.lifecycle"
+        and record.__dict__.get("diag_action") in ("start", "end", "feedback_enabled")
+    ]
+    assert {r["diag_action"] for r in lifecycle} == {"start", "end", "feedback_enabled"}, lifecycle
+    assert all(isinstance(r.get("diag_actor_id"), int) for r in lifecycle), lifecycle

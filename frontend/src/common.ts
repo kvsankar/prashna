@@ -54,7 +54,7 @@ export interface AnswerOptionView {
   count?: number;
   /** Revealed correct answer: "✓ Correct" in text, not only colour. */
   correct?: boolean;
-  /** Revealed, and the viewer picked this wrong answer. */
+  /** Revealed, and the viewer picked this wrong answer: marked ✗, not ✓. */
   wrong?: boolean;
   /** Pickable options (participant) are buttons. */
   onPick?: () => void;
@@ -84,7 +84,8 @@ export function answerOption(v: AnswerOptionView): HTMLElement {
     bar.style.setProperty("--share", String(v.share));
     node.appendChild(bar);
   }
-  if (pickable) node.appendChild(el("span", { class: "opt-mark", "aria-hidden": "true" }, v.selected ? "✓" : ""));
+  const mark = v.selected ? (v.wrong ? "✗" : "✓") : "";
+  if (pickable) node.appendChild(el("span", { class: "opt-mark", "aria-hidden": "true" }, mark));
   if (v.imageUrl) node.appendChild(el("img", { class: "opt-img", src: v.imageUrl, alt: "" }));
   node.appendChild(el("div", { class: "opt-text" }, v.text));
   if (v.selected && v.chosenLabel) node.appendChild(el("span", { class: "opt-chosen" }, v.chosenLabel));
@@ -427,6 +428,8 @@ export const STATUS_LABELS: Record<string, string> = {
   ended: "Ended",
   queued: "Queued",
   closed: "Closed",
+  draft: "Draft",
+  ready: "Ready",
 };
 export const statusLabel = (s: string): string => STATUS_LABELS[s] ?? s;
 

@@ -65,10 +65,12 @@ def log_diagnostic(event: str, **fields) -> None:
                 out.write(message + "\n")
             return
         _ensure_runtime_logger()
-        logger.info(message, extra=extra)
-        uvicorn_logger = logging.getLogger("uvicorn.error")
-        if uvicorn_logger.handlers:
-            uvicorn_logger.info(message)
-        print(message, file=sys.stderr, flush=True)
+        # Write each event once: through a configured handler (uvicorn's,
+        # or the root logger's from basicConfig) when there is one, and to
+        # standard error only when nothing would show it.
+        if logger.hasHandlers():
+            logger.info(message, extra=extra)
+        else:
+            print(message, file=sys.stderr, flush=True)
     except Exception:
         pass

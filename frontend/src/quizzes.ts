@@ -1,10 +1,13 @@
-import { $, api, bindMenuDismiss, el, errorToast, exportLinks, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
+import { $, answerOption, api, bindMenuDismiss, el, errorToast, exportLinks, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type {
   EditorAnswer, EditorQuestion, QuizEditor, QuizRun, QuizRunResults, QuizRunRow, QuizSummary, SessionRow,
 } from "./types";
 
 let editing: QuizEditor | null = null;
 let editingId: number | null = null;
+// Why the quiz open in the editor can't be added to a session, from the
+// library list (UC-A-10 `problem`); refreshed whenever the list reloads.
+let editorProblem: string | null = null;
 let resultsId: number | null = null;
 type RunView = "flat" | "quiz" | "version" | "session";
 const RUN_VIEWS: RunView[] = ["flat", "quiz", "version", "session"];
@@ -24,12 +27,16 @@ async function loadQuizzes(): Promise<void> {
     return;
   }
   tbody.innerHTML = "";
+  if (editingId !== null) {
+    editorProblem = quizzes.find((q) => q.id === editingId)?.problem ?? null;
+    renderEditorProblem();
+  }
   for (const q of quizzes) {
     const isReady = q.status === "ready";
     const tr = el("tr", { class: "rowable" + (editingId === q.id ? " selected" : "") });
     tr.appendChild(el("td", {}, q.title));
     tr.appendChild(el("td", {},
-      el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft"),
+      el("span", { class: "badge badge-" + q.status }, statusLabel(q.status)),
       // An edit broke a publish rule; the quiz stays Ready (UC-A-10).
       q.problem ? [" ", el("span", { class: "badge badge-needs-fixing", title: q.problem }, "Needs fixing")] : null));
     tr.appendChild(el("td", { class: "num muted" }, String(q.question_count)));
@@ -183,11 +190,11 @@ function renderRunTable(rows: QuizRunRow[], tbody?: HTMLTableSectionElement): HT
   const table = el("table", { class: "ctable" }) as HTMLTableElement;
   table.appendChild(el("thead", {}, el("tr", {},
     el("th", {}, "Quiz"),
-    el("th", {}, "Ver"),
+    el("th", {}, "Version"),
     el("th", {}, "In session"),
     el("th", {}, "Status"),
     el("th", { class: "num" }, "Progress"),
-    el("th", { class: "num" }, "Resp."),
+    el("th", { class: "num" }, "Responses"),
     el("th", {}, "Created"),
   )));
   const body = document.createElement("tbody");
@@ -229,9 +236,9 @@ function renderQSessions(): void {
   const flat = $("#qs-flat");
   const grouped = $("#qs-groups");
   const summaries: Record<RunView, string> = {
-    flat: "Each row is one playthrough of a quiz inside a session.",
-    quiz: "Runs are grouped by reusable quiz, across versions and sessions.",
-    version: "Runs are grouped by the immutable quiz version used for each playthrough.",
+    flat: "Each row is one time a quiz was played in a session.",
+    quiz: "Runs are grouped by quiz, across versions and sessions.",
+    version: "Runs are grouped by the version of the quiz they played; editing a quiz makes a new version.",
     session: "Runs are grouped by the session in which they were played.",
   };
   $("#qs-view-summary").textContent = summaries[runView];
@@ -317,7 +324,7 @@ $("#results-close").addEventListener("click", closeResults);
 async function createQuiz(): Promise<void> {
   const titleInp = $<HTMLInputElement>("#new-quiz-title");
   const title = titleInp.value.trim();
-  if (!title) return;
+  if (!title) { errorToast("Quiz title is required"); titleInp.focus(); return; }
   try {
     const q = await api<QuizSummary>("/api/quizzes", { method: "POST", body: { title } });
     titleInp.value = "";
@@ -371,6 +378,7 @@ async function openQuizDetail(id: number): Promise<void> {
   try {
     const opening = editingId !== id;
     editing = await api<QuizEditor>(`/api/quizzes/${id}?include_correct=true`);
+    if (opening) editorProblem = null;
     editingId = id;
     showEditor(`Editing quiz: ${editing.title}`);
     renderEditor();
@@ -384,21 +392,31 @@ function renderEditor(): void {
   if (!quiz) return;
   const body = $("#editor-body");
   body.innerHTML = "";
-  const isReady = quiz.status === "ready";
+  // The state shows in the detail header as in the row (UX.md §15),
+  // including Needs fixing after an edit broke a publish rule (UC-A-10).
   body.appendChild(el("div", { class: "row gap" },
-    el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft")));
+    el("span", { class: "badge badge-" + quiz.status }, statusLabel(quiz.status)),
+    el("span", { id: "editor-needs-fixing", class: "badge badge-needs-fixing", hidden: true }, "Needs fixing")));
+  body.appendChild(el("div", { id: "editor-problem", class: "info-banner mt-2", hidden: true }));
+  renderEditorProblem();
 
   body.appendChild(el("div", { class: "small muted mb-2" },
-    "Edits are versioned at next Launch — they don't affect past runs."));
+    "Changes apply the next time you add this quiz to a session; past results stay as they were."));
 
   const titleInp = el("input", { value: quiz.title, class: "inline", "aria-label": "Quiz title" }) as HTMLInputElement;
   titleInp.addEventListener("change", async () => {
-    const r = await api<{ status?: string }>(`/api/quizzes/${quiz.id}`, { method: "PATCH", body: { title: titleInp.value } });
-    quiz.title = titleInp.value;
-    if (r && r.status) quiz.status = r.status;
-    void loadQuizzes();
-    renderEditor();
-    $("#editor-title").textContent = `Editing quiz: ${quiz.title}`;
+    try {
+      const r = await api<{ status?: string }>(`/api/quizzes/${quiz.id}`, { method: "PATCH", body: { title: titleInp.value } });
+      quiz.title = titleInp.value.trim();
+      if (r && r.status) quiz.status = r.status;
+      void loadQuizzes();
+      renderEditor();
+      $("#editor-title").textContent = `Editing quiz: ${quiz.title}`;
+    } catch (e) {
+      // Refused (for example an empty title): show the saved title again.
+      titleInp.value = quiz.title;
+      errorToast((e as Error).message);
+    }
   });
   body.appendChild(el("div", { class: "row gap field-row" },
     el("label", { class: "small muted" }, "Title"), titleInp));
@@ -416,6 +434,16 @@ function renderEditor(): void {
   body.appendChild(list);
   const count = quiz.questions.length;
   body.appendChild(insertPoint(count, count ? "Add a question at the end" : "Add the first question"));
+}
+
+/** Show why the open quiz can't be added to a session, if it can't. */
+function renderEditorProblem(): void {
+  const banner = document.getElementById("editor-problem");
+  const badge = document.getElementById("editor-needs-fixing");
+  if (!banner || !badge) return;
+  banner.textContent = editorProblem ? `Can't be added to a session yet: ${editorProblem}` : "";
+  setVisible(banner, Boolean(editorProblem));
+  setVisible(badge, Boolean(editorProblem));
 }
 
 function insertPoint(position: number, label: string): HTMLButtonElement {
@@ -436,7 +464,7 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
 
   const typeSel = el("select", { class: "inline narrow", "aria-label": `Question ${idx + 1} type` }) as HTMLSelectElement;
   for (const t of ["single", "multi"]) {
-    const o = el("option", { value: t }, t === "single" ? "Single" : "Multiple");
+    const o = el("option", { value: t }, t === "single" ? "Single choice" : "Multiple choice");
     if (qq.qtype === t) o.setAttribute("selected", "");
     typeSel.appendChild(o);
   }
@@ -451,7 +479,7 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
   const pollLabel = el("label", {
     class: "poll-toggle small muted",
     title: "Poll — collect responses with no correct answer",
-  }, pollBox, "Poll");
+  }, pollBox, "Poll (no correct answer)");
 
   // Number by position so deletes leave no gaps (UC-A-28).
   const head = el("div", { class: "row gap question-head" },
@@ -460,7 +488,8 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
     ...moveButtons(ids, idx, "question", saveOrder),
     guardClick(el("button", { class: "danger ghost small" }, "Delete") as HTMLButtonElement, async () => {
       if (!confirm("Delete this question?")) return;
-      await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" });
+      try { await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" }); }
+      catch (e) { errorToast((e as Error).message); return; }
       void openQuizDetail(quizId);
     }));
   wrap.appendChild(head);
@@ -485,7 +514,8 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
   wrap.appendChild(guardClick(
     el("button", { class: "ghost small mt-1" }, "+ Answer") as HTMLButtonElement,
     async () => {
-      await api(`/api/quiz_questions/${qq.id}/answers`, { method: "POST", body: { text: "New answer" } });
+      try { await api(`/api/quiz_questions/${qq.id}/answers`, { method: "POST", body: { text: "New answer" } }); }
+      catch (e) { errorToast((e as Error).message); return; }
       void openQuizDetail(quizId);
     }));
   return wrap;
@@ -503,7 +533,8 @@ function renderAnswer(qq: EditorQuestion, op: EditorAnswer, idx: number): HTMLEl
     const correctBox = el("input", { type: "checkbox", "aria-label": `Answer ${idx + 1} is correct` }) as HTMLInputElement;
     if (op.is_correct) correctBox.setAttribute("checked", "");
     correctBox.addEventListener("change", () => void patchAnswer(op.id, { is_correct: correctBox.checked }));
-    row.appendChild(el("label", { class: "small", title: "Correct" }, correctBox));
+    // A visible word, not only a tooltip touch screens never show (UC-A-11).
+    row.appendChild(el("label", { class: "poll-toggle small" }, correctBox, "Correct"));
   }
   row.appendChild(txt);
   if (op.image_url) row.appendChild(el("img", { src: op.image_url, class: "thumb-sm", alt: "" }));
@@ -521,7 +552,8 @@ function renderAnswer(qq: EditorQuestion, op: EditorAnswer, idx: number): HTMLEl
   row.appendChild(guardClick(
     el("button", { class: "danger ghost small", "aria-label": "Delete answer" }, "✕") as HTMLButtonElement,
     async () => {
-      await api(`/api/quiz_answers/${op.id}`, { method: "DELETE" });
+      try { await api(`/api/quiz_answers/${op.id}`, { method: "DELETE" }); }
+      catch (e) { errorToast((e as Error).message); return; }
       void openQuizDetail(quizId);
     }));
   return row;
@@ -649,12 +681,17 @@ function imagePicker(hasImage: boolean, inputLabel: string, onFile: (file: File)
   return [button, input];
 }
 
+/** Upload through api(), so a refusal shows the server's reason and an
+ *  expired sign-in redirects to `/` (UC-A-20). */
 async function uploadImage(file: File): Promise<string | null> {
   const fd = new FormData();
   fd.append("file", file);
-  const r = await fetch("/api/uploads", { method: "POST", body: fd, credentials: "same-origin" });
-  if (!r.ok) { errorToast("Upload failed"); return null; }
-  return (await r.json() as { url: string }).url;
+  try {
+    return (await api<{ url: string }>("/api/uploads", { method: "POST", body: fd })).url;
+  } catch (e) {
+    errorToast((e as Error).message);
+    return null;
+  }
 }
 
 // ---------- quiz run results ----------
@@ -667,7 +704,7 @@ async function openQSDetail(id: number): Promise<void> {
     // The run's own export (UC-A-30), rebuilt for whichever run is open.
     document.getElementById("results-export")?.remove();
     $("#results-tools").prepend(exportMenu("results-export", `/api/quiz_runs/${id}/export`, "Export this quiz run"));
-    showResults(`Quiz session: ${r.quiz_title} in ${r.session_code}`);
+    showResults(`Quiz run: ${r.quiz_title} · ${r.session_title}`);
     renderResults(r);
     if (opening) revealCard($("#results-card"));
   } catch (e) { errorToast((e as Error).message); }
@@ -678,7 +715,8 @@ function renderResults(r: QuizRunResults): void {
   body.innerHTML = "";
   body.appendChild(el("div", { class: "row gap" },
     el("span", { class: "badge badge-" + r.status }, statusLabel(r.status)),
-    el("span", { class: "muted small" }, `${r.session_title} · `, el("code", { class: "small" }, r.session_code)),
+    el("span", { class: "muted small" }, `Version ${r.version_no} · ${r.session_title} · `,
+      el("code", { class: "small" }, r.session_code)),
     el("div", { class: "spacer" }),
     el("a", { href: `/m/${r.session_code}`, target: "_blank", class: "small" }, "Open moderator →")));
 
@@ -696,16 +734,11 @@ function renderResults(r: QuizRunResults): void {
       el("div", { class: "spacer" }),
       el("span", { class: "small muted" }, `${q.respondents} respondent${q.respondents === 1 ? "" : "s"}`)));
     if (q.image_url) card.appendChild(el("img", { src: q.image_url, class: "thumb mt-2" }));
+    // The shared answer row (UC-X-14): "✓ Correct" in words, "n (p%)".
     for (const op of q.answers) {
-      const pct = Math.round((op.count / max) * 100);
-      const optRow = el("div", { class: "result-opt" + (op.is_correct ? " correct" : "") });
-      const bar = el("div", { class: "result-bar" });
-      bar.style.setProperty("--share", String(pct / 100));
-      optRow.appendChild(bar);
-      optRow.appendChild(el("span", { class: "result-mark" }, op.is_correct ? "✓" : ""));
-      optRow.appendChild(el("span", { class: "result-text" }, op.text));
-      optRow.appendChild(el("span", { class: "result-num" }, `${op.count} · ${pct}%`));
-      card.appendChild(optRow);
+      card.appendChild(answerOption({
+        text: op.text, imageUrl: op.image_url, share: op.count / max, count: op.count, correct: op.is_correct,
+      }));
     }
     body.appendChild(card);
   }

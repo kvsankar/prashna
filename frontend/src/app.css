@@ -199,6 +199,7 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 }
 .option .opt-text { flex: 1; position: relative; z-index: 1; }
 .option .opt-mark { width: 1em; position: relative; z-index: 1; color: var(--accent-2); font-weight: var(--weight-bold); }
+.option.wrong .opt-mark, .option.wrong .opt-chosen { color: var(--bad); }
 .option .opt-correct { position: relative; z-index: 1; font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--good); white-space: nowrap; }
 .option .opt-chosen { position: relative; z-index: 1; font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--accent-2); white-space: nowrap; }
 .option .opt-pct { position: relative; z-index: 1; font-weight: var(--weight-semibold); color: var(--accent-2); }
@@ -214,8 +215,11 @@ details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 .proj .q-image { max-height: 360px; }
 /* The question as written: no inherited h2 uppercase/muted styling, so long
    questions stay readable from the back of the room (UC-D-06). */
-.proj .proj-lobby-title { font-size: var(--text-4xl); margin: var(--gap-related) 0 var(--gap-section); }
+.proj .proj-lobby-title { font-size: var(--text-4xl); margin: var(--gap-related) 0 var(--gap-section); color: var(--text); text-transform: none; letter-spacing: normal; }
 .proj .proj-question { font-size: var(--text-3xl); margin: var(--gap-group) 0; line-height: 1.25; color: var(--text); text-transform: none; letter-spacing: normal; }
+/* Everything else the room reads is display type too (UX.md §2, UC-D-01):
+   the question line, respondent count, "Next up:", authors, "votes". */
+.proj .muted, .proj .small, .proj .vote-btn .label { font-size: var(--text-xl); }
 
 /* Compact card variant for admin tables */
 section.card.compact { padding: var(--gap-group) var(--pad-card); }
@@ -386,22 +390,11 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 
 /* Drill-down results */
 .result-q { background: var(--panel-2); padding: var(--gap-group); border-radius: var(--radius-lg); margin-top: var(--gap-group); }
-.result-opt {
-  position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--gap-related);
-  padding: var(--gap-related) var(--gap-group); margin-top: var(--gap-tight); border-radius: var(--radius-md);
-  background: var(--panel); overflow: hidden;
-}
-.result-opt.correct { box-shadow: inset 2px 0 0 var(--good); }
-.result-bar { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--share, 0) * 100%); background: var(--accent-bg); z-index: 0; transition: width 0.3s ease; }
-.result-mark, .result-text, .result-num { position: relative; z-index: 1; }
-.result-mark { width: 14px; color: var(--good); font-weight: var(--weight-bold); }
-.result-text { flex: 1; }
-.result-num { color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 
 .toast { position: fixed; bottom: var(--gap-section); right: var(--gap-section); background: var(--panel-2); border: 1px solid var(--border); padding: var(--gap-group) var(--pad-card); border-radius: var(--radius-lg); max-width: 360px; font-size: var(--text-base); box-shadow: var(--shadow-toast); z-index: 100; }
 .toast-error { border-color: var(--bad); color: var(--bad); background: var(--bad-bg); }
 .error-banner { background: var(--bad-bg); border: 1px solid var(--bad); color: var(--bad); padding: var(--gap-group) var(--pad-card); border-radius: var(--radius-lg); margin-bottom: var(--gap-group); font-size: var(--text-base); }
-.info-banner { background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent-2); padding: var(--gap-group) var(--pad-card); border-radius: var(--radius-lg); margin-bottom: var(--gap-group); font-size: var(--text-md); }
+.info-banner { background: var(--accent-bg); border: 1px solid var(--accent); color: var(--text); padding: var(--gap-group) var(--pad-card); border-radius: var(--radius-lg); margin-bottom: var(--gap-group); font-size: var(--text-md); }
 /* Status badges (UX.md §11): one shape, a tint and a text colour by
    meaning. Green: running or usable. Indigo: waiting to run. Orange: needs
    work. Neutral: not started (bright text) or finished (muted text). */
@@ -459,6 +452,10 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
   button.insert-point { height: var(--tap-min); }
   input[type="checkbox"] { width: 22px; height: 22px; }
   .section-links a { display: inline-flex; flex-wrap: nowrap; align-items: center; min-height: var(--tap-min); padding: 0 var(--space-1); }
+  /* Links used as controls, not links inside a sentence (WCAG 2.2). */
+  .breadcrumbs a, header.top a, .ctable td.actions a {
+    display: inline-flex; flex-wrap: nowrap; align-items: center; min-height: var(--tap-min);
+  }
 }
 
 /* Utilities on the spacing scale; markup uses these instead of inline
@@ -476,4 +473,3 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 .block { display: block; }
 .align-start { align-items: flex-start; }
 .align-center { align-items: center; }
-.accent-text { color: var(--accent); }

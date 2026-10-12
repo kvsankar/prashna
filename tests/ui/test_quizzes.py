@@ -4,6 +4,7 @@ Covers UC-A-09..22, UC-A-23, UC-A-24, UC-A-27, UC-A-28, UC-A-29.
 """
 from __future__ import annotations
 
+import re
 import secrets
 
 from playwright.sync_api import expect
@@ -992,5 +993,160 @@ def test_uc_a_29_needs_fixing_quiz_cannot_be_added(base_url, admin_setup, page):
         expect(panel).to_contain_text("Can't be added to a session yet: Quiz needs at least one question")
         expect(panel.locator("button")).to_have_count(0)
         assert c.get(f"/api/sessions/{s['code']}/quiz_runs").json() == []
+    finally:
+        c.close()
+
+
+# ---------- review batch 5: editor and report wording ----------
+
+
+def test_uc_a_10_editor_warns_when_an_edit_breaks_a_publish_rule(base_url, admin_setup, page):
+    """UC-A-10: the open editor shows Needs fixing and the reason after an edit
+    breaks a publish rule, and hides both once the cause is gone."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-A10ed {secrets.token_hex(3)}", publish=True)
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        problem = page.locator("#editor-problem")
+        expect(page.locator("#editor-body .badge-ready")).to_be_visible()
+        expect(problem).to_be_hidden()
+        # A blank question at the end has no answers: the quiz stays Ready
+        # but can't be added to a session.
+        page.get_by_role("button", name="Add a question at the end").click()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(2)
+        expect(problem).to_be_visible(timeout=5000)
+        expect(problem).to_have_text("Can't be added to a session yet: Question 2 needs at least 2 answers")
+        expect(page.locator("#editor-body .badge-needs-fixing")).to_have_text("Needs fixing")
+        page.once("dialog", lambda d: d.accept())
+        page.locator("#editor-body .editor-q").nth(1).get_by_role("button", name="Delete", exact=True).click()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(1, timeout=5000)
+        expect(problem).to_be_hidden(timeout=5000)
+        expect(page.locator("#editor-body .badge-needs-fixing")).to_be_hidden()
+    finally:
+        c.close()
+
+
+def test_uc_a_11_editor_controls_have_visible_words(base_url, admin_setup, page):
+    """UC-A-11: the correct checkbox, the Poll toggle and the type select say
+    what they mean in visible words; the hint names no Launch control."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-A11w {secrets.token_hex(3)}", questions=_valid_questions("q"))
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        first_answer = page.locator("#editor-body .editor-opt").first
+        expect(first_answer.locator("label")).to_have_text("Correct")
+        expect(page.get_by_role("checkbox", name="Answer 1 is correct")).to_be_visible()
+        expect(page.locator("#editor-body .question-head .poll-toggle")).to_have_text("Poll (no correct answer)")
+        options = page.get_by_label("Question 1 type").locator("option")
+        expect(options).to_have_text(["Single choice", "Multiple choice"])
+        body = page.locator("#editor-body")
+        expect(body).not_to_contain_text("Launch")
+        expect(body).to_contain_text(
+            "Changes apply the next time you add this quiz to a session; past results stay as they were.")
+    finally:
+        c.close()
+
+
+def test_uc_a_09_empty_title_says_title_is_required(base_url, admin_setup, page):
+    """UC-A-09: + New with an empty title says so and creates nothing."""
+    c = api_login(base_url)
+    try:
+        _goto_quizzes(page, base_url)
+        before = len(c.get("/api/quizzes").json())
+        page.fill("#new-quiz-title", "   ")
+        page.click("#create-quiz")
+        expect(page.locator(".toast-error")).to_contain_text("Quiz title is required")
+        assert len(c.get("/api/quizzes").json()) == before
+    finally:
+        c.close()
+
+
+def test_uc_a_12_empty_title_is_refused_and_restored(base_url, admin_setup, page):
+    """UC-A-12: clearing the title shows the server's message and puts the
+    saved title back."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-A12e {secrets.token_hex(3)}")
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        title = page.get_by_label("Quiz title", exact=True)
+        title.fill("")
+        title.blur()
+        expect(page.locator(".toast-error")).to_contain_text("Quiz title is required")
+        expect(page.get_by_label("Quiz title", exact=True)).to_have_value(quiz["title"])
+        expect(page.locator("#editor-title")).to_contain_text(quiz["title"])
+        assert c.get(f"/api/quizzes/{quiz['id']}").json()["title"] == quiz["title"]
+    finally:
+        c.close()
+
+
+def test_uc_a_19_failed_answer_delete_shows_the_error(base_url, admin_setup, page):
+    """UC-A-19: a failed delete shows the server's message, keeps the row, and
+    raises no unhandled error."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(
+        c, f"UI-A19f {secrets.token_hex(3)}",
+        questions=[{"text": "q", "answers": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}],
+    )
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.route("**/api/quiz_answers/*", lambda route: route.fulfill(
+        status=500, content_type="application/json", body='{"detail": "Server is busy"}')
+        if route.request.method == "DELETE" else route.continue_())
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        expect(page.locator("#editor-body .editor-opt")).to_have_count(3)
+        page.locator("#editor-body .editor-opt").first.locator("button[aria-label='Delete answer']").click()
+        expect(page.locator(".toast-error")).to_contain_text("Server is busy")
+        expect(page.locator("#editor-body .editor-opt")).to_have_count(3)
+        page.wait_for_timeout(200)
+        assert errors == []
+    finally:
+        c.close()
+
+
+def test_uc_a_20_refused_upload_shows_the_reason(base_url, admin_setup, page, tmp_path):
+    """UC-A-20: a refused upload shows the server's reason, not "Upload failed"."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-A20r {secrets.token_hex(3)}", questions=_valid_questions("q"))
+    notes = tmp_path / "notes.txt"
+    notes.write_text("not an image")
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        page.locator("#editor-body .editor-q input[type=file]").first.set_input_files(str(notes))
+        expect(page.locator(".toast-error")).to_have_text("Images must be PNG, JPEG, GIF or WebP")
+    finally:
+        c.close()
+
+
+def test_uc_a_23_run_report_uses_plain_words(base_url, admin_setup, page):
+    """UC-A-23: the report's headers are spelled out and its summary has no
+    internal terms."""
+    _goto_quizzes(page, base_url)
+    headers = page.locator("#qs-table thead th")
+    expect(headers).to_have_text(["Quiz", "Version", "In session", "Status", "Progress", "Responses", "Created"])
+    for view in ("flat", "quiz", "version", "session"):
+        page.click(f"[data-run-view={view}]")
+        summary = page.locator("#qs-view-summary").inner_text()
+        assert "playthrough" not in summary and "immutable" not in summary, summary
+
+
+def test_uc_a_24_results_use_the_shared_answer_rows(base_url, admin_setup, page):
+    """UC-A-24: the run report names the run, shows its version, and draws
+    answers with the shared component ("✓ Correct", "n (p%)")."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-A24s {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-A24ss {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close").raise_for_status()
+    try:
+        _goto_quizzes(page, base_url)
+        page.goto(f"{base_url}/quizzes?run={run['id']}")
+        expect(page.locator("#results-title")).to_have_text(f"Quiz run: {quiz['title']} · {s['title']}")
+        body = page.locator("#results-body")
+        expect(body).to_contain_text("Version 1")
+        expect(body.locator(".option.correct .opt-correct")).to_have_text("✓ Correct")
+        pcts = body.locator(".opt-pct").all_inner_texts()
+        assert pcts and all(re.fullmatch(r"\d+ \(\d+%\)", p) for p in pcts), pcts
     finally:
         c.close()

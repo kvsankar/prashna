@@ -19,6 +19,12 @@ if (location.hash.includes("k=")) {
   const k = new URLSearchParams(location.hash.slice(1)).get("k");
   if (k) { setModKey(k); history.replaceState(null, "", location.pathname); }
 }
+// A moderator link pasted into this tab changes only the part after "#",
+// which doesn't reload the page; reload so the key above is read (UC-M-01).
+// Section links (#quizzes-card and so on) stay ordinary jumps.
+window.addEventListener("hashchange", () => {
+  if (new URLSearchParams(location.hash.slice(1)).get("k")) location.reload();
+});
 
 let queries: Query[] = [];
 let quizRuns: QuizRun[] = [];
@@ -62,6 +68,11 @@ function showWorkSurfaces(visible: boolean): void {
 }
 function showKeyGate(): void {
   $("#modkey-code").textContent = CODE;
+  // Show only what a visitor without access can use (UC-M-01): the session
+  // by its code, without status, online count, view links, or Sessions.
+  $("#title").textContent = "Session " + CODE;
+  setVisible($("header.top .meta"), false);
+  setVisible($("#moderator-breadcrumbs li:first-child"), false);
   setVisible($("#modkey-card"), true);
   showWorkSurfaces(false);
   $("#modkey-input").focus();
@@ -112,6 +123,7 @@ async function renderInvite(seq = latestSessionSeq): Promise<void> {
   $("#invite-url").textContent = url;
   const baseField = $("#base-url").closest(".field") as HTMLElement | null;
   if (baseField) setVisible(baseField, isOwner);
+  setVisible($("#base-url-help"), isOwner);
   try { await renderQR($("#invite-qr"), url, { cellSize: 4, margin: 2 }); }
   catch { $("#invite-qr").textContent = "QR unavailable"; }
 }
@@ -158,8 +170,10 @@ $("#set-share-mod").addEventListener("click", async () => {
     errorToast("Couldn't copy — load over HTTPS for clipboard access.");
   }
 });
-// Deletion stays one flow on the session list (typed-title confirm).
+// Deletion stays one flow on the session list (typed-title confirm). A live
+// session can't be deleted, so say so here instead of leaving the page.
 $("#set-delete").addEventListener("click", () => {
+  if (sessionState?.status === "live") { errorToast("End the session before deleting it."); return; }
   location.href = `/?delete=${encodeURIComponent(CODE)}`;
 });
 
@@ -179,7 +193,7 @@ function renderLifecycle(): void {
     void setFeedbackEnabled(!sessionState?.feedback_enabled);
   });
   if (status === "planning") {
-    hint.textContent = "Session is in planning. Start it when the audience is ready.";
+    hint.textContent = "Not started yet. Start it when the audience is ready.";
     const btn = el("button", { class: "primary small" }, "Start session");
     btn.addEventListener("click", () => void transition("start"));
     actions.appendChild(btn);
@@ -270,7 +284,8 @@ function renderQuery(q: Query): HTMLElement {
     placeholder: "Type a response (optional)…", "data-query-id": q.id,
   }, initial) as HTMLTextAreaElement;
   respInput.addEventListener("input", () => pendingResponseText.set(q.id, respInput.value));
-  const respondBtn = el("button", { class: "primary small" }, q.responded ? "Update response" : "Mark responded");
+  // Secondary, not primary: there is one per row (UX.md §10).
+  const respondBtn = el("button", { class: "small" }, q.responded ? "Update response" : "Mark responded");
   respondBtn.addEventListener("click", async () => {
     try {
       await api(`/api/sessions/${CODE}/queries/${q.id}/respond`, {
@@ -278,7 +293,7 @@ function renderQuery(q: Query): HTMLElement {
         body: { response_text: respInput.value.trim(), responded: true },
       });
       pendingResponseText.delete(q.id);
-      void loadQueries();
+      loadQueries().catch(reportError);
     } catch (e) { errorToast((e as Error).message); }
   });
   const reopenBtn = q.responded ? el("button", { class: "ghost small" }, "Reopen") : null;
@@ -289,7 +304,7 @@ function renderQuery(q: Query): HTMLElement {
         body: { response_text: respInput.value.trim(), responded: false },
       });
       pendingResponseText.delete(q.id);
-      void loadQueries();
+      loadQueries().catch(reportError);
     } catch (e) { errorToast((e as Error).message); }
   });
   const removeBtn = el("button", { class: "danger ghost small" }, q.removed ? "Restore" : "Remove");
@@ -298,7 +313,7 @@ function renderQuery(q: Query): HTMLElement {
       await api(`/api/sessions/${CODE}/queries/${q.id}/remove`, {
         method: "POST", headers: modHeaders(), body: { removed: !q.removed },
       });
-      void loadQueries();
+      loadQueries().catch(reportError);
     } catch (e) { errorToast((e as Error).message); }
   });
   const voteBox = el("div", { class: "vote-btn" + (q.voted ? " voted" : "") },
@@ -308,8 +323,9 @@ function renderQuery(q: Query): HTMLElement {
     el("div", { class: "text" }, q.text),
     q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
     el("div", { class: "mt-2" }, respInput),
+    // A removed question offers only Restore (UX.md §16).
     el("div", { class: "row mt-2" },
-      respondBtn, reopenBtn, el("div", { class: "spacer" }), removeBtn),
+      q.removed ? null : respondBtn, q.removed ? null : reopenBtn, el("div", { class: "spacer" }), removeBtn),
   );
   return el("div", { class: "question" + (q.responded ? " answered" : "") + (q.removed ? " hidden-q" : "") }, voteBox, body);
 }
@@ -329,7 +345,7 @@ function applyQuizzes(rows: QuizSummary[]): void {
   for (const q of quizzes) {
     // Membership comes from the server (UC-M-03 in_session), the same
     // source as the quiz library's Add to session menu.
-    const label = `${q.title} (${q.question_count} questions)`
+    const label = `${q.title} (${q.question_count} question${q.question_count === 1 ? "" : "s"})`
       + (q.status === "draft" ? " (draft)" : "")
       + (q.in_session ? ` — already added · ${statusLabel(q.in_session.run_status)}` : "")
       + (q.problem ? " — needs fixing in the quiz library" : "");
@@ -383,7 +399,7 @@ function renderQuizRun(r: QuizRun): HTMLElement {
   );
   if (r.status === "live" && r.reveal_current) {
     head.insertBefore(
-      el("span", { class: "small accent-text" }, "voting closed"),
+      el("span", { class: "small" }, "voting closed"),
       head.querySelector(".spacer"));
   }
   if (r.status === "queued" && !sessionEnded) {
@@ -515,7 +531,7 @@ guardClick($<HTMLButtonElement>("#add-quiz-btn"), async () => {
       method: "POST", headers: modHeaders(), body: { quiz_id: quizId, publish: isDraft },
     });
     await loadQuizRuns();
-    void loadAvailableQuizzes();
+    loadAvailableQuizzes().catch(reportError);
     toast(isDraft ? `Published and queued v${r.version_no}` : `Queued v${r.version_no}`);
   } catch (e) { errorToast((e as Error).message); }
 });
@@ -600,10 +616,13 @@ function renderProfiles(sum: ParticipantProfileSummary): void {
   for (const item of sum.items) root.appendChild(renderProfile(item));
 }
 
+// A refetch a live update triggers is never silent when it fails (UX.md §8).
+function reportError(error: unknown): void { errorToast((error as Error).message); }
+
 function refreshAll(): void {
-  void loadSession();
-  void loadQueries();
-  void loadQuizRuns();
+  loadSession().catch(reportError);
+  loadQueries().catch(reportError);
+  loadQuizRuns().catch(reportError);
   void loadPresence();
   void loadProfiles();
   void loadFeedback();
@@ -633,12 +652,12 @@ function refreshSoon(msg: LiveMessage): void {
       "participant",
     ]);
     if ([...types].some((type) => !knownTypes.has(type))) { refreshAll(); return; }
-    if (["session_state", "feedback_state"].some((type) => types.has(type))) void loadSession();
-    if (["query_new", "query_vote", "query_responded", "query_removed", "query_deleted"].some((type) => types.has(type))) void loadQueries();
-    if (["quiz_run_new", "quiz_run_update", "quiz_run_deleted", "quiz_submission"].some((type) => types.has(type))) void loadQuizRuns();
+    if (["session_state", "feedback_state"].some((type) => types.has(type))) loadSession().catch(reportError);
+    if (["query_new", "query_vote", "query_responded", "query_removed", "query_deleted"].some((type) => types.has(type))) loadQueries().catch(reportError);
+    if (["quiz_run_new", "quiz_run_update", "quiz_run_deleted", "quiz_submission"].some((type) => types.has(type))) loadQuizRuns().catch(reportError);
     // The picker's "already added" labels follow runs being added, started,
     // closed, or removed.
-    if (["quiz_run_new", "quiz_run_update", "quiz_run_deleted"].some((type) => types.has(type))) void loadAvailableQuizzes();
+    if (["quiz_run_new", "quiz_run_update", "quiz_run_deleted"].some((type) => types.has(type))) loadAvailableQuizzes().catch(reportError);
     if (["feedback", "feedback_state"].some((type) => types.has(type))) void loadFeedback();
     if (types.has("participant")) { void loadPresence(); void loadProfiles(); }
   }, 400);
@@ -649,13 +668,14 @@ async function boot(): Promise<void> {
   isOwner = state.is_owner;
   // The Sessions list is the admin's page; a delegate cannot use it.
   setVisible($("#moderator-breadcrumbs li:first-child"), isOwner);
+  setVisible($("header.top .meta"), true);
   applySession(state.session);
   applyQuizzes(state.available_quizzes);
   $<HTMLDetailsElement>("#setup-section").open = sessionState?.status === "planning";
   showWorkSurfaces(true);
   markUsable("moderator");
-  void loadQueries();
-  void loadQuizRuns();
+  loadQueries().catch(reportError);
+  loadQuizRuns().catch(reportError);
   void loadPresence();
   // Profiles and feedback are below the operational controls. Load them in
   // parallel without delaying the usable moderator surface.

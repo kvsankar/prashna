@@ -237,7 +237,7 @@ def test_uc_m_03_unknown_quiz_404(admin_client, make_session):
     r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                           json={"quiz_id": 99999})
     assert r.status_code == 404
-    assert r.json() == {"detail": "quiz not found"}
+    assert r.json() == {"detail": "Quiz not found"}
 
 
 def test_uc_m_03_quiz_other_owner_404(admin_client, make_quiz, make_session):
@@ -255,7 +255,7 @@ def test_uc_m_03_quiz_other_owner_404(admin_client, make_quiz, make_session):
     r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                           json={"quiz_id": q["id"]})
     assert r.status_code == 404
-    assert r.json() == {"detail": "quiz not found"}
+    assert r.json() == {"detail": "Quiz not found"}
 
 
 def test_uc_m_03_ended_session_400(admin_client, make_quiz, make_session):

@@ -378,6 +378,14 @@ name contains `password`, `secret`, `token`, `key`, or `cookie`, and cuts
 string values to 120 characters. Call sites do not log participant contact
 fields, uploaded bytes, filenames, or user-entered Q&A text.
 
+Each event is written once. When a logging handler is configured (the
+compose command's `logging.basicConfig`, or uvicorn's handlers), the
+`prashna` logger writes through it; only when none is configured (a plain
+`uvicorn prashna.main:app`) does the helper print the line to standard
+error itself. State changes made by a signed-in admin, including session
+start, end, and opening or closing the rating, carry the admin's
+`actor_id`; a delegate's carry none.
+
 Diagnostics go to the process log stream, which is what the containers
 record. The `prashna` command sends them to `prashna.log` in its data folder
 instead, so the presenter's terminal stays readable. Prashna does not store

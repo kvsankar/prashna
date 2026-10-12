@@ -160,14 +160,14 @@ def test_uc_a_01_setup_short_password(client):
     """UC-A-01: password < 8 chars → 400."""
     r = client.post("/api/admin/setup", json={"username": "alice", "password": "short", "setup_token": SETUP_TOKEN})
     assert r.status_code == 400
-    assert r.json() == {"detail": "password must be at least 8 characters"}
+    assert r.json() == {"detail": "Password must be at least 8 characters"}
 
 
 def test_uc_a_01_setup_empty_username(client):
     """UC-A-01: empty username → 400."""
     r = client.post("/api/admin/setup", json={"username": "", "password": "longenough", "setup_token": SETUP_TOKEN})
     assert r.status_code == 400
-    assert r.json() == {"detail": "username required"}
+    assert r.json() == {"detail": "Username is required"}
 
 
 def test_uc_a_01_concurrent_setup_different_usernames(app_module):
@@ -312,7 +312,7 @@ def test_uc_a_25_short_new_password(admin_client):
         "new_password": "short",
     })
     assert r.status_code == 400
-    assert r.json() == {"detail": "new password must be at least 8 characters"}
+    assert r.json() == {"detail": "New password must be at least 8 characters"}
 
 
 def test_uc_a_25_password_over_72_bytes_is_refused(client):

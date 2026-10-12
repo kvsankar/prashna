@@ -69,6 +69,16 @@ def test_uc_a_01_without_link_explains_where_to_find_it(fresh_base_url, page):
     _expect_no_github(page)
 
 
+def test_uc_a_01_setup_link_pasted_into_an_open_tab(fresh_base_url, page):
+    """UC-A-01: pasting the setup link into a tab that already shows / loads it."""
+    page.goto(fresh_base_url + "/")
+    expect(page.locator("#setup-needed-card")).to_be_visible(timeout=5000)
+    page.goto(f"{fresh_base_url}/#setup={SETUP_TOKEN}")
+    expect(page.locator("#setup-card")).to_be_visible(timeout=5000)
+    expect(page.locator("#setup-needed-card")).to_be_hidden()
+    assert "setup=" not in page.url
+
+
 def test_uc_a_01_setup_link_creates_admin(fresh_base_url, page):
     """UC-A-01: the one-time link shows the form; submitting signs the admin in."""
     page.goto(f"{fresh_base_url}/#setup={SETUP_TOKEN}")

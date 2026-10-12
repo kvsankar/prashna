@@ -51,7 +51,8 @@ PAGE_CHECKS_JS = """(opts) => {
       .filter(e => Math.abs(e.getBoundingClientRect().height - 40) > 1).map(e => 'profile-cta'));
   }
   if (opts.touch) {
-    out.shortTargets = [...document.querySelectorAll('button, details.menu > summary, .section-links a')].filter(vis)
+    out.shortTargets = [...document.querySelectorAll('button, details.menu > summary, .section-links a, '
+        + '.breadcrumbs a, header.top a, .ctable td.actions a, a.menu-link')].filter(vis)
       .filter(e => e.getBoundingClientRect().height < 32)
       .map(e => name(e) + ' ' + Math.round(e.getBoundingClientRect().height));
   }
