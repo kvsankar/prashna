@@ -4,6 +4,7 @@ Covers UC-M-01..11.
 """
 from __future__ import annotations
 
+import json
 import secrets
 import time
 
@@ -745,6 +746,30 @@ def test_uc_m_13_profiles_panel_shows_attendee_details(base_url, admin_setup, pa
             "src",
             photo,
         )
+    finally:
+        c.close()
+
+
+def test_uc_m_13_non_web_linkedin_is_plain_text(base_url, admin_setup, page):
+    """UC-M-13: a stored LinkedIn value that is not an http(s) address is
+    shown as text, never as a link."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M13b {secrets.token_hex(3)}")
+    profile = {
+        "id": 1, "name": "Eve", "email": None, "contact_number": None, "organization": None,
+        "role": None, "linkedin_url": "javascript:alert(1)", "photo_url": None,
+        "current_work": None, "learning_goal": None,
+    }
+    try:
+        page.route(
+            f"**/api/sessions/{s['code']}/participants",
+            lambda route: route.fulfill(status=200, content_type="application/json",
+                                        body=json.dumps({"count": 1, "items": [profile]})),
+        )
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#profiles-list")).to_contain_text("javascript:alert(1)", timeout=5000)
+        expect(page.locator("#profiles-list a")).to_have_count(0)
     finally:
         c.close()
 

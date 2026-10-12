@@ -32,6 +32,10 @@ services:
             "prashna.main:app",
             host="0.0.0.0",
             port=8000,
+            # Only host nginx reaches the port, which is bound to
+            # 127.0.0.1, so its X-Forwarded-Proto is trusted. The rate
+            # limiter reads the client from X-Forwarded-For itself with
+            # PRASHNA_TRUSTED_PROXY_HOPS=1, not from uvicorn (UC-X-08).
             proxy_headers=True,
             forwarded_allow_ips="*",
         )

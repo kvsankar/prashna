@@ -4,10 +4,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session as DbSession
 
 PNG_BYTES = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
@@ -363,6 +365,26 @@ def test_uc_x_04_filename_pattern(admin_client):
     assert re.match(r"^[0-9a-f]{32}\.(png|jpg|jpeg|gif|webp)$", name)
 
 
+def test_uc_x_04_urlencoded_flood_is_refused_quickly(client, admin_client, make_session, app_module):
+    """UC-X-04: a large URL-encoded body to either upload route, without
+    signing in, is refused at once and stores nothing (it used to take
+    seconds to parse before the authorization check)."""
+    import time
+    s = make_session()
+    admin_client.cookies.clear()
+    before = set(app_module.UPLOADS.iterdir())
+    for sep in (b"&", b";"):
+        body = (b"a" + sep) * (5 * 1024 * 1024 // 2)
+        for path in ("/api/uploads", f"/api/sessions/{s['code']}/me/photo"):
+            started = time.monotonic()
+            r = client.post(path, content=body,
+                            headers={"content-type": "application/x-www-form-urlencoded"})
+            elapsed = time.monotonic() - started
+            assert r.status_code in (400, 401, 422), (path, sep, r.status_code)
+            assert elapsed < 1.0, (path, sep, elapsed)
+    assert set(app_module.UPLOADS.iterdir()) == before
+
+
 # ---------- UC-X-05: Storage-level invariants ----------
 
 def test_uc_x_05_two_live_quiz_runs_integrity(admin_client, make_quiz, make_session):
@@ -635,3 +657,29 @@ def test_uc_x_07_resolve_secret(tmp_path):
         blocked.parent.chmod(0o700)
     # The test session sets PRASHNA_SECRET_KEY, so the live flag is False.
     assert auth.SECRET_KEY_IS_EPHEMERAL is False
+
+
+@pytest.mark.parametrize("corrupt", ["", "\n", "   \n", "short-key"])
+def test_uc_x_07_corrupt_key_files_are_replaced(tmp_path, monkeypatch, corrupt):
+    """UC-X-07: an empty or too-short secret-key or setup-token is replaced
+    with a new random value, written whole with mode 0600."""
+    from prashna import auth
+    key_file = tmp_path / "secret-key"
+    key_file.write_text(corrupt)
+    key, ephemeral = auth._resolve_secret(None, key_file)
+    assert ephemeral is False
+    assert key.startswith("prashna_sk_") and len(key) >= 32
+    assert key_file.read_text().strip() == key
+    assert (key_file.stat().st_mode & 0o777) == 0o600
+    assert auth._resolve_secret(None, key_file) == (key, False)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["secret-key"]
+
+    token_file = tmp_path / "setup-token"
+    token_file.write_text(corrupt)
+    monkeypatch.setattr(auth, "SETUP_TOKEN_FILE", token_file)
+    monkeypatch.setattr(auth, "admin_exists", lambda _db: False)
+    monkeypatch.delenv("PRASHNA_SETUP_TOKEN", raising=False)
+    token = auth.setup_token(cast(DbSession, None))  # admin_exists is stubbed
+    assert token and token.startswith("prashna_st_")
+    assert token_file.read_text().strip() == token
+    assert (token_file.stat().st_mode & 0o777) == 0o600

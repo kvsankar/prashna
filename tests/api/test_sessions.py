@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+from .test_participants import PNG_BYTES
+
 # ---------- UC-A-03: Create a session ----------
 
 def test_uc_a_03_create_session_ok(admin_client):
@@ -293,6 +295,23 @@ def test_uc_a_07_delete_correct_confirm_ok(admin_client, make_session):
     assert r.json() == {"ok": True}
     # confirm gone
     assert admin_client.get(f"/api/sessions/{s['code']}").status_code == 404
+
+
+def test_uc_a_07_delete_session_removes_profile_photos(admin_client, make_session):
+    """UC-A-07: deleting a session deletes its participants' photograph files."""
+    s = make_session("Photos")
+    admin = dict(admin_client.cookies)
+    admin_client.cookies.clear()
+    photo = admin_client.post(
+        f"/api/sessions/{s['code']}/me/photo",
+        files={"file": ("a.png", PNG_BYTES, "image/png")},
+    ).json()["photo_url"]
+    assert admin_client.get(photo).status_code == 200
+    admin_client.cookies.clear()
+    admin_client.cookies.update(admin)
+    r = admin_client.request("DELETE", f"/api/sessions/{s['code']}")
+    assert r.status_code == 200
+    assert admin_client.get(photo).status_code == 404
 
 
 def test_uc_a_07_delete_non_owner_403(admin_client, make_session):

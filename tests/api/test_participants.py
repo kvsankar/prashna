@@ -1,6 +1,7 @@
 """UC-P-01, UC-P-02, UC-P-03, UC-P-11, UC-M-10: session lookup, participants, presence."""
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 PNG_BYTES = bytes.fromhex(
@@ -298,6 +299,53 @@ def test_uc_p_03_profile_photo_url_cannot_be_set_directly(
     )
     assert r.status_code == 400
     assert r.json() == {"detail": "photo must be uploaded"}
+
+
+def test_uc_p_03_replaced_or_cleared_photo_file_is_deleted(client, admin_client, make_session):
+    """UC-P-03: a replaced or cleared photograph's file is deleted."""
+    s = make_session()
+    admin_client.cookies.clear()
+    first = client.post(f"/api/sessions/{s['code']}/me/photo",
+                        files={"file": ("a.png", PNG_BYTES, "image/png")}).json()["photo_url"]
+    assert client.get(first).status_code == 200
+    second = client.post(f"/api/sessions/{s['code']}/me/photo",
+                         files={"file": ("b.png", PNG_BYTES, "image/png")}).json()["photo_url"]
+    assert second != first
+    assert client.get(first).status_code == 404
+    assert client.get(second).status_code == 200
+    r = client.patch(f"/api/sessions/{s['code']}/me", json={"photo_url": None})
+    assert r.status_code == 200
+    assert client.get(second).status_code == 404
+
+
+@pytest.mark.parametrize("bad", ["javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,x",
+                                 "www.linkedin.com/in/x"])
+def test_uc_p_03_linkedin_url_must_be_web_address(client, admin_client, make_session, bad):
+    """UC-P-03: only http:// and https:// LinkedIn addresses are stored."""
+    s = make_session()
+    admin_client.cookies.clear()
+    ok = client.patch(f"/api/sessions/{s['code']}/me", json={"linkedin_url": "https://www.linkedin.com/in/x"})
+    assert ok.status_code == 200
+    r = client.patch(f"/api/sessions/{s['code']}/me", json={"linkedin_url": bad, "name": "Eve"})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "LinkedIn profile must start with http:// or https://"}
+    me = client.get(f"/api/sessions/{s['code']}/me").json()
+    assert me["linkedin_url"] == "https://www.linkedin.com/in/x"
+    assert me["name"] is None
+    for good in ("HTTPS://www.linkedin.com/in/x", "http://www.linkedin.com/in/x"):
+        r = client.patch(f"/api/sessions/{s['code']}/me", json={"linkedin_url": good})
+        assert r.status_code == 200
+        assert r.json()["linkedin_url"] == good
+
+
+def test_uc_p_03_profile_editable_after_session_ends(client, admin_client, make_session):
+    """UC-P-03: the profile can still be saved after the session ends."""
+    s = make_session()
+    admin_client.post(f"/api/sessions/{s['code']}/end")
+    admin_client.cookies.clear()
+    assert client.patch(f"/api/sessions/{s['code']}/me", json={"name": "Dana"}).status_code == 200
+    r = client.post(f"/api/sessions/{s['code']}/me/photo", files={"file": ("a.png", PNG_BYTES, "image/png")})
+    assert r.status_code == 200
 
 
 def test_uc_p_03_profile_blank_fields_become_null(client, admin_client, make_session):

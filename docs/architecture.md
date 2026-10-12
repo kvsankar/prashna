@@ -157,7 +157,8 @@ flowchart TB
   Participants upload a profile photograph through
   `POST /api/sessions/{code}/me/photo` without an admin login. Both paths use
   one helper with the same extension allowlist and 5 MB cap, and both return
-  a `/uploads/<uuid>.<ext>` URL.
+  a `/uploads/<uuid>.<ext>` URL. A participant's previous photograph file is
+  deleted when it is replaced or cleared, and when its session is deleted.
 - **Data export.** `GET /api/export/all`, `/api/sessions/{code}/export`,
   `/api/quiz_runs/{id}/export`, and `/api/quizzes/{id}/export` take
   `format=json|xlsx` (and `part` for a session) and return an attachment.
@@ -493,7 +494,7 @@ them in SQLite. Log retention for production is in
 | Risk | Impact | Mitigation | Residual risk | Revisit when |
 | --- | --- | --- | --- | --- |
 | First-run setup exposure | If the address is public before setup, the wrong person could claim the admin account. | Setup needs a one-time token that appears only in the server log, in an operator-set `PRASHNA_SETUP_TOKEN`, or in the `setup-token` file beside the database. The token is retired once an admin exists. | Anyone who can read the server log or data folder before setup can create the admin. | A server log or data folder leaks before setup completes. |
-| Limited upload validation | Extension and size checks do not prove that a file is a safe image. Participants can upload profile photographs without an admin login, and that route has no rate limit. | 5 MB cap, extension allowlist without SVG, random file names, and an isolating CSP, `nosniff`, and `Cross-Origin-Resource-Policy` on `/uploads`. Content sniffing is a deferred decision in [`specs.md`](specs.md#deferred-decision-needed). | Anyone with a session code can store images of up to 5 MB each. | Upload volume or abuse appears, or authoring opens to less-trusted users. |
+| Limited upload validation | Extension and size checks do not prove that a file is a safe image. Participants can upload profile photographs without an admin login. | 5 MB cap, extension allowlist without SVG, random file names, and an isolating CSP, `nosniff`, and `Cross-Origin-Resource-Policy` on `/uploads`. Photograph uploads are rate-limited per person (UC-X-08), and a photograph's file is removed when it is replaced or cleared, or when its session is deleted. Content sniffing is a deferred decision in [`specs.md`](specs.md#deferred-decision-needed). | Anyone with a session code can store images of up to 5 MB each. | Upload volume or abuse appears, or authoring opens to less-trusted users. |
 | Narrow migration bridge | An unsupported schema change could need manual repair. | Extend the bridge and its old-shape SQLite tests for every persisted column or index. | No general migration tool. | A non-additive schema change or a data-retention commitment. |
 | Single-process live hub | Several workers would split clients across separate room hubs. | Run one process, recover through HTTP refetch, and time out stalled sends. | Accepted for the current room-size target. | Several workers, several hosts, or hosted operation. |
 | Room-scale performance | The 100-person room target has no automated load test. | Page-load measurement and budgets in [`performance/README.md`](../performance/README.md); server timing on every response. | Latency under a full room is unmeasured. | Before relying on rooms near the target size. |

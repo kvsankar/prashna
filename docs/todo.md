@@ -36,11 +36,6 @@ remove the clash.
 Running from a source checkout creates `secret-key` and `setup-token` in the
 repository root. `.gitignore` does not list them, so they could be committed.
 
-### Rate-limit participant photo uploads
-
-`POST /api/sessions/{code}/me/photo` needs no admin login and has no rate
-limit. Anyone with a session code can store images of up to 5 MB each.
-
 ### Close test gaps
 
 - No tests flood the feedback and performance-beacon rate-limit buckets

@@ -8,9 +8,15 @@ Two layers of coverage:
 """
 from __future__ import annotations
 
+import json
+import re
+from pathlib import Path
 from typing import cast
 
+import uvicorn
 from fastapi import Request
+from fastapi.testclient import TestClient
+from uvicorn.main import main as uvicorn_cli
 
 from prashna.ratelimit import TokenBucketLimiter, enabled_from_env
 
@@ -243,3 +249,76 @@ def test_uc_x_08_disabled_passes_through(make_session, client, app_module):
         for i in range(30)
     }
     assert codes == {200}
+
+
+def test_uc_x_08_profile_throttled(make_session, client, admin_client, app_module, monkeypatch):
+    """UC-X-08: one person's profile saves and photograph uploads share a bucket."""
+    from .test_participants import PNG_BYTES
+    s = make_session()
+    admin_client.cookies.clear()
+    assert client.get(f"/api/sessions/{s['code']}/me").status_code == 200  # joins: voter_token cookie
+    _enable(app_module, monkeypatch)
+    codes = []
+    for i in range(5):
+        codes.append(client.patch(f"/api/sessions/{s['code']}/me", json={"name": f"n{i}"}).status_code)
+        codes.append(client.post(f"/api/sessions/{s['code']}/me/photo",
+                                 files={"file": ("p.png", PNG_BYTES, "image/png")}).status_code)
+    assert codes == [200] * 10
+    r = client.patch(f"/api/sessions/{s['code']}/me", json={"name": "late"})
+    assert r.status_code == 429
+    assert "too fast" in r.json()["detail"].lower()
+    r = client.post(f"/api/sessions/{s['code']}/me/photo", files={"file": ("p.png", PNG_BYTES, "image/png")})
+    assert r.status_code == 429
+
+
+# ---------- the container's Uvicorn and forwarding headers ----------
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _container_app(app_module, monkeypatch):
+    """The app wrapped by Uvicorn exactly as the Dockerfile's CMD configures it."""
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+    found = re.search(r"^CMD (\[.*\])$", (ROOT / "Dockerfile").read_text(), re.M)
+    assert found is not None
+    cmd = json.loads(found.group(1))
+    assert cmd[:2] == ["uvicorn", "prashna.main:app"]
+    params = uvicorn_cli.make_context("uvicorn", cmd[1:]).params
+    config = uvicorn.Config(app_module.app, proxy_headers=params["proxy_headers"],
+                            forwarded_allow_ips=params["forwarded_allow_ips"])
+    config.load()
+    return config.loaded_app
+
+
+def test_uc_x_08_container_ignores_spoofed_forwarded_for(admin_client, app_module, monkeypatch):
+    """UC-X-08: with hops 0, a client outside the container cannot pick its
+    own address with X-Forwarded-For, so the login limit still applies."""
+    monkeypatch.setattr(app_module, "TRUSTED_PROXY_HOPS", 0)
+    _enable(app_module, monkeypatch)
+    peer = TestClient(_container_app(app_module, monkeypatch), client=("172.18.0.1", 40000))
+    codes = [
+        peer.post("/api/admin/login", json={"username": "admin", "password": "wrong"},
+                  headers={"x-forwarded-for": f"10.0.0.{i}, 203.0.113.9"}).status_code
+        for i in range(12)
+    ]
+    assert codes[:8] == [401] * 8
+    assert 429 in codes[8:]
+
+
+def test_uc_x_08_forwarded_proto_trusted_only_with_proxy_hops(make_session, client, admin_client,
+                                                              app_module, monkeypatch):
+    """UC-X-08: X-Forwarded-Proto from a non-loopback peer marks cookies
+    Secure only when the operator declared a trusted proxy (hops >= 1)."""
+    s = make_session()
+    peer_app = _container_app(app_module, monkeypatch)
+
+    def voter_cookie_header() -> str:
+        peer = TestClient(peer_app, client=("172.18.0.1", 40000))
+        r = peer.get(f"/api/sessions/{s['code']}/me", headers={"x-forwarded-proto": "https"})
+        assert r.status_code == 200
+        return next(v for k, v in r.headers.multi_items() if k == "set-cookie" and v.startswith("voter_token="))
+
+    monkeypatch.setattr(app_module, "TRUSTED_PROXY_HOPS", 0)
+    assert "secure" not in voter_cookie_header().lower()
+    monkeypatch.setattr(app_module, "TRUSTED_PROXY_HOPS", 1)
+    assert "secure" in voter_cookie_header().lower()

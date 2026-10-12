@@ -300,7 +300,8 @@ public can't be claimed by its first visitor.
   warning what will be lost (counts), with a typed-title input that
   must match `session.title` exactly to enable the Delete button
 - **Then** on success, the session is removed; cascade-deletes its
-  queries, votes, participants, quiz_runs, and submissions.
+  queries, votes, participants, quiz_runs, and submissions, and deletes
+  its participants' profile photograph files from the uploads folder.
   QuizVersions are NOT touched (they belong to Quiz templates).
 
 **Tests (API)**
@@ -309,6 +310,7 @@ public can't be claimed by its first visitor.
 - `DELETE /api/sessions/{code}` on a session with queries/quiz_runs but missing `confirm_title` → `400 "Type the session title exactly to confirm deletion"`.
 - `DELETE /api/sessions/{code}` with `{"confirm_title": "Wrong"}` → `400 "Type the session title exactly to confirm deletion"`.
 - `DELETE /api/sessions/{code}` with `{"confirm_title": <exact title>}` → `200 {ok: true}`; cascade removes Queries, QueryVotes, Participants, QuizRuns, QuizSubmissions; QuizVersions for the underlying Quiz remain.
+- `DELETE /api/sessions/{code}` on a session where a participant uploaded a profile photograph → `200`; the photograph's file is gone from the uploads folder and `GET` of its URL → `404` (`test_uc_a_07_delete_session_removes_profile_photos`).
 - `DELETE /api/sessions/{code}` by a non-owner admin → `403 "Not your session"`.
 - `DELETE /api/sessions/{code}` with no auth → `401`.
 
@@ -946,8 +948,8 @@ one Wi-Fi connection.
 
 - **Given** the admin is signed in on `/`
 - **Then** a **Limits** card (`#limits-card`) lists, for asking questions,
-  voting on questions, answering quiz questions and rating the session,
-  how many times one person may do it at once and then per minute; and,
+  voting on questions, answering quiz questions, rating the session and
+  saving the attendee profile, how many times one person may do it at once and then per minute; and,
   for joining, how many people may share one network and how many more
   may join per minute. Each field shows its default as a tooltip.
 - **When** the admin changes a value and leaves the field
@@ -962,7 +964,7 @@ one Wi-Fi connection.
 `join_per_minute` (120), `ask_burst` (6), `ask_per_minute` (6),
 `vote_burst` (30), `vote_per_minute` (120), `submit_burst` (20),
 `submit_per_minute` (30), `feedback_burst` (10), `feedback_per_minute`
-(30). Login and the performance beacon are not adjustable.
+(30), `profile_burst` (10), `profile_per_minute` (10). Login and the performance beacon are not adjustable.
 
 **API.** `GET /api/admin/limits` returns `{"values": {...}, "defaults":
 {...}}`. `PUT /api/admin/limits` takes any subset of the values, saves
@@ -978,7 +980,7 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - `PUT` without the admin cookie → `401`.
 
 **Tests (UI)**
-- On `/` (authed), `#limits-card` shows the joining row's "at once" field as 300; changing the asking "at once" field to 3 and leaving it shows a "Saved" toast, and after a reload the field reads 3; **Reset to defaults** sets it back to 6.
+- On `/` (authed), `#limits-card` shows the joining row's "at once" field as 300 and the profile row's fields (`#limit-profile_burst`, `#limit-profile_per_minute`) as 10; changing the asking "at once" field to 3 and leaving it shows a "Saved" toast, and after a reload the field reads 3; **Reset to defaults** sets it back to 6.
 
 ---
 
@@ -1413,6 +1415,8 @@ by default while the session is `planning`.
   photograph, name ("Anonymous attendee" when blank), email, contact
   number, organization, role, LinkedIn link, current work, and learning
   goal; participants with no profile data are left out
+- **And** the LinkedIn value is a link only when it starts with `http://`
+  or `https://`; any other stored value is shown as plain text
 - **And** with no profiles the card reads "No attendee profiles yet."
 - **And** the card refreshes on the `participant` WebSocket broadcast
 - **Backend route**: `GET /api/sessions/{code}/participants`
@@ -1426,6 +1430,7 @@ by default while the session is `planning`.
 
 **Tests (UI)**
 - After a participant submits a full profile with a photograph, `/m/<code>` as the admin owner shows `#profiles-card`; `#profiles-summary` contains "1 profile" and `#profiles-list` contains each field and an `img.profile-photo-preview` with the photograph URL (`test_uc_m_13_profiles_panel_shows_attendee_details`).
+- When the profiles response carries a LinkedIn value of `javascript:alert(1)` (an older row), `#profiles-list` shows it as text and contains no link with that `href` (`test_uc_m_13_non_web_linkedin_is_plain_text`).
 
 ---
 
@@ -1521,6 +1526,16 @@ once something is saved. Every field is optional:
   `photo_url`; **Clear** beside the photograph (`#my-photo-clear`) sends
   `{"photo_url": null}`, and any other `photo_url` value in the `PATCH`
   returns `400 "photo must be uploaded"`
+- **And** replacing or clearing the photograph deletes the previous file
+  from the uploads folder, so its old URL returns `404`
+- **And** a LinkedIn profile must start with `http://` or `https://`;
+  any other value returns `400 "LinkedIn profile must start with
+  http:// or https://"` and nothing is saved
+- **And** saving the profile and uploading a photograph are rate-limited
+  per person (UC-X-08); an exhausted bucket returns `429 "You're saving
+  your profile too fast — wait a moment and try again"`
+- **And** the Profile card stays on the page after the session ends, and
+  the profile can still be saved then
 - **And** reloading the page prefills every saved field and the photograph
 - **And** each successful `PATCH` or photo upload broadcasts
   `{type: "participant"}`
@@ -1536,6 +1551,9 @@ once something is saved. Every field is optional:
 - `POST .../me/photo` with a PNG → `200` with `photo_url` under `/uploads/`; `GET .../me` returns it; `PATCH` with `{"photo_url": null}` clears it (`test_uc_p_03_profile_photo_upload_and_clear`).
 - `POST .../me/photo` with an `.svg` file → `400 "unsupported image type"` (`test_uc_p_03_profile_photo_rejects_unsupported_type`).
 - `PATCH` with `{"photo_url": "https://example.com/avatar.png"}` → `400 "photo must be uploaded"` (`test_uc_p_03_profile_photo_url_cannot_be_set_directly`).
+- Uploading a second photograph deletes the first one's file (its URL → `404`); clearing deletes the second (`test_uc_p_03_replaced_or_cleared_photo_file_is_deleted`).
+- `PATCH` with `linkedin_url` set to `javascript:alert(1)`, `data:text/html,x` or `www.linkedin.com/in/x` → `400 "LinkedIn profile must start with http:// or https://"`, and the stored value is unchanged; `HTTPS://www.linkedin.com/in/x` and `http://…` are accepted (`test_uc_p_03_linkedin_url_must_be_web_address`).
+- On an `ended` session, `PATCH .../me` and `POST .../me/photo` still return `200` (`test_uc_p_03_profile_editable_after_session_ends`).
 
 **Tests (UI)**
 - On `/s/<CODE>`, opening `#profile-card`, typing into `#my-name`, and clicking `#profile-submit` shows a toast with the name; a question the participant then asks without ticking **Show my name** shows no name (`test_uc_p_03_set_display_name_persists`).
@@ -2122,12 +2140,16 @@ Two tiers, applied by one middleware:
   `.webp` (SVG is explicitly excluded); enforce 5 MB caps on both
   Content-Length and streaming; and store the file under a fresh UUID
   filename served from `/uploads/`
+- **And** a large URL-encoded body sent to either route is refused at
+  once, by the form parser's limits (1000 fields, 1 MB per field) or by
+  the authorization check, so parsing it never blocks the server
 
 **Tests (API)**
 - See UC-A-20 and UC-P-03 tests; in addition:
 - `POST /api/uploads` with `.svg` → `400 "unsupported image type"`.
 - `POST /api/uploads` two times with the same source file → two distinct UUID filenames on disk.
 - Stored filename matches `^[0-9a-f]{32}\.(png|jpg|jpeg|gif|webp)$`.
+- Without signing in, a 5 MB URL-encoded body (`a&a&…` and `a;a;…`) to `POST /api/uploads` and to `POST .../me/photo` returns `400`, `401` or `422` in under 1 second, and no file is stored (`test_uc_x_04_urlencoded_flood_is_refused_quickly`).
 
 ### UC-X-05: Storage-level invariants
 
@@ -2194,6 +2216,12 @@ chosen once at process start.
   `0600`); cookies therefore survive restarts with no operator step. The
   prefix lets a scanner recognise a leaked key in any file; a key without
   it, from an older install, keeps working
+- **And** a `secret-key` (or `setup-token`, UC-A-01) file that is empty or
+  shorter than 32 characters, for example after a crash or a full disk, is
+  treated as corrupt: the server replaces it with a new random value and
+  logs a `WARNING`. The server never signs with an empty key. Each file is
+  written whole to a temporary file (mode `0600`) and then moved into
+  place, so a crash never leaves a half-written file
 - **And** only if that file can't be read or written does the process
   fall back to a key for the process lifetime, logging a `WARNING`
   (`auth.SECRET_KEY_IS_EPHEMERAL` is `True`) because sessions then end on
@@ -2207,6 +2235,7 @@ chosen once at process start.
 - Start app with one value of `PRASHNA_SECRET_KEY`, log in; restart with a different value → the old cookie fails to verify (rotation invalidates sessions).
 - Start app with `PRASHNA_SECRET_KEY` unset, log in; restart, still unset → the old cookie still returns `authenticated: true`; `secret-key` exists beside the database with mode `0600`; no ephemeral-key warning is logged.
 - `auth._resolve_secret("abc", path)` returns `("abc", False)`; `auth._resolve_secret(None, path)` creates the file and returns `(<key>, False)` with a key starting `prashna_sk_`, and a second call returns the same key; an existing file without the prefix is used unchanged; with an unwritable path it returns `(<random>, True)`.
+- An existing `secret-key` that is empty, holds only whitespace, or is shorter than 32 characters is replaced: `auth._resolve_secret(None, path)` returns `(<new key>, False)` with a key starting `prashna_sk_`, the file holds that key with mode `0600`, and no temporary file is left beside it; an empty `setup-token` is replaced the same way by a token starting `prashna_st_` (`test_uc_x_07_corrupt_key_files_are_replaced`).
 
 ### UC-X-08: Rate limiting
 
@@ -2231,6 +2260,7 @@ have a participant cookie are limited **per person**, not per address.
   | `POST .../queries/{id}/vote` | person, and an address ceiling | 30 | 120 per minute | yes | |
   | `POST .../quiz_runs/{id}/submit` | person, and an address ceiling | 20 | 30 per minute | yes | |
   | `POST .../feedback` | person, and an address ceiling | 10 | 30 per minute | yes | Checked after the rating-open check (UC-P-13) |
+  | `PATCH .../me` and `POST .../me/photo` (profile) | person, and an address ceiling | 10 | 10 per minute | yes | One bucket for both; submitting a profile with a photograph uses two (UC-P-03) |
   | new `Participant` row (joining) | address | 300 (people on one network) | 120 per minute | yes | Bounds row growth from a cookie-rotating script |
   | `POST /api/admin/login` | address | 8 | 1 per 30 s | no | Checked **before** `verify_password` (bcrypt is costly); a successful login clears the bucket |
   | `POST /api/diagnostics/performance` | address | 10 | 1 per 5 s | no | Excess samples are dropped silently (UC-X-11) |
@@ -2249,6 +2279,14 @@ have a participant cookie are limited **per person**, not per address.
   for ngrok or the bundled nginx) so the limiter keys on the entry the
   outermost trusted proxy recorded in `X-Forwarded-For` — a
   client-supplied prefix to its left is ignored (spoof-resistant).
+- **Forwarding headers in the container.** The container image's Uvicorn
+  takes `X-Forwarded-For` and `X-Forwarded-Proto` only from `127.0.0.1`
+  (Uvicorn's default; its own `FORWARDED_ALLOW_IPS` variable changes it).
+  A request that reaches the container from any other address keeps its
+  socket peer as the client, so with hops 0 a client cannot choose its own
+  address by sending `X-Forwarded-For`. With hops 1 or more, Prashna itself
+  takes `X-Forwarded-Proto: https` from the proxy, so cookies are marked
+  `Secure` behind nginx or a tunnel.
 - **Scope:** this stops single-source floods and login brute-forcing.
   A distributed (many-address) flood is out of scope for an in-process
   limiter. WebSocket connects are not rate-limited.
@@ -2258,6 +2296,9 @@ have a participant cookie are limited **per person**, not per address.
 - `enabled_from_env`: `None`/`"on"`/`"1"` → enabled; `"off"`/`"0"`/`"false"`/`"no"` (any case) → disabled.
 - `_client_ip`: with hops=0 returns the socket peer; with hops=1 returns the rightmost `X-Forwarded-For` entry even when a spoofed value precedes it; with hops=2 the second-from-right; with hops>0 and no XFF falls back to the peer.
 - Endpoint floods (limiter re-enabled for the test): login → `429` after the burst, and a correct login resets the throttle; one participant's `POST queries` / `vote` / `submit` each return `429` under a sustained flood.
+- One participant's profile saves (`PATCH .../me`) and photograph uploads (`POST .../me/photo`) share one bucket and return `429` after 10 at once (`test_uc_x_08_profile_throttled`).
+- With the app wrapped as the container's `CMD` configures Uvicorn, wrong logins from one non-loopback peer that send a different `X-Forwarded-For` each time get `429` after the login burst (`test_uc_x_08_container_ignores_spoofed_forwarded_for`).
+- Through the same wrapping, a request from a non-loopback peer with `X-Forwarded-Proto: https` gets a `voter_token` cookie without `Secure` at hops 0 and with `Secure` at hops 1 (`test_uc_x_08_forwarded_proto_trusted_only_with_proxy_hops`).
 - A room on one address: 40 participants with their own cookies each ask a question and submit a quiz answer, and every request succeeds; 40 fresh cookies from one address all join (`GET /me` → `200`).
 - The address ceiling: with "people on one network" set to 1, a second participant on the same address gets `429` once the first has used the allowance; with it set to 5, the sixth fresh cookie from one address gets `429` on joining.
 - Changes apply at once: after `PUT /api/admin/limits {"ask_burst": 2}`, a participant's third question returns `429` without a restart.

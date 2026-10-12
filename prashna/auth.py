@@ -5,6 +5,7 @@ future expansion; keep this module the seam where that change lands.
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets as pysecrets
 from pathlib import Path
@@ -36,26 +37,56 @@ SETUP_TOKEN_FILE = DATA_DIR / "setup-token"
 SECRET_KEY_PREFIX = "prashna_sk_"  # pragma: allowlist secret
 SETUP_TOKEN_PREFIX = "prashna_st_"
 
+logger = logging.getLogger("prashna")
 
-def _write_private(path: Path, value: str) -> None:
-    """Create `path` readable only by this user; fail if it already exists."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(value + "\n")
+
+# A stored key or token shorter than this is corrupt, for example an empty
+# file left by a crash or a full disk, and is replaced (UC-X-07).
+MIN_STORED_SECRET_CHARS = 32
+
+
+def _write_private(path: Path, value: str, *, replace: bool) -> None:
+    """Write `path`, readable only by this user, whole: into a temporary file
+    first, then moved into place, so a crash never leaves it half-written.
+    Without `replace`, raise FileExistsError if `path` already exists."""
+    tmp = path.with_name(f".{path.name}.{pysecrets.token_hex(8)}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(value + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        if replace:
+            os.replace(tmp, path)
+            return
+        try:
+            os.link(tmp, path)  # atomic create-if-absent
+        except FileExistsError:
+            raise
+        except OSError:  # a filesystem without hard links
+            os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _read_or_create(path: Path, make) -> str:
     try:
-        value = path.read_text().strip()
-        if value:
-            return value
+        stored: str | None = path.read_text().strip()
     except FileNotFoundError:
-        pass
+        stored = None
+    if stored is not None and len(stored) >= MIN_STORED_SECRET_CHARS:
+        return stored
     value = make()
-    try:
-        _write_private(path, value)
-    except FileExistsError:  # another start won the race; use its value
-        return path.read_text().strip()
+    if stored is None:
+        try:
+            _write_private(path, value, replace=False)
+            return value
+        except FileExistsError:  # another start won the race; use its value
+            stored = path.read_text().strip()
+            if len(stored) >= MIN_STORED_SECRET_CHARS:
+                return stored
+    logger.warning("%s was empty or too short; replaced it with a new value (UC-X-07).", path)
+    _write_private(path, value, replace=True)
     return value
 
 
@@ -76,6 +107,8 @@ def _resolve_secret(env_value: str | None, key_file: Path) -> tuple[str, bool]:
 
 
 _secret, SECRET_KEY_IS_EPHEMERAL = _resolve_secret(os.environ.get("PRASHNA_SECRET_KEY"), SECRET_KEY_FILE)
+if not _secret:  # never sign with an empty key (UC-X-07)
+    raise RuntimeError("The admin signing key is empty.")
 _signer = TimestampSigner(_secret)
 
 

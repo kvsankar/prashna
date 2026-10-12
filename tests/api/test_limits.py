@@ -9,6 +9,7 @@ DEFAULTS = {
     "vote_burst": 30, "vote_per_minute": 120,
     "submit_burst": 20, "submit_per_minute": 30,
     "feedback_burst": 10, "feedback_per_minute": 30,
+    "profile_burst": 10, "profile_per_minute": 10,
 }
 
 

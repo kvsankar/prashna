@@ -548,8 +548,12 @@ function profileLine(label: string, value: string | null): HTMLElement | null {
 
 function renderProfile(item: ParticipantProfile): HTMLElement {
   const name = item.name || "Anonymous attendee";
+  // A link only for web addresses; any other value is shown as text (UC-M-13).
+  const linkedinIsWeb = /^https?:\/\//i.test(item.linkedin_url || "");
   const linkedin = item.linkedin_url
-    ? el("div", { class: "small" }, el("strong", {}, "LinkedIn: "), el("a", { href: item.linkedin_url, target: "_blank", rel: "noopener noreferrer" }, item.linkedin_url))
+    ? el("div", { class: "small" }, el("strong", {}, "LinkedIn: "), linkedinIsWeb
+      ? el("a", { href: item.linkedin_url, target: "_blank", rel: "noopener noreferrer" }, item.linkedin_url)
+      : item.linkedin_url)
     : null;
   const photo = item.photo_url
     ? el("img", {

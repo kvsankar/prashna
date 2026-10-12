@@ -478,6 +478,8 @@ def test_uc_a_31_admin_adjusts_limits(base_url, admin_setup, page):
         card = page.locator("#limits-card")
         expect(card).to_be_visible()
         expect(page.locator("#limit-network_size")).to_have_value("300")
+        expect(page.locator("#limit-profile_burst")).to_have_value("10")
+        expect(page.locator("#limit-profile_per_minute")).to_have_value("10")
         ask = page.locator("#limit-ask_burst")
         expect(ask).to_have_value("6")
         ask.fill("3")

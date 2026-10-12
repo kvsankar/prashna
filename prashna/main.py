@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import re
 import secrets
 import threading
 import time
@@ -119,6 +120,18 @@ def _client_ip(request: Request) -> str:
             if parts:
                 return parts[-min(TRUSTED_PROXY_HOPS, len(parts))]
     return request.client.host if request.client else "unknown"
+
+
+def _is_https(request: Request) -> bool:
+    """Whether the visitor used HTTPS, for the cookies' Secure flag. Behind
+    a declared trusted proxy (hops > 0) the proxy's X-Forwarded-Proto
+    counts too, whatever address the proxy connects from (UC-X-08)."""
+    if request.url.scheme == "https":
+        return True
+    if TRUSTED_PROXY_HOPS > 0:
+        proto = request.headers.get("x-forwarded-proto", "")
+        return proto.split(",")[-1].strip().lower() == "https"
+    return False
 
 
 logger = logging.getLogger("prashna")
@@ -292,7 +305,7 @@ def gen_token() -> str:
 
 def _set_voter_cookie(request: Request, response: Response, token: str) -> None:
     """voter_token is non-HttpOnly on purpose — frontend reads it for 'mine' checks."""
-    secure = request.url.scheme == "https"
+    secure = _is_https(request)
     response.set_cookie(
         "voter_token",
         token,
@@ -1000,7 +1013,7 @@ def admin_setup(payload: dict, request: Request, response: Response, db: DbSessi
             raise HTTPException(409, "Admin already initialized")
         db.refresh(user)
         auth.retire_setup_token()
-        auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
+        auth.issue_session(response, user.id, user.session_version, secure=_is_https(request))
         log_diagnostic("auth.setup", outcome="success", actor_id=user.id)
         return {"username": user.username}
 
@@ -1021,7 +1034,7 @@ def admin_login(payload: dict, request: Request, response: Response, db: DbSessi
         log_diagnostic("auth.login", outcome="failure")
         raise HTTPException(401, "Invalid username or password")
     limiter.reset(ip_key)
-    auth.issue_session(response, user.id, user.session_version, secure=request.url.scheme == "https")
+    auth.issue_session(response, user.id, user.session_version, secure=_is_https(request))
     log_diagnostic("auth.login", outcome="success", actor_id=user.id)
     return {"username": user.username}
 
@@ -1062,7 +1075,7 @@ def admin_change_password(
     # version — anywhere the old password may have been stored stops working.
     me.session_version = (me.session_version or 1) + 1
     db.commit()
-    auth.issue_session(response, me.id, me.session_version, secure=request.url.scheme == "https")
+    auth.issue_session(response, me.id, me.session_version, secure=_is_https(request))
     log_diagnostic("auth.password_change", outcome="success", actor_id=me.id)
     return {"ok": True}
 
@@ -1410,8 +1423,11 @@ async def delete_session(
             raise HTTPException(400, "Type the session title exactly to confirm deletion")
     session_code = s.code
     session_id = s.id
+    photos = [p.photo_url for p in s.participants if p.photo_url]
     db.delete(s)
     db.commit()
+    for photo in photos:
+        delete_uploaded_file(photo)
     await hub.broadcast(f"session:{session_code}", {"type": "session_deleted"})
     log_diagnostic(
         "session.lifecycle",
@@ -1439,6 +1455,8 @@ def session_presence(
 
 # ---------- routes: participant self ----------
 
+PROFILE_TOO_FAST = "You're saving your profile too fast — wait a moment and try again"
+
 @app.get("/api/sessions/{code}/me")
 def my_participant(
     code: str,
@@ -1462,16 +1480,24 @@ async def update_my_participant(
     db: DbSession = Depends(get_db),
 ):
     s = get_session_by_code(db, code)
+    if not allow_person("profile", request, voter_token):
+        raise HTTPException(429, PROFILE_TOO_FAST)
+    linkedin = normalize_optional_text(payload.get("linkedin_url"), PROFILE_FIELDS["linkedin_url"])
+    if linkedin and not linkedin.lower().startswith(("http://", "https://")):
+        raise HTTPException(400, "LinkedIn profile must start with http:// or https://")
+    if "photo_url" in payload and normalize_optional_text(payload.get("photo_url"), 500) is not None:
+        raise HTTPException(400, "photo must be uploaded")
     p = current_participant(s, request, response, voter_token, db)
     for field, max_len in PROFILE_FIELDS.items():
         if field in payload:
             setattr(p, field, normalize_optional_text(payload.get(field), max_len))
+    old_photo = p.photo_url
     if "photo_url" in payload:
-        if normalize_optional_text(payload.get("photo_url"), 500) is not None:
-            raise HTTPException(400, "photo must be uploaded")
         p.photo_url = None
     db.commit()
     db.refresh(p)
+    if p.photo_url != old_photo:
+        delete_uploaded_file(old_photo)
     await broadcast_session(s, "participant")
     return serialize_participant_profile(p)
 
@@ -1486,10 +1512,14 @@ async def upload_my_participant_photo(
     db: DbSession = Depends(get_db),
 ):
     s = get_session_by_code(db, code)
+    if not allow_person("profile", request, voter_token):
+        raise HTTPException(429, PROFILE_TOO_FAST)
     p = current_participant(s, request, response, voter_token, db)
+    old_photo = p.photo_url
     p.photo_url = await store_uploaded_image(file, actor="participant_profile")
     db.commit()
     db.refresh(p)
+    delete_uploaded_file(old_photo)
     await broadcast_session(s, "participant")
     return serialize_participant_profile(p)
 
@@ -2274,6 +2304,14 @@ async def store_uploaded_image(file: UploadFile, *, actor: str) -> str:
         size=len(buf),
     )
     return f"/uploads/{name}"
+
+
+def delete_uploaded_file(url: str | None) -> None:
+    """Delete a file store_uploaded_image saved, given its /uploads/ URL;
+    anything else is left alone."""
+    name = (url or "").removeprefix("/uploads/")
+    if url and url.startswith("/uploads/") and re.fullmatch(r"[0-9a-f]{32}\.[a-z]+", name):
+        (UPLOADS / name).unlink(missing_ok=True)
 
 
 @app.post("/api/uploads")
