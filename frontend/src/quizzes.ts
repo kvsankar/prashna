@@ -317,7 +317,8 @@ async function createQuiz(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 guardClick($<HTMLButtonElement>("#create-quiz"), createQuiz);
-$("#new-quiz-title").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void createQuiz(); });
+// Enter clicks the button, so its double-submit guard covers the key too.
+$("#new-quiz-title").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("#create-quiz").click(); });
 
 async function removeQuiz(id: number): Promise<void> {
   if (!confirm("Delete this quiz template?")) return;

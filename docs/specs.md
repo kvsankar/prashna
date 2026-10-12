@@ -205,6 +205,7 @@ public can't be claimed by its first visitor.
 **Tests (UI)**
 - On `/` (authed), typing a title in `#new-session-title` and clicking `#new-session-btn` adds a row to `#session-rows` with `.badge-planning`.
 - Pressing Enter in `#new-session-title` submits.
+- Pressing Enter twice in quick succession in `#new-session-title` creates one session: the key submits by clicking `#new-session-btn`, so its double-submit guard applies (`test_uc_a_03_double_enter_creates_one_session`).
 - Empty title shows an error toast "Session title is required" and the input keeps focus.
 - The new row appears at the top of `#session-rows`.
 
@@ -320,6 +321,7 @@ public can't be claimed by its first visitor.
 - Clicking Delete on a row with data opens `#confirm-delete-card` below the table with the warning text in `#cd-warn`.
 - `#cd-go` is disabled until `#cd-confirm` exactly matches `session.title`.
 - Typing the exact title enables `#cd-go`; clicking it removes the row.
+- Clicking `#cd-go` twice in quick succession sends one `DELETE` and shows no error toast (`test_uc_a_07_double_click_delete_sends_once`).
 - `#cd-cancel` closes the confirm card without deleting.
 - On `/m/<code>` as the admin owner, clicking `#set-delete` on an empty `planning` session opens `/?delete=<code>`, fires the native `confirm()`, and, once accepted, the row is gone from `#session-rows`.
 
@@ -376,6 +378,7 @@ own use case so tests and PRs can cite one ID per behavior.
 **Tests (UI)**
 - On `/quizzes` (authed), typing a title in `#new-quiz-title` and clicking `#create-quiz` adds a row to `#quiz-rows` and opens `#editor-card` with that quiz.
 - Pressing Enter in `#new-quiz-title` submits.
+- Pressing Enter twice in quick succession in `#new-quiz-title` creates one quiz (`test_uc_a_09_double_enter_creates_one_quiz`).
 
 ### UC-A-10: Browse the quiz library
 
@@ -1122,7 +1125,8 @@ it in `#quiz-runs`.
   the start returns `409 Another quiz is already live — close it
   first` (enforced by the `uq_session_live_run` partial unique index)
 - **And** a `planning` session becomes `live` (with `started_at` set)
-  when one of its runs starts
+  when one of its runs starts; that start also broadcasts `session_state`
+  and logs the session start, so every open page shows the session Live
 
 **Tests (API)**
 - `POST /api/sessions/{code}/quiz_runs/{id}/start` on a `queued` run → `200 {ok: true}`; sets `status: "live"`, `current_question_idx: 0`, `reveal_current: false`, `started_at`. Auth: mod-key OR admin cookie.
@@ -1133,8 +1137,10 @@ it in `#quiz-runs`.
 - For a non-existent run id (or wrong session) → `404`.
 - With no auth → `403`.
 - Success broadcasts `{type: "quiz_run_update"}`.
+- Starting a run in a `planning` session also broadcasts `{type: "session_state"}` and logs `session.lifecycle` with `action=start`; starting one in a `live` session broadcasts only `quiz_run_update` (`test_uc_m_04_start_in_planning_broadcasts_session_state`).
 
 **Tests (UI)**
+- With `/m/<code>` open on a `planning` session, starting a queued run from another tab flips `#session-status` to Live (`test_uc_m_04_run_start_shows_session_live_in_other_tabs`).
 - In `#quiz-runs` on `/m/<code>`, clicking Start on a `.badge-queued` row flips the row to `.badge-live` and reveals the Next/Reveal control.
 - With one run already live, clicking Start on a second queued row toasts the 409 error.
 - `#quiz-runs` lists the live run first, then queued runs in play order (oldest first), then closed runs (newest first).
@@ -1277,6 +1283,9 @@ recognizes which phase the current question is in.
   section
 - **And** the moderator can Reopen an answered question, clearing
   `responded_at`
+- **And** while the moderator types in a response box, live updates that
+  redraw the questions list keep that box focused with the caret where it
+  was, so no keystroke is lost
 
 **Tests (API)**
 - `POST /api/sessions/{code}/queries/{qid}/respond` with `{"response_text": "see docs"}` → `200 {ok: true}`; sets `responded_at` and `response_text = "see docs"`. Auth: mod-key OR admin cookie.
@@ -1289,6 +1298,7 @@ recognizes which phase the current question is in.
 **Tests (UI)**
 - In moderator `#queries`, clicking Mark responded on a query moves it into the answered section.
 - Reopen on an answered query moves it back to the unanswered section.
+- With the caret in a query's response box, a vote from another participant redraws the list; the box keeps focus and the keystrokes typed before and after the vote all land in it (`test_uc_m_08_typing_survives_live_refresh`).
 
 ### UC-M-09: Remove / Restore a query
 
@@ -1319,14 +1329,19 @@ recognizes which phase the current question is in.
   WebSocket-driven refresh)
 - **Then** the count of participants whose `last_seen_at` falls within
   the last 30 seconds is shown
+- **And** a moderator tab is never a participant: reading the count
+  creates no Participant, and the moderator page reads the questions and
+  quiz runs as a display (`?display=true`), so moderators are not counted
+  online or in exports
 
 **Tests (API)**
-- `GET /api/sessions/{code}/presence` → `200 {online: <int>}` counting Participants with `last_seen_at >= now-30s`. Auth: none (cookie issued on first call).
+- `GET /api/sessions/{code}/presence` → `200 {online: <int>}` counting Participants with `last_seen_at >= now-30s`. Auth: none. The call issues no cookie and creates no Participant: on a new session it returns `online: 0` (`test_uc_m_10_presence_creates_no_participant`).
 - After one participant calls a participant route, `online` returns ≥ 1.
 - After waiting > 30s without further requests, `online` decrements back to 0.
 
 **Tests (UI)**
 - On `/m/<code>`, `#live-count` shows "N online" and updates after WS-driven refreshes.
+- Opening `/m/<code>` as the owner on a new session shows "0 online", and the session export's `participant_count` stays 0 (`test_uc_m_10_moderator_tab_is_not_a_participant`).
 
 ### UC-M-11: Invite participants
 
@@ -1593,6 +1608,7 @@ once something is saved. Every field is optional:
 **Tests (UI)**
 - On `/s/<CODE>` (planning/live), typing into `#query-text` and clicking `#ask-btn` adds the query to `#queries` and toasts confirmation.
 - Cmd/Ctrl+Enter in `#query-text` submits.
+- Pressing Ctrl+Enter twice in quick succession posts one question: the shortcut clicks `#ask-btn`, so its double-submit guard applies (`test_uc_p_04_double_ctrl_enter_posts_once`).
 - Ticking `#ask-show-name`, typing "Bob" into `#ask-name` and asking shows "— Bob" with the question; afterwards `#ask-show-name` is unticked and `#ask-name` hidden; a participant with a profile name who asks without ticking the box shows no name.
 - On an `ended` session, `#ask-card` is hidden and `#ended-card` is visible.
 
@@ -1602,6 +1618,8 @@ once something is saved. Every field is optional:
 - **When** the participant clicks the vote button
 - **Then** `POST .../questions/{qid}/vote` toggles their vote; vote
   count refreshes; aria-pressed updates
+- **And** the vote button is disabled while its request runs, so a double
+  tap sends one vote instead of voting and un-voting
 - **And** removed queries return `404`; ended sessions return `400`
 
 **Tests (API)**
@@ -1616,6 +1634,7 @@ once something is saved. Every field is optional:
 **Tests (UI)**
 - On `/s/<CODE>`, clicking the vote button on a query increments the displayed vote count and sets `aria-pressed="true"`.
 - Clicking again decrements and sets `aria-pressed="false"`.
+- Two clicks in quick succession send one `POST .../vote`; the query ends voted with a count of 1 (`test_uc_p_05_double_tap_votes_once`).
 
 ### UC-P-06: See queries sorted
 
@@ -1833,6 +1852,11 @@ when the run is no longer live.
 - **And** reloading prefills their prior rating + comments (via
   `GET /api/sessions/{code}/feedback/mine`, which returns the latest) and
   shows **Resubmit feedback**
+- **And** live updates never overwrite a draft: the page loads the saved
+  feedback when it first loads and when rating opens (closed to open),
+  and leaves the stars and comments alone while they have unsent changes.
+  Renaming or ending the session, or a reconnect, keeps what the
+  participant was typing
 - **And** comments are optional — a bare rating is valid; `rating` must be
   an integer 1–5 or the POST returns `400`
 - **And** each comment is trimmed and cut to 2000 characters; a blank
@@ -1858,6 +1882,7 @@ when the run is no longer live.
 - `#fb-submit` is present and enabled. With no rating it shows a "Choose a rating first" cue; selecting a star reveals `#fb-expand` without submitting, and clicking **Submit feedback** fires one `POST .../feedback` with the rating and both comments.
 - After reload, `#feedback-card` is closed with `#fb-summary` showing the prior rating; opening it shows the prior rating (filled stars count) and comment values prefilled, and the button reads **Resubmit feedback**. Editing then resubmitting fires another `POST`.
 - Clicking `#fb-clear` reveals an inline confirm (`#fb-clear-confirm`); `#fb-clear-no` cancels (rating unchanged), `#fb-clear-yes` clears the stars (filled count 0) and hides `#fb-expand`.
+- With a star picked and text typed in `#fb-went-well` but not submitted, the moderator renaming the session and then ending it leaves the typed text and the filled stars in place (`test_uc_p_13_live_updates_keep_feedback_draft`).
 
 ---
 
@@ -2054,8 +2079,12 @@ are the rules every user-facing UC silently relies on.
   `session_state`, `participant`, `query_new`, `query_vote`,
   `query_responded`, `query_removed`, `query_deleted`,
   `quiz_run_new`, `quiz_run_update`, `quiz_run_deleted`,
-  `quiz_submission`, `feedback`, `feedback_state`); each frontend treats the message as a
+  `quiz_submission`, `feedback`, `feedback_state`, `session_deleted`); each frontend treats the message as a
   refresh hint and re-fetches the data it cares about
+- **And** `session_deleted` is final: the participant, moderator, and
+  projector pages replace their content with the banner "This session was
+  deleted." (`#session-deleted`), stop refreshing, and close their socket
+  without reconnecting
 - **And** the client auto-reconnects with exponential backoff if the
   socket drops; **on every reconnect after the first**, the client
   fires its refresh callback with a synthetic `{type: "reconnect"}`
@@ -2086,10 +2115,12 @@ are the rules every user-facing UC silently relies on.
 - `PATCH .../me` → frame `{"type": "participant"}`.
 - `POST .../feedback` → frame `{"type": "feedback"}`.
 - `POST .../feedback_enabled` → frame `{"type": "feedback_state"}` (UC-M-12).
+- `DELETE /api/sessions/{code}` → frame `{"type": "session_deleted"}` (`test_uc_x_01_session_deleted_broadcasts`).
 - Sending the text frame `ping` → the server answers `{"type": "pong"}` (`test_uc_x_01_ping_gets_pong`).
 - A broadcast whose send to one socket fails or times out evicts that socket and closes it, and still delivers to the others (`test_uc_x_01_failed_socket_is_closed`).
 
 **Tests (UI)**
+- With `/s/<CODE>`, `/m/<CODE>`, and `/p/<CODE>` open, deleting the session shows `#session-deleted` reading "This session was deleted." on each page and no page opens another socket (`test_uc_x_01_session_deleted_shows_final_state`).
 - With the server's frames to the page swallowed after the socket opens, the page reconnects (a second socket opens) once its silence timeout passes; test builds shorten the 25 s / 60 s timings through `localStorage` `prashna:keepalive-ms` (`test_uc_x_01_silent_socket_reconnects`).
 
 ### UC-X-02: WebSocket upgrade rejections
@@ -2099,11 +2130,22 @@ are the rules every user-facing UC silently relies on.
 - **Then** the WS upgrade is closed with code **4403** (cross-origin)
 - **Given** the URL's `{code}` does not match any Session
 - **Then** the WS upgrade is closed with code **4404** (no session)
+- **And** the server completes the handshake before closing, so a browser
+  sees the code (a refused handshake reaches a browser only as `1006`).
+  The socket joins no room and receives no message
+- **And** a page whose socket closes with 4403 or 4404 stops
+  reconnecting. A 4404 after the page has been connected means the
+  session was deleted while the page was offline, so the page shows the
+  same final state as `session_deleted` (UC-X-01)
 
 **Tests (API)**
 - Connect WS to `/ws/sessions/{CODE}` with `Origin: https://evil.example`, `Host: localhost:8000` → server closes with code `4403`.
 - Connect WS to `/ws/sessions/NOSUCH` with matching Origin/Host → server closes with code `4404`.
 - Connect WS with no Origin header (curl-style client) → upgrade succeeds (matching skipped when Origin absent).
+
+**Tests (UI)**
+- Against the running server, a WebSocket client connecting to `/ws/sessions/NOSUCH` receives close code 4404 rather than a refused handshake (`test_uc_x_02_unknown_session_closes_with_4404`).
+- On `/s/<CODE>`, when the socket drops and the session is deleted before the page reconnects, the reconnect gets 4404; the page shows `#session-deleted` and opens no further socket (`test_uc_x_02_page_stops_reconnecting_after_4404`).
 
 ### UC-X-03: HTTP security headers
 
@@ -2385,6 +2427,9 @@ have a participant cookie are limited **per person**, not per address.
   waves
 - **And** each page records a `prashna-usable` Performance mark when its useful
   surface is ready
+- **And** a live update that refetches part of the participant page while
+  its bootstrap request is in flight wins: the older bootstrap response
+  does not overwrite that part
 - **And** a non-blocking, rate-limited performance beacon logs only bounded
   timing, role, negotiated protocol, navigation type, and Cloudflare colo
   fields; it never logs a session code, URL, cookie, token, or client IP.
@@ -2405,6 +2450,10 @@ have a participant cookie are limited **per person**, not per address.
   delayed.
 - Participant, moderator, and projector boots use their single bootstrap
   endpoints and create `performance.getEntriesByName("prashna-usable")`.
+- With the participant bootstrap response held back, a question asked
+  meanwhile appears through the live update and is still listed after the
+  held, older bootstrap response arrives
+  (`test_uc_x_11_live_update_during_bootstrap_is_kept`).
 - `performance/measure.py` records `usable_ms`, fails an otherwise successful
   navigation that never reaches the usable mark, and retains the existing
   network/application metrics.

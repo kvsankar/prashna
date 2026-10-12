@@ -483,16 +483,20 @@ def test_uc_p_11_get_queries_still_works(client, admin_client, make_session):
 
 # ---------- UC-M-10: Live participant count ----------
 
-def test_uc_m_10_presence_empty(client, admin_client, make_session):
-    """UC-M-10: presence with no other activity returns ≥ 0; the call itself counts."""
+def test_uc_m_10_presence_creates_no_participant(client, admin_client, make_session):
+    """UC-M-10: reading presence is read-only: no cookie, no Participant,
+    so a moderator tab polling it is never counted online."""
     s = make_session()
     admin_client.cookies.clear()
     r = client.get(f"/api/sessions/{s['code']}/presence")
     assert r.status_code == 200
-    body = r.json()
-    assert "online" in body
-    # the call itself creates / refreshes a participant within window
-    assert body["online"] >= 1
+    assert r.json() == {"online": 0}
+    assert "voter_token" not in r.headers.get("set-cookie", "")
+    from prashna import models as m
+    from prashna.db import SessionLocal
+    with SessionLocal() as db:
+        sess = db.query(m.Session).filter_by(code=s["code"]).one()
+        assert db.query(m.Participant).filter_by(session_id=sess.id).count() == 0
 
 
 def test_uc_m_10_presence_after_participant_activity(client, admin_client, make_session, app_module):
@@ -520,12 +524,11 @@ def test_uc_m_10_presence_expires_after_30s(client, admin_client, make_session, 
         for p in db.query(m.Participant).filter_by(session_id=sess.id).all():
             p.last_seen_at = datetime.utcnow() - timedelta(seconds=60)
         db.commit()
-    # use a fresh client so this presence call doesn't create another within-window participant
     with TestClient(app_module.app) as c2:
-        # the call itself will create a participant for c2, so account for that
         r = c2.get(f"/api/sessions/{s['code']}/presence")
-    # the new participant from c2 is fresh; backdated one is excluded.
-    assert r.json()["online"] == 1
+    # The backdated participant is excluded, and the presence call itself
+    # creates no participant.
+    assert r.json()["online"] == 0
 
 
 def test_uc_p_bootstrap_reports_the_owner(admin_client, make_session):

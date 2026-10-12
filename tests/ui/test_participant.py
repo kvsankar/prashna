@@ -875,3 +875,132 @@ def test_uc_p_view_links_follow_the_viewer(base_url, admin_setup, page, browser)
         delegate.close()
     finally:
         c.close()
+
+
+# ---------- Double-submit guards and live-update races ----------
+
+DOUBLE_CTRL_ENTER = """(sel) => {
+  const field = document.querySelector(sel);
+  for (let i = 0; i < 2; i++) {
+    field.dispatchEvent(new KeyboardEvent("keydown",
+      { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
+  }
+}"""
+
+
+def test_uc_p_04_double_ctrl_enter_posts_once(base_url, admin_setup, page):
+    """UC-P-04: two quick Ctrl+Enter presses post one question (the key
+    clicks #ask-btn, whose guard ignores the second press)."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P04dd {secrets.token_hex(3)}")
+    posts = []
+    page.on("request", lambda r: posts.append(r.url)
+            if r.method == "POST" and r.url.endswith("/queries") else None)
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#ask-card:visible")
+        page.fill("#query-text", "asked-only-once")
+        page.evaluate(DOUBLE_CTRL_ENTER, "#query-text")
+        expect(page.locator("#queries")).to_contain_text("asked-only-once", timeout=5000)
+        page.wait_for_timeout(500)  # room for a second POST to show up
+        assert len(posts) == 1, posts
+        texts = [q["text"] for q in c.get(f"/api/sessions/{s['code']}/queries").json()]
+        assert texts == ["asked-only-once"]
+    finally:
+        c.close()
+
+
+def test_uc_p_05_double_tap_votes_once(base_url, admin_setup, page):
+    """UC-P-05: two quick taps on the vote button send one vote."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P05dd {secrets.token_hex(3)}")
+    ask_query_api(base_url, s["code"], "double-tap-query")
+    posts = []
+    page.on("request", lambda r: posts.append(r.url)
+            if r.method == "POST" and r.url.endswith("/vote") else None)
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#queries .question")
+        page.evaluate("""() => {
+          const b = document.querySelector("#queries .question button.vote-btn");
+          b.click(); b.click();
+        }""")
+        btn = page.locator("#queries .question button.vote-btn")
+        expect(btn).to_have_attribute("aria-pressed", "true", timeout=5000)
+        page.wait_for_timeout(500)
+        assert len(posts) == 1, posts
+        rows = c.get(f"/api/sessions/{s['code']}/queries").json()
+        assert [q["vote_count"] for q in rows] == [1]
+    finally:
+        c.close()
+
+
+def test_uc_p_13_live_updates_keep_feedback_draft(base_url, admin_setup, page):
+    """UC-P-13: renaming or ending the session, and closing and reopening
+    rating, leave an unsent rating and comment in place."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P13d {secrets.token_hex(3)}")
+    code = s["code"]
+    api_start_session(c, code)
+    c.post(f"/api/sessions/{code}/feedback_enabled", json={"enabled": True}).raise_for_status()
+    try:
+        page.goto(f"{base_url}/s/{code}")
+        page.wait_for_selector("#feedback-card:visible")
+        page.locator("#fb-stars button.star").nth(2).click()  # 3 stars
+        page.fill("#fb-went-well", "half-typed thought")
+
+        renamed = f"Renamed {secrets.token_hex(3)}"
+        c.patch(f"/api/sessions/{code}", json={"title": renamed}).raise_for_status()
+        expect(page.locator("#title")).to_have_text(renamed, timeout=5000)
+        page.wait_for_timeout(500)  # room for a feedback reload to land
+        expect(page.locator("#fb-went-well")).to_have_value("half-typed thought")
+        expect(page.locator("#fb-stars button.star.filled")).to_have_count(3)
+
+        api_end_session(c, code)
+        expect(page.locator("#ended-card")).to_be_visible(timeout=5000)
+        page.wait_for_timeout(500)
+        expect(page.locator("#fb-went-well")).to_have_value("half-typed thought")
+        expect(page.locator("#fb-stars button.star.filled")).to_have_count(3)
+
+        c.post(f"/api/sessions/{code}/feedback_enabled", json={"enabled": False}).raise_for_status()
+        expect(page.locator("#feedback-card")).to_be_hidden(timeout=5000)
+        c.post(f"/api/sessions/{code}/feedback_enabled", json={"enabled": True}).raise_for_status()
+        expect(page.locator("#feedback-card")).to_be_visible(timeout=5000)
+        page.wait_for_timeout(500)
+        expect(page.locator("#fb-went-well")).to_have_value("half-typed thought")
+        expect(page.locator("#fb-stars button.star.filled")).to_have_count(3)
+    finally:
+        c.close()
+
+
+def test_uc_x_11_live_update_during_bootstrap_is_kept(base_url, admin_setup, page):
+    """UC-X-11: a question that arrives through a live update while the
+    participant bootstrap is in flight is not wiped by the older bootstrap."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-X11 {secrets.token_hex(3)}")
+    held = []
+
+    def hold(route):
+        # Fetch now, so the bootstrap body predates the question below.
+        held.append((route, route.fetch()))
+
+    try:
+        page.route("**/participant-bootstrap", hold)
+        page.add_init_script("localStorage.setItem('prashna:socket-close-hook', '1')")
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_function("window.__prashnaLiveSocketTest?.readyState() === 1", timeout=5000)
+        for _ in range(50):
+            if held:
+                break
+            page.wait_for_timeout(100)
+        assert held, "the bootstrap request was never made"
+
+        ask_query_api(base_url, s["code"], "asked-during-boot")
+        expect(page.locator("#queries")).to_contain_text("asked-during-boot", timeout=5000)
+
+        route, stale = held[0]
+        route.fulfill(response=stale)
+        page.wait_for_function("performance.getEntriesByName('prashna-usable').length > 0", timeout=5000)
+        expect(page.locator("#queries")).to_contain_text("asked-during-boot")
+    finally:
+        c.close()

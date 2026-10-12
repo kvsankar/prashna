@@ -303,13 +303,25 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
     };
     ws.onmessage = (ev) => {
       lastFrameAt = Date.now();
-      try {
-        const msg = JSON.parse(ev.data) as LiveMessage;
-        if (msg.type !== "pong") onMessage(msg);  // keepalive replies are not refresh hints
-      } catch { /* ignore malformed frame */ }
+      let msg: LiveMessage;
+      try { msg = JSON.parse(ev.data) as LiveMessage; } catch { return; /* ignore malformed frame */ }
+      if (msg.type === "pong") return;  // keepalive replies are not refresh hints
+      // A deleted session is final (UC-X-01): stop before the page reacts.
+      if (msg.type === "session_deleted") { alive = false; ws.close(); }
+      try { onMessage(msg); } catch { /* page may be tearing down */ }
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (!alive) return;
+      // 4403 (cross-origin) and 4404 (no such session) will not change on
+      // retry (UC-X-02). A 4404 after a successful connection means the
+      // session was deleted while this page was offline.
+      if (ev.code === 4403 || ev.code === 4404) {
+        alive = false;
+        if (ev.code === 4404 && connectedOnce) {
+          try { onMessage({ type: "session_deleted" }); } catch { /* page may be tearing down */ }
+        }
+        return;
+      }
       retry = Math.min(retry + 1, 6);
       // Exponential backoff with ±50% jitter to avoid a synchronized
       // reconnect herd after a mass disconnect.
@@ -320,6 +332,14 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
   }
   connect();
   return { close() { alive = false; ws?.close(); } };
+}
+
+/** The final state once the session is deleted (UC-X-01): one banner
+ *  replaces the page's content and its section links. */
+export function showSessionDeleted(): void {
+  for (const nav of $$(".section-links")) setVisible(nav, false);
+  document.querySelector("main")?.replaceChildren(
+    el("div", { id: "session-deleted", class: "error-banner", role: "alert" }, "This session was deleted."));
 }
 
 // --- QR rendering + shared fullscreen lightbox ---

@@ -1,4 +1,4 @@
-import { $, answerOption, api, bindMenuDismiss, el, errorToast, exportMenu, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, statusLabel, toast, type LiveMessage } from "./common";
+import { $, answerOption, api, bindMenuDismiss, el, errorToast, exportMenu, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, showSessionDeleted, statusLabel, toast, type LiveMessage } from "./common";
 import type {
   FeedbackSummary,
   ModeratorBootstrap,
@@ -230,7 +230,8 @@ async function loadPresence(): Promise<void> {
 
 async function loadQueries(): Promise<void> {
   const seq = ++latestQueriesSeq;
-  const rows = await api<Query[]>(`/api/sessions/${CODE}/queries`, { headers: modHeaders() });
+  // display=true: a moderator tab is never a participant (UC-M-10).
+  const rows = await api<Query[]>(`/api/sessions/${CODE}/queries?display=true`, { headers: modHeaders() });
   if (seq !== latestQueriesSeq) return;
   queries = rows;
   renderQueries();
@@ -238,6 +239,12 @@ async function loadQueries(): Promise<void> {
 
 function renderQueries(): void {
   const root = $("#queries");
+  // A live redraw keeps the response box being typed in focused, with its
+  // caret, so later keystrokes still land (UC-M-08).
+  const active = document.activeElement;
+  const editing = active instanceof HTMLTextAreaElement && root.contains(active)
+    ? { id: active.dataset.queryId, start: active.selectionStart, end: active.selectionEnd, dir: active.selectionDirection }
+    : null;
   root.innerHTML = "";
   if (!queries.length) {
     root.appendChild(el("div", { class: "muted small" }, "No questions yet. Share the participant URL to invite questions."));
@@ -249,13 +256,18 @@ function renderQueries(): void {
     return b.vote_count - a.vote_count;
   });
   for (const q of sorted) root.appendChild(renderQuery(q));
+  const box = editing && root.querySelector<HTMLTextAreaElement>(`textarea[data-query-id="${editing.id}"]`);
+  if (editing && box) {
+    box.focus({ preventScroll: true });
+    box.setSelectionRange(editing.start, editing.end, editing.dir);
+  }
 }
 
 function renderQuery(q: Query): HTMLElement {
   const initial = pendingResponseText.has(q.id) ? pendingResponseText.get(q.id)! : (q.response_text || "");
   const respInput = el("textarea", {
     class: "response-input", rows: 1, "aria-label": "Response to this question",
-    placeholder: "Type a response (optional)…",
+    placeholder: "Type a response (optional)…", "data-query-id": q.id,
   }, initial) as HTMLTextAreaElement;
   respInput.addEventListener("input", () => pendingResponseText.set(q.id, respInput.value));
   const respondBtn = el("button", { class: "primary small" }, q.responded ? "Update response" : "Mark responded");
@@ -331,7 +343,7 @@ async function loadAvailableQuizzes(): Promise<void> {
 
 async function loadQuizRuns(): Promise<void> {
   const seq = ++latestQuizRunsSeq;
-  const rows = await api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs`, { headers: modHeaders() });
+  const rows = await api<QuizRun[]>(`/api/sessions/${CODE}/quiz_runs?display=true`, { headers: modHeaders() });
   if (seq !== latestQuizRunsSeq) return;
   quizRuns = rows;
   renderQuizRuns();
@@ -596,6 +608,14 @@ function refreshAll(): void {
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingLiveTypes = new Set<string>();
 function refreshSoon(msg: LiveMessage): void {
+  if (msg.type === "session_deleted") {
+    // Final (UC-X-01): stop every refresh and show the deleted state.
+    if (refreshTimer) clearTimeout(refreshTimer);
+    if (presenceTimer) clearInterval(presenceTimer);
+    refreshTimer = presenceTimer = null;
+    showSessionDeleted();
+    return;
+  }
   pendingLiveTypes.add(msg.type);
   if (refreshTimer) return;
   refreshTimer = setTimeout(() => {

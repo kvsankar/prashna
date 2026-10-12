@@ -374,6 +374,42 @@ def test_uc_m_04_start_queued(admin_client, make_quiz, make_session):
     assert s2["status"] == "live"
 
 
+def test_uc_m_04_start_in_planning_broadcasts_session_state(
+    admin_client, make_quiz, make_session, app_module, monkeypatch, caplog
+):
+    """UC-M-04: a run start that makes a planning session live also tells
+    every page the session changed, and logs the session start."""
+    import logging
+
+    sent = []
+
+    async def fake_broadcast(room, message):
+        sent.append(message["type"])
+
+    monkeypatch.setattr(app_module.hub, "broadcast", fake_broadcast)
+    caplog.set_level(logging.INFO, logger="prashna")
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    sent.clear()
+    r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
+    assert r.status_code == 200
+    assert sorted(sent) == ["quiz_run_update", "session_state"]
+    starts = [
+        rec.__dict__ for rec in caplog.records
+        if rec.__dict__.get("diag_event") == "session.lifecycle"
+        and rec.__dict__.get("diag_action") == "start"
+    ]
+    assert len(starts) == 1, [rec.__dict__ for rec in caplog.records]
+
+    # In a session that is already live, only the run changes.
+    run2 = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                             json={"quiz_id": q["id"]}).json()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close").raise_for_status()
+    sent.clear()
+    r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run2['id']}/start")
+    assert r.status_code == 200
+    assert sent == ["quiz_run_update"]
+
+
 def test_uc_m_04_another_live_409(admin_client, make_quiz, make_session):
     """UC-M-04: starting while another live → 409."""
     q = make_quiz()

@@ -1441,15 +1441,10 @@ async def delete_session(
 
 
 @app.get("/api/sessions/{code}/presence")
-def session_presence(
-    code: str,
-    request: Request,
-    response: Response,
-    voter_token: Annotated[str | None, Cookie()] = None,
-    db: DbSession = Depends(get_db),
-):
+def session_presence(code: str, db: DbSession = Depends(get_db)):
+    # Read-only: the moderator page polls this, and a moderator tab must
+    # not become a Participant (UC-M-10).
     s = get_session_by_code(db, code)
-    current_participant(s, request, response, voter_token, db)
     return {"online": participant_count_online(db, s)}
 
 
@@ -2531,7 +2526,8 @@ async def start_quiz_run(
         raise HTTPException(400, f"Cannot start from status: {run.status}")
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
-    if s.status == "planning":
+    session_started = s.status == "planning"
+    if session_started:
         s.status = "live"
         s.started_at = datetime.utcnow()
     run.status = "live"
@@ -2553,6 +2549,16 @@ async def start_quiz_run(
         )
         raise HTTPException(409, "Another quiz is already live — close it first.")
     await broadcast_session(s, "quiz_run_update")
+    if session_started:
+        # The session went live with this run (UC-M-04): every page shows it.
+        await broadcast_session(s, "session_state")
+        log_diagnostic(
+            "session.lifecycle",
+            action="start",
+            outcome="success",
+            session_id=s.id,
+            session_code=s.code,
+        )
     log_diagnostic(
         "quiz_run.lifecycle",
         action="start",
@@ -2905,6 +2911,17 @@ def export_quiz(
 
 # ---------- websocket ----------
 
+async def _ws_reject(ws: WebSocket, code: int) -> None:
+    """Close with an application code the browser can read (UC-X-02).
+
+    A refused handshake reaches a page only as close code 1006, so the page
+    cannot tell "stop" from "retry". Accepting first carries the code; the
+    socket joins no room and is sent nothing.
+    """
+    await ws.accept()
+    await ws.close(code=code)
+
+
 @app.websocket("/ws/sessions/{code}")
 async def ws_session(ws: WebSocket, code: str):
     origin = ws.headers.get("origin")
@@ -2912,13 +2929,13 @@ async def ws_session(ws: WebSocket, code: str):
         host = ws.headers.get("host", "")
         if origin not in (f"http://{host}", f"https://{host}"):
             log_diagnostic("ws.reject", outcome="failure", reason="origin")
-            await ws.close(code=4403)
+            await _ws_reject(ws, 4403)
             return
     with SessionLocal() as db:
         s = db.scalar(select(m.Session).where(m.Session.code == code.upper()))
         if not s:
             log_diagnostic("ws.reject", outcome="failure", reason="session")
-            await ws.close(code=4404)
+            await _ws_reject(ws, 4404)
             return
     room = f"session:{code.upper()}"
     await hub.join(room, ws)

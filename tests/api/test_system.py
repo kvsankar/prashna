@@ -170,6 +170,9 @@ def test_uc_x_01_quiz_run_update(admin_client, make_quiz, make_session):
     run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
                             json={"quiz_id": q["id"]}).json()
     base = f"/api/sessions/{s['code']}/quiz_runs/{run['id']}"
+    # A live session: a start in a planning session also sends session_state
+    # (UC-M-04, covered by test_uc_m_04_start_in_planning_broadcasts_session_state).
+    admin_client.post(f"/api/sessions/{s['code']}/start").raise_for_status()
     with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         admin_client.post(f"{base}/start")
         admin_client.post(f"{base}/reveal", json={"reveal": True})

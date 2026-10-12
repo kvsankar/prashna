@@ -1,4 +1,4 @@
-import { $, answerOption, api, el, markUsable, openLiveSocket, pathCode, publicBase, renderQR, setVisible } from "./common";
+import { $, answerOption, api, el, markUsable, openLiveSocket, pathCode, publicBase, renderQR, setVisible, showSessionDeleted } from "./common";
 import type { DisplayBootstrap, Query, QuizRun } from "./types";
 
 const CODE = pathCode();
@@ -9,7 +9,10 @@ let latestLoadSeq = 0;
 // While a quiz run is live the projector also refetches every 5 s, so votes
 // and question changes show even if live updates stop arriving (UC-D-05).
 let quizIsLive = false;
-setInterval(() => { if (quizIsLive) void loadAll().catch(() => { /* next tick retries */ }); }, 5000);
+let sessionDeleted = false;
+setInterval(() => {
+  if (quizIsLive && !sessionDeleted) void loadAll().catch(() => { /* next tick retries */ });
+}, 5000);
 
 async function loadAll(): Promise<void> {
   const seq = ++latestLoadSeq;
@@ -114,7 +117,14 @@ function renderQuiz(run: QuizRun): void {
 // answer, and the projector is in that room — debounce.
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 function loadAllSoon(msg: { type: string }): void {
-  if (msg.type === "feedback_state") return;
+  if (msg.type === "session_deleted") {
+    // Final (UC-X-01): stop refreshing and show the deleted state.
+    sessionDeleted = true;
+    if (reloadTimer) clearTimeout(reloadTimer);
+    showSessionDeleted();
+    return;
+  }
+  if (msg.type === "feedback_state" || sessionDeleted) return;
   if (reloadTimer) return;
   reloadTimer = setTimeout(() => { reloadTimer = null; void loadAll(); }, 400);
 }

@@ -927,3 +927,25 @@ def test_uc_a_24_results_card_opens_and_closes(base_url, admin_setup, page):
         expect(page.locator("#results-card")).to_be_hidden()
     finally:
         c.close()
+
+
+def test_uc_a_09_double_enter_creates_one_quiz(base_url, admin_setup, page):
+    """UC-A-09: two quick Enter presses in #new-quiz-title create one quiz."""
+    c = api_login(base_url)
+    title = f"UI-Q09dd {secrets.token_hex(3)}"
+    try:
+        _goto_quizzes(page, base_url)
+        page.fill("#new-quiz-title", title)
+        page.evaluate("""() => {
+          const field = document.querySelector("#new-quiz-title");
+          for (let i = 0; i < 2; i++) {
+            field.dispatchEvent(new KeyboardEvent("keydown",
+              { key: "Enter", bubbles: true, cancelable: true }));
+          }
+        }""")
+        expect(page.locator("#quiz-rows tr").filter(has_text=title)).to_have_count(1, timeout=5000)
+        page.wait_for_timeout(500)
+        quizzes = [q for q in c.get("/api/quizzes").json() if q["title"] == title]
+        assert len(quizzes) == 1, quizzes
+    finally:
+        c.close()

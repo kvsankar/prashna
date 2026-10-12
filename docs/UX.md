@@ -461,6 +461,7 @@ create affordance.
 | Transient action     | Toast (bottom right), 2.5s                                   |
 | Form / sticky error  | `.error-banner` *inside* the affected card, until dismissed  |
 | Blocking failure     | Banner on the page; no modal                                 |
+| Session deleted      | `#session-deleted` banner replaces the page's content (`showSessionDeleted()`, UC-X-01) |
 | Auth expired         | Redirect to `/` (handled in `api()`)                         |
 
 Never use `alert()` or `prompt()`.
@@ -538,8 +539,10 @@ a link as a button or use a button only to navigate.
   from `common.ts` — it disables the button while the async handler runs
   and ignores repeat clicks, so a slow request can't be fired twice
   (duplicate rows, double-advance, etc.). Idempotent actions (login,
-  lifecycle start/end, toggles, set-value, copy, navigation) don't need
-  it. Don't hand-roll per-button `disabled` flags — reuse `guardClick`.
+  lifecycle start/end, set-value, copy, navigation) don't need
+  it. A toggle the server flips (the participant vote) is not idempotent:
+  a double tap would undo it, so it is guarded. Don't hand-roll per-button
+  `disabled` flags — reuse `guardClick`.
 
 ---
 
@@ -568,6 +571,9 @@ state, use a verb button (§7 Status transitions).
   (`+ New`, login, join code).
 - **Cmd/Ctrl+Enter** submits multiline composers (textarea: ask a
   question).
+- A shortcut submits by calling the form button's `click()`, never the
+  handler directly, so the button's `guardClick` guard also stops a
+  double press.
 - **Escape** closes the detail pane.
 - Tab order matches reading order; trust the natural DOM order, don't
   override `tabindex` unless you have to.

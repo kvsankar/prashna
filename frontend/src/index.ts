@@ -111,7 +111,8 @@ async function submitSetup(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 guardClick($<HTMLButtonElement>("#su-btn"), submitSetup);
-$("#su-pass2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void submitSetup(); });
+// Enter clicks the button, so its double-submit guard covers the key too.
+$("#su-pass2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("#su-btn").click(); });
 
 // ----- login -----
 async function submitLogin(): Promise<void> {
@@ -123,7 +124,7 @@ async function submitLogin(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 $("#li-btn").addEventListener("click", () => void submitLogin());
-$("#li-pass").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void submitLogin(); });
+$("#li-pass").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("#li-btn").click(); });
 
 // ----- sessions: create -----
 async function createSession(): Promise<void> {
@@ -138,7 +139,7 @@ async function createSession(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 guardClick($<HTMLButtonElement>("#new-session-btn"), createSession);
-$("#new-session-title").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void createSession(); });
+$("#new-session-title").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("#new-session-btn").click(); });
 
 // ----- sessions: list -----
 async function loadSessions(): Promise<void> {
@@ -195,14 +196,25 @@ async function loadSessions(): Promise<void> {
 }
 
 // ----- session delete flow -----
+// The session the typed-title confirm card is about to delete, if open.
+let pendingDelete: SessionRow | null = null;
 function hideConfirmCard(): void {
   setVisible($("#confirm-delete-card"), false);
   $<HTMLInputElement>("#cd-confirm").value = "";
-  const go = $<HTMLButtonElement>("#cd-go");
-  go.disabled = true;
-  go.onclick = null;
+  $<HTMLButtonElement>("#cd-go").disabled = true;
+  pendingDelete = null;
 }
 $("#cd-cancel").addEventListener("click", hideConfirmCard);
+guardClick($<HTMLButtonElement>("#cd-go"), async () => {
+  const s = pendingDelete;
+  if (!s) return;
+  try {
+    await api(`/api/sessions/${s.code}`, { method: "DELETE", body: { confirm_title: $<HTMLInputElement>("#cd-confirm").value } });
+    hideConfirmCard();
+    toast(`Deleted "${s.title}"`);
+    void loadSessions();
+  } catch (e) { errorToast((e as Error).message); }
+});
 
 async function deleteNoData(s: SessionRow): Promise<void> {
   try {
@@ -232,14 +244,7 @@ function startDeleteFlow(s: SessionRow): void {
   confInp.value = "";
   goBtn.disabled = true;
   confInp.oninput = () => { goBtn.disabled = confInp.value !== s.title; };
-  goBtn.onclick = async () => {
-    try {
-      await api(`/api/sessions/${s.code}`, { method: "DELETE", body: { confirm_title: confInp.value } });
-      hideConfirmCard();
-      toast(`Deleted "${s.title}"`);
-      void loadSessions();
-    } catch (e) { errorToast((e as Error).message); }
-  };
+  pendingDelete = s;
   setVisible($("#confirm-delete-card"), true);
   confInp.focus();
   $("#confirm-delete-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -274,7 +279,7 @@ async function submitChangePassword(): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 guardClick($<HTMLButtonElement>("#cp-submit"), submitChangePassword);
-$("#cp-new2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void submitChangePassword(); });
+$("#cp-new2").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("#cp-submit").click(); });
 
 // ----- limits (UC-A-31) -----
 // Each row: what people do, its "at once" value, its "per minute" value.

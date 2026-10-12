@@ -133,8 +133,9 @@ def test_auth_session_upload_and_ws_diagnostics(client, caplog):
         with client.websocket_connect(
             f"/ws/sessions/{s['code']}",
             headers={"origin": "https://evil.example"},
-        ):
-            pass
+        ) as ws:
+            # The server accepts, then closes with 4403 (UC-X-02).
+            ws.receive_text()
 
     r = client.post(
         "/api/admin/change_password",

@@ -493,3 +493,52 @@ def test_uc_a_31_admin_adjusts_limits(base_url, admin_setup, page):
         c = api_login(base_url)
         c.put("/api/admin/limits", json={"ask_burst": 6})
         c.close()
+
+
+# ---------- Double-submit guards ----------
+
+DOUBLE_ENTER = """(sel) => {
+  const field = document.querySelector(sel);
+  for (let i = 0; i < 2; i++) {
+    field.dispatchEvent(new KeyboardEvent("keydown",
+      { key: "Enter", bubbles: true, cancelable: true }));
+  }
+}"""
+
+
+def test_uc_a_03_double_enter_creates_one_session(base_url, admin_setup, page):
+    """UC-A-03: two quick Enter presses create one session."""
+    c = api_login(base_url)
+    title = f"UI-A03dd {secrets.token_hex(3)}"
+    try:
+        admin_login_via_ui(page, base_url)
+        page.fill("#new-session-title", title)
+        page.evaluate(DOUBLE_ENTER, "#new-session-title")
+        expect(page.locator("#session-rows tr").filter(has_text=title)).to_have_count(1, timeout=5000)
+        page.wait_for_timeout(500)  # room for a second create to land
+        rows = [r for r in c.get("/api/sessions").json() if r["title"] == title]
+        assert len(rows) == 1, rows
+    finally:
+        c.close()
+
+
+def test_uc_a_07_double_click_delete_sends_once(base_url, admin_setup, page):
+    """UC-A-07: two quick clicks on #cd-go send one DELETE and no error."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A07dd {secrets.token_hex(3)}")
+    ask_query_api(base_url, s["code"], "got data?")
+    deletes = []
+    page.on("request", lambda r: deletes.append(r.url) if r.method == "DELETE" else None)
+    try:
+        admin_login_via_ui(page, base_url)
+        row = page.locator("#session-rows tr").filter(has_text=s["title"])
+        row.locator("button.danger").click()
+        page.fill("#cd-confirm", s["title"])
+        expect(page.locator("#cd-go")).to_be_enabled()
+        page.evaluate("() => { const b = document.querySelector('#cd-go'); b.click(); b.click(); }")
+        expect(row).to_have_count(0, timeout=5000)
+        page.wait_for_timeout(500)
+        assert len(deletes) == 1, deletes
+        expect(page.locator(".toast-error")).to_have_count(0)
+    finally:
+        c.close()

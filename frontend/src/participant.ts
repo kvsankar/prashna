@@ -1,4 +1,4 @@
-import { $, answerOption, api, el, errorToast, guardClick, markUsable, modKey, openLiveSocket, pathCode, publicBase, renderQR, setVisible, toast, type LiveMessage } from "./common";
+import { $, answerOption, api, el, errorToast, guardClick, markUsable, modKey, openLiveSocket, pathCode, publicBase, renderQR, setVisible, showSessionDeleted, toast, type LiveMessage } from "./common";
 import type { Feedback, ParticipantBootstrap, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
@@ -29,11 +29,14 @@ function applySession(s: Session, refreshFeedback = true): void {
   $("#code").textContent = "Code " + CODE;
   $("#participant-breadcrumb-session").textContent = s.title;
   sessionEnded = s.status === "ended";
+  const ratingOpened = s.feedback_enabled && !feedbackEnabled;
   feedbackEnabled = s.feedback_enabled;
   setVisible($("#ask-card"), !sessionEnded);
   setVisible($("#ended-card"), sessionEnded);
   setVisible($("#feedback-card"), feedbackEnabled);
-  if (feedbackEnabled && refreshFeedback) void loadFeedback();
+  // Saved feedback loads only when rating opens; a rename, the end of the
+  // session, or a reconnect must not touch a draft (UC-P-13).
+  if (ratingOpened && refreshFeedback) void loadFeedback();
   void renderQR($("#share-qr"), `${publicBase(s)}/s/${s.code}`, { cellSize: 3, margin: 2 })
     .catch(() => { /* QR is best-effort */ });
 }
@@ -242,15 +245,15 @@ function renderQueries(): void {
 }
 
 function renderQuery(q: Query): HTMLElement {
-  const voteBtn = el("button", {
+  // Guarded: a vote toggles, so a double tap would vote and un-vote (UC-P-05).
+  const voteBtn = guardClick(el("button", {
     class: "vote-btn" + (q.voted ? " voted" : ""),
     "aria-pressed": String(!!q.voted),
     "aria-label": q.voted ? `Remove vote (currently ${q.vote_count})` : `Upvote (currently ${q.vote_count})`,
-    onclick: () => toggleVote(q.id),
   },
     el("div", { class: "arrow", "aria-hidden": "true" }, "▲"),
     el("div", { class: "count" }, String(q.vote_count)),
-  );
+  ) as HTMLButtonElement, () => toggleVote(q.id));
   const body = el("div", { class: "body" },
     el("div", { class: "text" }, q.text),
     q.author_name ? el("div", { class: "small muted" }, "— " + q.author_name) : null,
@@ -264,7 +267,8 @@ function renderQuery(q: Query): HTMLElement {
 async function toggleVote(qid: number): Promise<void> {
   try { await api(`/api/sessions/${CODE}/queries/${qid}/vote`, { method: "POST" }); }
   catch (e) { errorToast((e as Error).message); }
-  void loadQueries();
+  // Keep the button disabled until the list shows the new state.
+  try { await loadQueries(); } catch { /* the next live update refreshes it */ }
 }
 
 // "Show my name" is a choice per question (UC-P-04): the box clears after
@@ -307,7 +311,8 @@ if (!matchMedia("(pointer: fine)").matches) {
 }
 $("#query-text").addEventListener("keydown", (e) => {
   const ke = e as KeyboardEvent;
-  if (ke.key === "Enter" && (ke.metaKey || ke.ctrlKey)) { ke.preventDefault(); void askQuery(); }
+  // Click, so #ask-btn's double-submit guard covers the shortcut too.
+  if (ke.key === "Enter" && (ke.metaKey || ke.ctrlKey)) { ke.preventDefault(); $<HTMLButtonElement>("#ask-btn").click(); }
 });
 
 async function loadQuiz(): Promise<void> {
@@ -464,7 +469,11 @@ function renderFeedbackAction(): void {
     : "Choose a rating to submit feedback.";
 }
 
+// True while the stars or comments hold changes not yet submitted; saved
+// feedback never overwrites them (UC-P-13).
+let feedbackDraftDirty = false;
 function markFeedbackDirty(): void {
+  feedbackDraftDirty = true;
   $("#fb-status").textContent = feedbackSubmitted ? "Unsaved changes" : "Ready to submit";
 }
 
@@ -479,6 +488,7 @@ async function saveFeedback(): Promise<void> {
   try {
     await api(`/api/sessions/${CODE}/feedback`, { method: "POST", body: cur });
     feedbackSubmitted = true;
+    feedbackDraftDirty = false;
     $("#fb-status").textContent = "Submitted ✓";
     renderFeedbackAction();
     renderFeedbackSummary();
@@ -498,6 +508,7 @@ async function clearFeedback(): Promise<void> {
   }
   myRating = 0;
   feedbackSubmitted = false;
+  feedbackDraftDirty = false;
   $<HTMLTextAreaElement>("#fb-went-well").value = "";
   $<HTMLTextAreaElement>("#fb-to-improve").value = "";
   setVisible($("#fb-expand"), false);
@@ -534,6 +545,7 @@ function renderFeedbackSummary(): void {
 
 let feedbackLoaded = false;
 function applyFeedback(f: Feedback | null): void {
+  if (feedbackDraftDirty) return;
   if (f) {
       myRating = f.rating;
       $<HTMLTextAreaElement>("#fb-went-well").value = f.went_well || "";
@@ -598,6 +610,10 @@ function onLive(msg: LiveMessage): void {
       if (activeQuiz && activeQuiz.results) scheduleQuizRefresh(); break;
     case "feedback": case "participant":
       break;
+    case "session_deleted":
+      if (quizCountTimer) clearTimeout(quizCountTimer);
+      showSessionDeleted();
+      break;
     default:
       refreshAll(); break;
   }
@@ -607,11 +623,16 @@ function onLive(msg: LiveMessage): void {
   // Connect before rendering interactive state so a session transition cannot
   // land between the initial fetch and socket readiness.
   openLiveSocket(CODE, onLive);
+  // A live update can refetch a part while this request is in flight; the
+  // bootstrap is then older, so it skips that part (UC-X-11).
+  const sessionSeq = ++latestSessionSeq;
+  const queriesSeq = ++latestQueriesSeq;
+  const quizSeq = ++latestQuizSeq;
   const state = await api<ParticipantBootstrap>(`/api/sessions/${CODE}/participant-bootstrap`);
-  applySession(state.session, false);
+  if (sessionSeq === latestSessionSeq) applySession(state.session, false);
   applyMe(state.me);
-  applyQueries(state.queries);
-  applyQuizRuns(state.quiz_runs);
+  if (queriesSeq === latestQueriesSeq) applyQueries(state.queries);
+  if (quizSeq === latestQuizSeq) applyQuizRuns(state.quiz_runs);
   applyFeedback(state.feedback);
   renderViewLinks(state.viewer_is_owner);
   markUsable("participant");

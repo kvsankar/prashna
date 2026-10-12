@@ -836,3 +836,67 @@ def test_uc_m_11_invite_qr_renders(base_url, admin_setup, page):
         expect(page.locator("#invite-qr svg")).to_be_visible(timeout=10000)
     finally:
         c.close()
+
+
+# ---------- Live-update behaviour of the moderator page ----------
+
+
+def test_uc_m_08_typing_survives_live_refresh(base_url, admin_setup, page):
+    """UC-M-08: a vote that redraws the questions list keeps the response
+    box focused, so keystrokes typed after it still land."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M08f {secrets.token_hex(3)}")
+    q = ask_query_api(base_url, s["code"], "focus-target")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        row = page.locator("#queries .question").filter(has_text="focus-target")
+        box = row.locator("textarea.response-input")
+        box.click()
+        page.keyboard.type("abc")
+        httpx.post(f"{base_url}/api/sessions/{s['code']}/queries/{q['id']}/vote",
+                   timeout=5.0).raise_for_status()
+        expect(row.locator(".count")).to_have_text("1", timeout=5000)
+        page.keyboard.type("def")
+        expect(box).to_have_value("abcdef")
+        assert page.evaluate(
+            "document.activeElement && document.activeElement.classList.contains('response-input')"
+        )
+    finally:
+        c.close()
+
+
+def test_uc_m_10_moderator_tab_is_not_a_participant(base_url, admin_setup, page):
+    """UC-M-10: the moderator page creates no Participant, so it counts
+    nobody online and the export counts no participants."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M10p {secrets.token_hex(3)}")
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#queries")).to_contain_text("No questions yet", timeout=5000)
+        expect(page.locator("#quiz-runs")).to_contain_text("No quizzes added yet", timeout=5000)
+        expect(page.locator("#live-count")).to_have_text("0 online", timeout=5000)
+        export = c.get(f"/api/sessions/{s['code']}/export?format=json").json()
+        assert export["session"]["participant_count"] == 0
+    finally:
+        c.close()
+
+
+def test_uc_m_04_run_start_shows_session_live_in_other_tabs(base_url, admin_setup, page):
+    """UC-M-04: a run started elsewhere in a planning session flips this
+    tab's session badge to Live."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M04s {secrets.token_hex(3)}")
+    quiz = api_make_quiz(c, publish=True)
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        expect(page.locator("#session-status")).to_have_text("Not started", timeout=5000)
+        expect(page.locator("#quiz-runs .badge-queued")).to_be_visible(timeout=5000)
+        c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+        expect(page.locator("#quiz-runs .badge-live")).to_be_visible(timeout=5000)
+        expect(page.locator("#session-status")).to_have_text("Live", timeout=5000)
+    finally:
+        c.close()

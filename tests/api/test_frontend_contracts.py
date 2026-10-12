@@ -132,3 +132,29 @@ def test_answer_options_come_from_one_renderer():
         assert not re.search(r'class:\s*"option\b', src), rel
         assert '"opt-text"' not in src, rel
     assert "export function answerOption(" in (ROOT / "frontend/src/common.ts").read_text()
+
+
+def test_keyboard_shortcuts_submit_through_the_guarded_button():
+    """UX.md §12: Enter / Ctrl+Enter submit by clicking the form's button,
+    so the button's guardClick double-submit guard also covers the key."""
+    shortcuts = {
+        "frontend/src/participant.ts": {"#query-text": "#ask-btn"},
+        "frontend/src/index.ts": {
+            "#su-pass2": "#su-btn",
+            "#li-pass": "#li-btn",
+            "#new-session-title": "#new-session-btn",
+            "#cp-new2": "#cp-submit",
+        },
+        "frontend/src/quizzes.ts": {"#new-quiz-title": "#create-quiz"},
+    }
+    for rel, keys in shortcuts.items():
+        src = (ROOT / rel).read_text()
+        for field, button in keys.items():
+            match = re.search(
+                # The listener's line plus any indented lines of its body.
+                rf'\$\("{re.escape(field)}"\)\.addEventListener\("keydown",([^\n]*(?:\n  [^\n]*)*)',
+                src,
+            )
+            assert match, (rel, field)
+            handler = match.group(1)
+            assert f'"{button}").click()' in handler, (rel, field, handler)
