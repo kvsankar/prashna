@@ -590,7 +590,16 @@ def serialize_quiz_run(
             ).all()
             payload["my_selections"] = [r.answer_id for r in mine]
         if show_results:
-            payload["results"] = tally_question(db, run, current)
+            results = tally_question(db, run, current)
+            if current.graded and not (run.reveal_current or run.status == "closed"):
+                # Before reveal, a graded question's live counts must not name
+                # the leading answer, or the room follows it (UC-P-12, UC-D-08).
+                # The projector draws these unlabelled counts; only moderators
+                # get the counts by answer.
+                results["masked_counts"] = sorted(results["totals"].values(), reverse=True)
+                if not is_mod:
+                    results["totals"] = None
+            payload["results"] = results
     return payload
 
 

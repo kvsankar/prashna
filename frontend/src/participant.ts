@@ -359,7 +359,11 @@ function renderQuiz(): void {
       },
     }));
   }
-  if (activeQuiz.results) {
+  if (activeQuiz.results?.masked_counts) {
+    // A graded question before reveal: how many answered, not the split (UC-P-12).
+    body.appendChild(el("div", { id: "quiz-answered", class: "small muted mt-2" },
+      `${activeQuiz.results.respondents} answered so far`));
+  } else if (activeQuiz.results) {
     body.appendChild(el("div", { class: "small muted mt-2" },
       `${activeQuiz.results.respondents} respondent(s)`));
   }

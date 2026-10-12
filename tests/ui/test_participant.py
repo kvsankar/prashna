@@ -763,26 +763,47 @@ def test_uc_p_11_ended_empty_state_and_section_links(base_url, admin_setup, page
 # ---------- UC-P-12 ----------
 
 
-def test_uc_p_12_live_counts_on_shows_bars(base_url, admin_setup, page):
-    """UC-P-12: with show_live_counts=true, answering phase shows vote-share bars + %."""
+def test_uc_p_12_graded_live_counts_show_only_how_many_answered(base_url, admin_setup, page):
+    """UC-P-12: graded, counts on: the phone shows how many answered, not the split."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-P12 {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-P12s {secrets.token_hex(3)}")
     run = api_queue_quiz_run(c, s["code"], quiz["id"])
     c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
-    c.post(
-        f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts",
-        json={"show": True},
-    ).raise_for_status()
+    question = c.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()["current_question"]
+    for i in range(2):
+        httpx.post(f"{base_url}/api/sessions/{s['code']}/quiz_runs/{run['id']}/submit",
+                   cookies={"voter_token": f"p12-{i}-{secrets.token_hex(3)}"},
+                   json={"question_id": question["id"], "answer_ids": [question["answers"][0]["id"]]},
+                   timeout=10.0).raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts", json={"show": True}).raise_for_status()
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#quiz-card:visible")
-        # Bars appear under each option.
-        expect(page.locator("#quiz-body .opt-pct").first).to_be_visible(timeout=5000)
-        # Options still enabled.
+        expect(page.locator("#quiz-answered")).to_have_text("2 answered so far", timeout=5000)
+        expect(page.locator("#quiz-body .opt-pct")).to_have_count(0)
         expect(page.locator("#quiz-body button.option").first).to_be_enabled()
-        # No .correct class yet (not revealed).
         expect(page.locator("#quiz-body button.option.correct")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def test_uc_p_12_poll_live_counts_show_bars(base_url, admin_setup, page):
+    """UC-P-12: a poll question's live counts show a bar per answer on the phone."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-P12p {secrets.token_hex(3)}", publish=True, questions=[{
+        "text": "Which city?", "qtype": "single", "graded": False,
+        "answers": [{"text": "Pune", "is_correct": False}, {"text": "Delhi", "is_correct": False}],
+    }])
+    s = api_make_session(c, f"UI-P12ps {secrets.token_hex(3)}")
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts", json={"show": True}).raise_for_status()
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#quiz-card:visible")
+        expect(page.locator("#quiz-body .opt-pct")).to_have_count(2, timeout=5000)
+        expect(page.locator("#quiz-body button.option").first).to_be_enabled()
     finally:
         c.close()
 

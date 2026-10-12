@@ -270,16 +270,61 @@ def test_uc_a_21_poll_run_hides_correctness(admin_client, make_session):
 
 # ---------- UC-P-12: Live counts ----------
 
-def test_uc_p_12_live_counts_on(client, admin_client, make_quiz, make_session):
-    """UC-P-12: show_live_counts=true → results returned, is_correct omitted."""
+def _vote(client, s, run, question_id, answer_ids_by_token):
+    for token, answer_id in answer_ids_by_token:
+        client.cookies.set("voter_token", token)
+        client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/submit",
+                    json={"question_id": question_id, "answer_ids": [answer_id]}).raise_for_status()
+
+
+def test_uc_p_12_graded_live_counts_hide_the_split(client, admin_client, make_quiz, make_session):
+    """UC-P-12: graded, counts on, before reveal: a participant gets only the respondent
+    count and unlabelled counts, largest first; the owner also gets the totals."""
     s, q, run = _live_run(admin_client, make_quiz, make_session)
-    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts",
-                      json={"show": True})
+    g = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    wrong, right = (a["id"] for a in g["current_question"]["answers"])
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts", json={"show": True})
+    owner = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    admin_client.cookies.clear()
+    _vote(client, s, run, q["question_id"], [("v1", right), ("v2", right), ("v3", wrong)])
+    g = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    assert g["results"]["totals"] is None
+    assert g["results"]["respondents"] == 3
+    assert g["results"]["masked_counts"] == [2, 1]
+    assert all("is_correct" not in a for a in g["current_question"]["answers"])
+    assert owner["results"]["totals"] is not None and "masked_counts" in owner["results"]
+
+
+def test_uc_p_12_poll_live_counts_show_the_split(client, admin_client, make_session):
+    """UC-P-12: a poll question's live counts are labelled by answer, for everyone."""
+    qz = admin_client.post("/api/quizzes", json={"title": "Poll"}).json()
+    q = admin_client.post(f"/api/quizzes/{qz['id']}/questions",
+                          json={"text": "Age range?", "qtype": "single", "graded": False}).json()
+    admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "18-29"})
+    admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "30-49"})
+    admin_client.post(f"/api/quizzes/{qz['id']}/publish").raise_for_status()
+    s = make_session()
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": qz["id"]}).json()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts", json={"show": True})
+    run_q = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()["current_question"]
+    first = next(a["id"] for a in run_q["answers"] if a["text"] == "18-29")
+    admin_client.cookies.clear()
+    _vote(client, s, run, run_q["id"], [("p1", first)])
+    g = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    assert g["results"]["totals"][str(first)] == 1
+    assert "masked_counts" not in g["results"]
+
+
+def test_uc_p_12_graded_counts_after_reveal(client, admin_client, make_quiz, make_session):
+    """UC-P-12: after reveal, a graded question's counts are labelled by answer."""
+    s, q, run = _live_run(admin_client, make_quiz, make_session)
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/live_counts", json={"show": True})
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/reveal", json={"reveal": True})
     admin_client.cookies.clear()
     g = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
-    assert g["results"] is not None
-    for a in g["current_question"]["answers"]:
-        assert "is_correct" not in a
+    assert g["results"]["totals"] is not None
+    assert "masked_counts" not in g["results"]
 
 
 def test_uc_p_12_live_counts_off_default(client, admin_client, make_quiz, make_session):

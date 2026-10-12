@@ -1698,26 +1698,37 @@ once something is saved. Every field is optional:
 
 ### UC-P-12: Live answer counts during voting
 
-Participant-side counterpart of UC-D-08.
+Participant-side counterpart of UC-D-08. Live counts show that answers
+are coming in. For a graded question they must not show which answer
+leads, or people would follow the crowd; for a poll there is no right
+answer, so the split is the point.
 
 - **Given** a QuizRun is `live` with `show_live_counts = true`
 - **When** the participant view renders the current question's
   answering phase
-- **Then** each answer shows a running vote-share bar with its **absolute
-  count and percentage** (e.g. `5 (50%)`), and a **total respondent
-  count** below, **without** correctness markers
+- **Then** for a **graded** question it shows only how many have
+  answered (`#quiz-answered`, "<n> answered so far"), with no counts on
+  the answers
+- **And** for a **poll** question each answer shows a running vote-share
+  bar with its **absolute count and percentage** (e.g. `5 (50%)`) and a
+  total respondent count
+- **And** no correctness markers appear before reveal; after reveal every
+  question shows its counts (and, if graded, its correct answer)
 - **And** voting remains open — clicking still toggles selection and
   Submit is enabled
 - **And** when `show_live_counts = false` (default), the answering
   phase shows only the question and answers (no bars, no counts)
 
 **Tests (API)**
-- With `show_live_counts=true` and run live in answering phase, `GET .../quiz_runs/{id}` returns `results: {totals, respondents}` but answers do NOT include `is_correct`.
+- Graded question, live counts on, before reveal, `GET .../quiz_runs/{id}` as a participant: `results.totals` is `null`, `results.respondents` is the number who answered, `results.masked_counts` lists one count per answer, largest first, summing to the answers given; no answer has `is_correct`.
+- The same as the owner: `results.totals` maps answer ids to counts, and `masked_counts` is also present (the projector draws it).
+- Poll question, live counts on: a participant gets `results.totals` by answer id, and no `masked_counts`.
+- Graded question after reveal: a participant gets `results.totals` by answer id.
 - With `show_live_counts=false` (default), `results` is `null` in the answering phase.
 
 **Tests (UI)**
-- On `/s/<CODE>` with live counts on, the answering phase shows running vote-share bars with each answer's count and percentage (`<count> (<pct>%)`) and a total respondent count; no correctness markers.
-- Voting remains enabled — clicking still toggles selection and Submit is enabled.
+- On `/s/<CODE>` with live counts on and a graded question, the answering phase shows `#quiz-answered` with "<n> answered so far" and no `.opt-pct`; voting remains enabled.
+- With live counts on and a poll question, each answer shows a bar with `<count> (<pct>%)`.
 - With live counts off (default), the answering phase shows only question + answer texts.
 
 ### UC-P-13: Rate the session (feedback)
@@ -1943,14 +1954,22 @@ hidden entirely.
 
 ### UC-D-08: Live answer counts variant
 
-Configurable per QuizRun via `show_live_counts` (default off).
+Configurable per QuizRun via `show_live_counts` (default off). The rule
+is the same as UC-P-12: a graded question never shows which answer leads
+before reveal; a poll shows its split live.
 
 - **Given** the moderator toggles "live counts" on for a QuizRun
 - **When** the run is in answering phase
-- **Then** the projector and participant pages display running vote
-  totals — a bar with each answer's **absolute count and percentage**
-  (`<count> (<pct>%)`) plus a **total respondent count** — **without**
-  revealing correctness
+- **Then** for a **graded** question the projector shows how the votes are
+  spread without naming the answers: one bar per answer, labelled
+  "Option A", "Option B", … from the largest count down, each with
+  `<count> (<pct>%)`, plus the respondent count. The answer texts and
+  images are not shown
+- **And** for a **poll** question the projector shows each answer's text
+  with its count and percentage, plus the respondent count
+- **And** no correctness appears until reveal; after reveal (or close)
+  the projector shows the real answers with counts and, if graded, the
+  correct answer
 - **And** voting remains open — participants can still pick / change
   their answer until the moderator advances or reveals
 - **And** when counts are off (default), the answering phase shows
@@ -1958,10 +1977,11 @@ Configurable per QuizRun via `show_live_counts` (default off).
   only after reveal
 
 **Tests (API)**
-- See UC-M-05 tests for `POST .../live_counts`.
+- See UC-M-05 tests for `POST .../live_counts`, and UC-P-12 for what the API sends before reveal.
 
 **Tests (UI)**
-- On `/p/<CODE>` with `show_live_counts=true`, the answering phase in `#quiz-body` shows running totals — bar + `<count> (<pct>%)` per answer and a total respondent count — without correctness markers.
+- Graded question, live counts on, 1, 2 and 3 votes on three answers: `/p/<CODE>` shows `.opt-text` "Option A", "Option B", "Option C" with `.opt-pct` "3 (50%)", "2 (33%)", "1 (17%)", none of the answer texts, and no correctness markers; after reveal it shows the answer texts and the correct answer.
+- Poll question, live counts on: `/p/<CODE>` shows the answer texts with `<count> (<pct>%)`.
 - Toggling live counts off on the moderator UI triggers a WS refresh; the projector reverts to bare question + answers.
 
 ---

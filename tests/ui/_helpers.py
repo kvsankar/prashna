@@ -62,7 +62,8 @@ def api_make_quiz(
 ) -> dict[str, Any]:
     """Create a quiz, optionally with questions and publishing.
 
-    `questions` is a list of {text, qtype, answers: [{text, is_correct}, ...]}.
+    `questions` is a list of {text, qtype, graded, answers: [{text, is_correct}, ...]};
+    `graded` defaults to True (False makes a poll question).
     Defaults to a minimal valid published-ready quiz when publish=True.
     """
     title = title or f"UI Quiz {secrets.token_hex(4)}"
@@ -83,7 +84,7 @@ def api_make_quiz(
     for q in questions or []:
         rr = client.post(
             f"/api/quizzes/{quiz['id']}/questions",
-            json={"text": q["text"], "qtype": q.get("qtype", "single")},
+            json={"text": q["text"], "qtype": q.get("qtype", "single"), "graded": q.get("graded", True)},
         )
         assert rr.status_code == 200, rr.text
         qid = rr.json()["id"]

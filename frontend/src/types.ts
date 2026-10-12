@@ -41,8 +41,11 @@ export interface Question {
 }
 
 export interface QuizResults {
-  totals: Record<number, number>;
+  /** Counts by answer id; null for a participant before a graded question's reveal (UC-P-12). */
+  totals: Record<number, number> | null;
   respondents: number;
+  /** Before a graded question's reveal: the counts, largest first, with no answer attached (UC-D-08). */
+  masked_counts?: number[];
 }
 
 export interface QuizRun {

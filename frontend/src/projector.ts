@@ -67,28 +67,6 @@ function renderQueries(qs: Query[]): void {
   }
 }
 
-function hashString(input: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function sameAnswerOrder(a: { id: number }[], b: { id: number }[]): boolean {
-  return a.length === b.length && a.every((answer, idx) => answer.id === b[idx]?.id);
-}
-
-function jumbledAnswers<T extends { id: number }>(answers: T[], seed: string): T[] {
-  const ordered = [...answers].sort((a, b) => {
-    const byHash = hashString(`${seed}:${a.id}`) - hashString(`${seed}:${b.id}`);
-    return byHash || a.id - b.id;
-  });
-  if (ordered.length > 1 && sameAnswerOrder(answers, ordered)) ordered.reverse();
-  return ordered;
-}
-
 function placeholderOptionLabel(idx: number): string {
   if (idx < 26) return `Option ${String.fromCharCode(65 + idx)}`;
   return `Option ${idx + 1}`;
@@ -108,16 +86,26 @@ function renderQuiz(run: QuizRun): void {
   const respondents = run.results?.respondents ?? 0;
   const showCounts = !!run.results;
   const showCorrect = run.reveal_current || run.status === "closed";
-  const hideAnswerDetails = showCounts && !showCorrect && run.status === "live";
-  const answers = hideAnswerDetails ? jumbledAnswers(q.answers, `${run.id}:${q.id}`) : q.answers;
-  for (const [idx, a] of answers.entries()) {
-    body.appendChild(answerOption({
-      text: hideAnswerDetails ? placeholderOptionLabel(idx) : a.text,
-      imageUrl: hideAnswerDetails ? null : a.image_url,
-      share: showCounts ? (respondents ? (totals[a.id] || 0) / respondents : 0) : undefined,
-      count: showCounts ? totals[a.id] || 0 : undefined,
-      correct: showCorrect && Boolean(a.is_correct),
-    }));
+  const masked = run.results?.masked_counts;
+  if (masked) {
+    // A graded question before reveal: how the votes spread, without saying
+    // which answer leads (UC-D-08). The server sends no answer for each count.
+    for (const [idx, count] of masked.entries()) {
+      body.appendChild(answerOption({
+        text: placeholderOptionLabel(idx), imageUrl: null,
+        share: respondents ? count / respondents : 0, count, correct: false,
+      }));
+    }
+  } else {
+    for (const a of q.answers) {
+      body.appendChild(answerOption({
+        text: a.text,
+        imageUrl: a.image_url,
+        share: showCounts ? (respondents ? (totals[a.id] || 0) / respondents : 0) : undefined,
+        count: showCounts ? totals[a.id] || 0 : undefined,
+        correct: showCorrect && Boolean(a.is_correct),
+      }));
+    }
   }
   if (showCounts) body.appendChild(el("div", { class: "muted" }, `${respondents} respondent(s)`));
 }
