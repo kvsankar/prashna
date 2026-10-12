@@ -429,3 +429,123 @@ def test_uc_x_15_reset_password(tmp_path):
         assert httpx.post(f"{base}/api/admin/login", json={"username": "me", "password": "oldpassword"}).status_code == 401  # pragma: allowlist secret
     finally:
         _stop(proc)
+
+
+def test_uc_x_15_reset_password_over_72_bytes(tmp_path):
+    """UC-X-15: a password over 72 bytes exits 1 with a plain message and
+    no traceback; the old password still works."""
+    port, data = _free_port(), tmp_path / "data"
+    proc = _start_cli(["--data-dir", str(data), "--port", str(port), "--no-browser"], _cli_env(PRASHNA_SETUP_TOKEN="t"))
+    try:
+        _wait_up(port)
+        httpx.post(f"http://127.0.0.1:{port}/api/admin/setup",
+                   json={"username": "me", "password": "oldpassword", "setup_token": "t"}).raise_for_status()  # pragma: allowlist secret
+        too_long = "x" * 80
+        result = _reset(data, f"{too_long}\n{too_long}\n")
+        output = result.stdout + result.stderr
+        assert result.returncode == 1, output
+        assert "The password must be at most 72 bytes. Nothing changed." in output
+        assert "Traceback" not in output
+        base = f"http://127.0.0.1:{port}"
+        assert httpx.post(f"{base}/api/admin/login", json={"username": "me", "password": "oldpassword"}).status_code == 200  # pragma: allowlist secret
+    finally:
+        _stop(proc)
+
+
+def _make_archive(tmp_path: Path) -> Path:
+    """A real archive of a data folder holding a Prashna database and one upload."""
+    data = tmp_path / "source"
+    port = _free_port()
+    proc = _start_cli(["--data-dir", str(data), "--port", str(port), "--no-browser"], _cli_env())
+    try:
+        _wait_up(port)
+    finally:
+        _stop(proc)
+    (data / "uploads").mkdir(exist_ok=True)
+    (data / "uploads" / "photo.png").write_bytes(b"image")
+    archive = tmp_path / "backups" / "backup.tar.gz"
+    result = subprocess.run(
+        [sys.executable, "-m", "prashna.cli", "--data-dir", str(data), "backup", "create", str(archive)],
+        cwd=ROOT, env=_cli_env(), capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return archive
+
+
+def _backup_forms(target: Path) -> dict[str, tuple[list[str], dict[str, str]]]:
+    """The two entry points: `prashna backup …` and the container's
+    `python -m prashna.backup …`, both aimed at the folder `target`."""
+    return {
+        "cli": ([sys.executable, "-m", "prashna.cli", "--data-dir", str(target), "backup"], _cli_env()),
+        "module": ([sys.executable, "-m", "prashna.backup"],
+                   _cli_env(PRASHNA_DB_PATH=str(target / "prashna.db"),
+                            PRASHNA_UPLOADS_DIR=str(target / "uploads"))),
+    }
+
+
+@pytest.mark.parametrize("form", ["cli", "module"])
+def test_uc_x_10_restore_into_an_empty_data_folder(tmp_path, form):
+    """UC-X-10: restoring on a new machine (no database yet) restores the
+    archive and writes no pre-restore archive."""
+    archive = _make_archive(tmp_path)
+    target = tmp_path / "empty"
+    command, env = _backup_forms(target)[form]
+    result = subprocess.run([*command, "restore", str(archive), "--confirm"],
+                            cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "Traceback" not in output
+    assert "no previous data" in output
+    assert (target / "prashna.db").is_file()
+    assert (target / "uploads" / "photo.png").read_bytes() == b"image"
+    assert sorted(p.name for p in archive.parent.iterdir()) == ["backup.tar.gz"]
+
+
+@pytest.mark.parametrize("form", ["cli", "module"])
+def test_uc_x_10_backup_errors_are_plain_messages(tmp_path, form):
+    """UC-X-10: a failed backup or restore prints one plain line, exits 1,
+    and shows no traceback."""
+    target = tmp_path / "empty"
+    command, env = _backup_forms(target)[form]
+    create = subprocess.run([*command, "create", str(tmp_path / "out.tar.gz")],
+                            cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+    assert create.returncode == 1
+    assert "Backup failed: database not found" in create.stderr
+    assert "Traceback" not in create.stdout + create.stderr
+    restore = subprocess.run([*command, "restore", str(tmp_path / "missing.tar.gz")],
+                             cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+    assert restore.returncode == 1
+    assert "Restore failed: restore requires --confirm" in restore.stderr
+    assert "Traceback" not in restore.stdout + restore.stderr
+
+
+def test_uc_x_10_backup_closes_its_database_connections(tmp_path, monkeypatch):
+    """UC-X-10: every SQLite connection the backup tool opens is closed
+    (on Windows an open snapshot can't be deleted with its temporary folder)."""
+    import sqlite3
+
+    from prashna import backup
+
+    data = tmp_path / "data"
+    data.mkdir()
+    with sqlite3.connect(data / "prashna.db") as seed:
+        seed.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+        seed.execute("CREATE TABLE sessions (id INTEGER PRIMARY KEY)")
+    seed.close()
+    monkeypatch.setenv("PRASHNA_DB_PATH", str(data / "prashna.db"))
+    monkeypatch.setenv("PRASHNA_UPLOADS_DIR", str(data / "uploads"))
+
+    opened: list[sqlite3.Connection] = []
+    real_connect = sqlite3.connect
+
+    def spy(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(backup.sqlite3, "connect", spy)
+    archive = backup.create_archive(tmp_path / "b.tar.gz")
+    backup.restore_archive(archive, confirmed=True)
+    assert len(opened) >= 3  # source, snapshot, and the restore check
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("SELECT 1")

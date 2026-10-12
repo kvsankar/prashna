@@ -156,7 +156,11 @@ def _reset_password(data_dir: Path) -> int:
         if len(first) < MIN_PASSWORD_LEN:
             print(f"The password must be at least {MIN_PASSWORD_LEN} characters. Nothing changed.", file=sys.stderr)
             return 1
-        admin.password_hash = auth.hash_password(first)
+        try:
+            admin.password_hash = auth.hash_password(first)
+        except ValueError:  # longer than bcrypt's 72 bytes
+            print(f"The password must be at most {auth.MAX_PASSWORD_BYTES} bytes. Nothing changed.", file=sys.stderr)
+            return 1
         session.commit()
         print(f"Password changed for {admin.username}.")
     return 0

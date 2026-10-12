@@ -554,8 +554,9 @@ pattern `badge-<state-slug>`, and the colour says what the state means:
 
 - Green, running or usable: `badge-live`, `badge-ready`.
 - Indigo, waiting to run: `badge-queued`.
-- Orange, needs work: `badge-draft`. Keep orange for states that need
-  attention.
+- Orange, needs work: `badge-draft`, and `badge-needs-fixing` beside a
+  Ready badge when an edit broke a publish rule. Keep orange for states
+  that need attention.
 - Neutral: `badge-planning` (not started, bright text); `badge-ended`,
   `badge-closed` (finished, muted text). A state without its own class
   is neutral.

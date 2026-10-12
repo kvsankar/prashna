@@ -92,6 +92,19 @@ entity to match the copy.
 When a bullet writes `"a"*201` or similar, it's Python `str * int`
 notation (a 201-character string).
 
+**Value types.** A text field in a JSON body (a title, question or answer
+text, a URL, a password, a feedback comment, a profile field) accepts a
+string or `null`. Any other JSON type returns `400 "<field> must be
+text"` and changes nothing, never `500`
+(`test_uc_x_05_text_fields_reject_other_json_types`). An `order_index`
+must be an integer, also on create (`400 "order_index must be an
+integer"`).
+
+**Timestamps.** Every timestamp in an API response is UTC in ISO 8601
+with a `Z` suffix and whole seconds (`2026-10-11T04:30:00Z`), the same
+form as the exports, so a browser shows it in the viewer's own time zone
+(`test_uc_a_04_timestamps_are_utc_with_z`).
+
 ---
 
 ## Admin
@@ -215,10 +228,20 @@ public can't be claimed by its first visitor.
 - **When** they `GET /api/sessions`
 - **Then** they see only sessions where `owner_user_id = me.id`,
   ordered by `created_at desc`, with status, query count, quiz-run
-  count, mod_key, and participant_base_url
+  count, feedback count, attendee-profile count, mod_key, and
+  participant_base_url
+- **And** `feedback_count` counts the participants who submitted
+  feedback, and `profile_count` counts the participants who filled in
+  any attendee profile field or added a photograph (UC-P-03). The counts
+  are separate totals: feedback and questions are anonymous, so nothing
+  links them to a profile
+- **And** the Created column shows `created_at` in the viewer's own time
+  zone (the API sends UTC with `Z`, see "Timestamps" in the conventions)
 
 **Tests (API)**
-- `GET /api/sessions` → `200 [{code, title, status, mod_key, participant_base_url, created_at, started_at, ended_at, query_count, quiz_run_count}, ...]`. Auth: admin cookie.
+- `GET /api/sessions` → `200 [{code, title, status, mod_key, participant_base_url, created_at, started_at, ended_at, query_count, quiz_run_count, feedback_count, profile_count}, ...]`. Auth: admin cookie.
+- A session where one participant saved a profile and submitted feedback, and another only opened the page, reports `feedback_count: 1` and `profile_count: 1` (`test_uc_a_04_counts_feedback_and_profiles`).
+- `created_at`, `started_at` and `ended_at` here, and the timestamps of `GET /api/quiz_runs`, end in `Z` and parse as UTC (`test_uc_a_04_timestamps_are_utc_with_z`).
 - Rows include only sessions where `owner_user_id = me.id` (a second admin's session is not returned).
 - Order is `created_at desc` — the most recently created session appears first.
 - `GET /api/sessions` with no admin cookie → `401`.
@@ -226,6 +249,7 @@ public can't be claimed by its first visitor.
 **Tests (UI)**
 - On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
 - Most-recently-created session appears at the top.
+- In a browser whose time zone is `Asia/Kolkata`, a session's Created cell shows its creation time in that zone (UTC + 5 h 30 min), within a minute of when it was created (`test_uc_a_04_created_time_uses_the_viewer_time_zone`).
 - Authenticated admin chrome shows `#admin-page-nav` with an Admin breadcrumb and links to Sessions and Quiz library.
 - Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL. The Actions column has, in order, the links Participant (`/s/<code>`) and Projector (`/p/<code>`, a new tab), then the extra-small buttons **Start** (while the session is not started) and Delete. The views are plain links and the actions are buttons (UX.md §10) (`test_uc_a_04_row_actions_and_title_link`).
 - Clicking **Start** on a not-started row starts the session (`POST /api/sessions/{code}/start`, UC-M-01) without leaving the list; the row then shows the Live badge and no Start button. Start is guarded against repeat clicks (`test_uc_a_04_start_from_the_list`).
@@ -295,11 +319,15 @@ public can't be claimed by its first visitor.
   `/?delete=<code>` and runs the same flow on the list)
 - **When** the session is `live` → the action is refused with
   "End the session before deleting it" (toast)
-- **And** the session has 0 queries and 0 quiz runs → a native
-  `confirm()` followed by `DELETE` deletes it
-- **And** the session has data → a confirm card opens below the table
-  warning what will be lost (counts), with a typed-title input that
-  must match `session.title` exactly to enable the Delete button
+- **And** the session has no data (0 queries, 0 quiz runs, 0 feedback
+  and 0 attendee profiles) → a native `confirm()` followed by `DELETE`
+  deletes it
+- **And** the session has data (any of those) → a confirm card opens
+  below the table warning what will be lost (each count:
+  questions, quiz runs, feedback responses, attendee profiles), with a
+  typed-title input that must match `session.title` exactly to enable the
+  Delete button. The server applies the same rule: it asks for the typed
+  title whenever any of the four counts is non-zero
 - **Then** on success, the session is removed; cascade-deletes its
   queries, votes, participants, quiz_runs, and submissions, and deletes
   its participants' profile photograph files from the uploads folder.
@@ -309,6 +337,7 @@ public can't be claimed by its first visitor.
 - `DELETE /api/sessions/{code}` on a `planning` session with 0 queries/quiz_runs (no body) → `200 {ok: true}`. Auth: admin cookie.
 - `DELETE /api/sessions/{code}` on a `live` session → `400 "End the session before deleting it"`.
 - `DELETE /api/sessions/{code}` on a session with queries/quiz_runs but missing `confirm_title` → `400 "Type the session title exactly to confirm deletion"`.
+- The same `400` for a session whose only data is feedback, and for one whose only data is an attendee profile; a participant who only opened the page doesn't count as data (`test_uc_a_07_feedback_or_profile_needs_typed_title`).
 - `DELETE /api/sessions/{code}` with `{"confirm_title": "Wrong"}` → `400 "Type the session title exactly to confirm deletion"`.
 - `DELETE /api/sessions/{code}` with `{"confirm_title": <exact title>}` → `200 {ok: true}`; cascade removes Queries, QueryVotes, Participants, QuizRuns, QuizSubmissions; QuizVersions for the underlying Quiz remain.
 - `DELETE /api/sessions/{code}` on a session where a participant uploaded a profile photograph → `200`; the photograph's file is gone from the uploads folder and `GET` of its URL → `404` (`test_uc_a_07_delete_session_removes_profile_photos`).
@@ -319,6 +348,7 @@ public can't be claimed by its first visitor.
 - On `/`, clicking Delete on a `live` row shows toast "End the session before deleting it" and no row is removed.
 - Clicking Delete on a `planning` row with no data fires a native `confirm()`; accepting removes the row from `#session-rows`.
 - Clicking Delete on a row with data opens `#confirm-delete-card` below the table with the warning text in `#cd-warn`.
+- Clicking Delete on a row whose only data is an attendee profile and feedback opens `#confirm-delete-card` (no native `confirm()`), and `#cd-warn` names "1 feedback response" and "1 attendee profile" (`test_uc_a_07_profile_and_feedback_open_the_confirm_card`).
 - `#cd-go` is disabled until `#cd-confirm` exactly matches `session.title`.
 - Typing the exact title enables `#cd-go`; clicking it removes the row.
 - Clicking `#cd-go` twice in quick succession sends one `DELETE` and shows no error toast (`test_uc_a_07_double_click_delete_sends_once`).
@@ -388,9 +418,16 @@ own use case so tests and PRs can cite one ID per behavior.
   ordered by `created_at desc`, with `status` and `question_count`
 - **And** moderator dropdowns use `ready_only=true`; the quiz library
   table uses the full list
+- **And** editing a Ready quiz keeps it Ready (UC-A-14), even when the
+  edit breaks a publish rule (UC-A-21), for example deleting its only
+  question. Such a quiz carries `problem`, the first failing rule's
+  message, and can't be added to a session until it is fixed. Its row
+  shows a **Needs fixing** badge (`.badge-needs-fixing`) beside the Ready
+  badge. Every other quiz, including every draft, has `problem: null`
 
 **Tests (API)**
-- `GET /api/quizzes` → `200 [{id, title, status, question_count, sessions}, ...]` ordered `created_at desc`. Auth: admin cookie.
+- `GET /api/quizzes` → `200 [{id, title, status, question_count, sessions, problem}, ...]` ordered `created_at desc`. Auth: admin cookie.
+- A Ready quiz whose only question is then deleted stays `status: "ready"` and reports `problem: "Quiz needs at least one question"`; adding a question with two answers and a correct one sets `problem` back to `null`. A draft reports `problem: null` (`test_uc_a_10_ready_quiz_edited_into_an_invalid_state_reports_problem`).
 - `sessions` lists each session that holds a run of the quiz: `{code, title, session_status, run_status, run_count}`, where `run_status` is the most relevant state of its runs there (`live` over `queued` over `closed`). A quiz never run has `sessions: []`. The same server function produces `in_session` for UC-M-03, so the library and the session page always agree.
 - A quiz owned by another admin is not in the response.
 - `GET /api/quizzes?ready_only=true` returns only quizzes with `status: "ready"`.
@@ -398,6 +435,7 @@ own use case so tests and PRs can cite one ID per behavior.
 
 **Tests (UI)**
 - On `/quizzes` (authed), `#quiz-rows` contains a row per owned quiz with title, status badge, and question count.
+- A Ready quiz with a `problem` shows `.badge-ready` and `.badge-needs-fixing` ("Needs fixing") in its row; a valid Ready quiz shows no `.badge-needs-fixing` (`test_uc_a_10_needs_fixing_badge`).
 - Order: most recently created first.
 
 ### UC-A-11: Open a quiz for editing
@@ -519,6 +557,8 @@ are added with an **Add image** button rather than a bare file input.
   past runs keep their frozen QuizVersion and a `ready` quiz stays
   `ready`
 - **And** a `qtype` not in `("single", "multi")` returns `400`
+- **And** an explicit `order_index` (without `position`) must be an
+  integer; anything else returns `400 "order_index must be an integer"`
 - **And** `graded` (default `true`) marks whether the question has a
   correct answer; `graded: false` is a **poll/survey** question (options
   but no correct answer — e.g. age / experience range)
@@ -528,6 +568,7 @@ are added with an **Add image** button rather than a bare file input.
 - `POST /api/quizzes/{id}/questions` with `{"text": "X", "qtype": "multi"}` → `200`; created with `text: "X"`, `qtype: "multi"`.
 - `POST /api/quizzes/{id}/questions` with `{"graded": false}` → `200`; created as a poll question (`graded: false`), surfaced by `GET /api/quizzes/{id}`.
 - `POST /api/quizzes/{id}/questions` with `{"qtype": "bogus"}` → `400 "qtype must be single or multi"`.
+- With `{"order_index": "abc"}` → `400 "order_index must be an integer"`; nothing is added and the next append succeeds (`test_uc_x_05_order_index_must_be_an_integer_on_create`).
 - On a quiz with questions A, B, C: `{"text": "N", "position": 0}` → `GET /api/quizzes/{id}` lists N, A, B, C with `order_index` `0..3`; `{"position": 1}` lists A, N, B, C; `{"position": 3}` lists A, B, C, N; omitting `position` lists A, B, C, N.
 - `{"position": -1}` or `{"position": 4}` on a three-question quiz → `400 "position out of range"`; `{"position": "x"}` → `400 "position must be an integer"`; the questions and their order are unchanged.
 - Inserting with `position` advances `last_edited_at` and leaves a `ready` quiz `ready`; a run launched before the insert keeps its questions, a run launched after includes the new one.
@@ -583,8 +624,11 @@ are added with an **Add image** button rather than a bare file input.
 - **When** `POST /api/quiz_questions/{id}/answers` is called
 - **Then** an `Answer` is added at the end with
   `is_correct = false`; parent quiz `last_edited_at` advances
+- **And** an explicit `order_index` must be an integer; anything else
+  returns `400 "order_index must be an integer"`
 
 **Tests (API)**
+- `POST /api/quiz_questions/{qid}/answers` with `{"order_index": "abc"}` → `400 "order_index must be an integer"`; nothing is added and the next append succeeds (`test_uc_x_05_order_index_must_be_an_integer_on_create`).
 - `POST /api/quiz_questions/{qid}/answers` with `{}` → `200 {id}`; new Answer at `order_index = max+1`, `text = ""` (empty), `is_correct: false`; parent quiz `last_edited_at` advances. Auth: admin cookie. Note: backend default `text` is empty string; the UI passes `"New answer"` as a sensible starting value.
 - For a question owned by another admin → `404`.
 
@@ -647,6 +691,7 @@ are added with an **Add image** button rather than a bare file input.
 - `PUT /api/quizzes/{id}/question_order` with `{"question_ids": [<ids in new order>]}` → `200 {ok: true}`; `GET /api/quizzes/{id}` returns questions in that order with `order_index` `0..n-1`; `last_edited_at` advances. Auth: admin cookie.
 - A list that omits an id, repeats an id, or contains another quiz's question id → `400 "question_ids must list every question in this quiz exactly once"`; order unchanged.
 - A non-list `question_ids` → same `400`.
+- A list of the right length whose entries are not integers (`[{"a": 1}]`, `["1"]`, `[true]`) → same `400`, not `500` (`test_uc_a_28_reorder_rejects_non_integer_ids`).
 - For a non-owner quiz → `404`; with no auth → `401`.
 - `PUT /api/quiz_questions/{qid}/answer_order` with `{"answer_ids": [...]}` → `200 {ok: true}`; answers come back in that order with `order_index` `0..n-1`; parent `last_edited_at` advances.
 - A bad `answer_ids` list → `400 "answer_ids must list every answer of this question exactly once"`.
@@ -749,6 +794,10 @@ Used by question and answer editors to set `image_url`.
   draft is published and queued in one step; an invalid draft shows the
   publish validation message and nothing is queued
 - **And** with no open sessions, the menu says so and links to `/`
+- **And** for a Ready quiz with a `problem` (UC-A-10), the menu lists no
+  sessions; it says "Can't be added to a session yet:" followed by the
+  problem and "Open the quiz to fix it.", so nothing is sent that would
+  fail
 - **And** a session that already holds a run of this quiz (from the
   quiz's `sessions`, UC-A-10) says so on its menu item ("Already added ·
   Queued", "· Live", or "· Closed", the shared status labels). Clicking it asks for confirmation
@@ -759,6 +808,7 @@ Used by question and answer editors to set `image_url`.
 - On `/quizzes`, opening a ready quiz row's Add to session menu lists a `planning` session and a `live` session (live first) but not an `ended` one; clicking the planning session toasts its title, and `GET /api/sessions/{code}/quiz_runs` returns one queued run.
 - Doing the same for a valid draft quiz flips the row's badge to Ready and queues a run.
 - Doing the same for an invalid draft (no questions) shows an error toast; the badge stays Draft and no run is queued.
+- For a Ready quiz whose only question was deleted, the menu shows "Can't be added to a session yet: Quiz needs at least one question" and no session buttons (`test_uc_a_29_needs_fixing_quiz_cannot_be_added`).
 - For a quiz already queued in a session, that session's menu item reads "Already added · Queued"; other sessions' items don't say "Already added". Clicking it and dismissing the confirmation queues nothing; accepting it queues a second run.
 
 ### UC-A-23: Global quiz-runs report
@@ -819,12 +869,17 @@ Used by question and answer editors to set `image_url`.
 - **And** mismatched new-password fields are blocked client-side with
   an error toast (no API call)
 - **And** a new password shorter than 8 characters returns `400`
+- **And** a new password longer than 72 bytes (UTF-8) returns `400
+  "password must be at most 72 bytes"`, because bcrypt ignores anything
+  past 72 bytes; first-run setup (UC-A-01) and `prashna reset-password`
+  (UC-X-15) apply the same limit
 - **And** Escape closes the card without saving
 
 **Tests (API)**
 - `POST /api/admin/change_password` with valid `{current_password, new_password}` (≥ 8 chars) → `200 {ok: true}`; re-issues the `prashna_admin` cookie; bcrypt-verifies new password. Auth: admin cookie.
 - With wrong `current_password` (but valid cookie) → `401 "Current password is incorrect"`.
 - With `new_password` shorter than 8 chars → `400 "new password must be at least 8 characters"`.
+- With `new_password` of 73 bytes → `400 "password must be at most 72 bytes"`; `POST /api/admin/setup` with a 73-byte password gets the same `400` and creates no admin (`test_uc_a_25_password_over_72_bytes_is_refused`).
 - With no cookie at all → `401 "Not authenticated"` (from `auth.current_admin`, before the handler runs). Two distinct 401 paths.
 - **Old cookies are invalidated**: after a successful change_password call, the prior `prashna_admin` cookie no longer authenticates. Verified by capturing the pre-change cookie, changing password, then issuing an admin-only call with the captured cookie → `401`. (Implementation: signed cookies carry a `session_version`, bumped on each password change; `current_admin` rejects mismatched versions.)
 
@@ -1070,7 +1125,10 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - **And** when the Quiz has not changed since the latest version, the
   new QuizRun reuses that version
 - **And** the picker lists Ready quizzes to everyone; the admin owner
-  also sees Draft quizzes, labelled as drafts. Adding a draft sends
+  also sees Draft quizzes, labelled as drafts. A Ready quiz with a
+  `problem` (UC-A-10) is listed but disabled and labelled "needs fixing
+  in the quiz library", so a delegate sees why it can't be added instead
+  of getting an error they can't fix. Adding a draft sends
   `publish: true`: the server runs the publish validation (UC-A-21),
   marks the quiz `ready`, and queues it in one step. If validation
   fails, nothing is published or queued
@@ -1094,6 +1152,7 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - With no auth → `403`.
 - Success broadcasts `{type: "quiz_run_new"}`.
 - `GET /api/sessions/{code}/available_quizzes` (and the bootstrap's `available_quizzes`) returns Ready quizzes for a delegate, and Ready plus Draft quizzes (with `status`) for the admin owner.
+- Each entry also has `problem`, as in UC-A-10 (`null` unless a Ready quiz was edited into an invalid state) (`test_uc_m_03_available_quizzes_report_problem`).
 - Each entry has `in_session`: `null` when the quiz has no run in this session, otherwise `{run_status, run_count}` (same rules as UC-A-10's `sessions`). After queueing, it reports `{run_status: "queued", run_count: 1}`; after Start, `run_status: "live"`.
 
 The **+ Add quiz** composer is an operational control during a session,
@@ -1107,6 +1166,7 @@ it in `#quiz-runs`.
 **Tests (UI)**
 - On `/m/<code>` as a delegate (mod_key only), `#quiz-select` lists only ready quizzes (drafts filtered).
 - On `/m/<code>` as the admin owner, `#quiz-select` lists ready quizzes and draft quizzes, with drafts labelled "draft".
+- On `/m/<code>` as a delegate, a Ready quiz whose only question was deleted is a disabled option labelled "needs fixing in the quiz library" (`test_uc_m_03_needs_fixing_quiz_is_disabled_in_picker`).
 - Selecting a quiz and clicking `#add-quiz-btn` appends a queued row to `#quiz-runs` with `.badge-queued`.
 - On a `live` session, `#add-quiz-btn` is visible without opening Set up.
 - Selecting a valid draft and clicking `#add-quiz-btn` queues it and toasts that it was published.
@@ -2211,6 +2271,11 @@ Two tiers, applied by one middleware:
 - **And** a `GET /api/admin/status` issued during the burst answers within
   2 s, because waiting for a database connection never blocks the server's
   event loop
+- **And** a JSON value of the wrong type for a stored field (a number
+  where text is expected, a string where an `order_index` integer is
+  expected) is refused with `400` before it reaches the database, so a
+  bad value can't break later requests (see "Value types" in the
+  conventions above)
 
 **Tests (API)**
 - `test_uc_x_05_concurrent_writes_do_not_stall_the_server`: against a real
@@ -2218,6 +2283,15 @@ Two tiers, applied by one middleware:
   quiz submission, and two list refetches at once; all 160 responses are
   2xx within 15 s, a concurrent status request answers within 2 s, and the
   query's vote count is 40.
+- `test_uc_x_05_text_fields_reject_other_json_types`: a number, list or
+  object sent as a session or quiz title, a base URL, question or answer
+  text, a moderator response, a feedback comment, a sign-in username or
+  password, or any attendee profile field (including `linkedin_url`)
+  returns `400 "<field> must be text"`, not `500`.
+- `test_uc_x_05_order_index_must_be_an_integer_on_create`: `POST
+  /api/quizzes/{id}/questions` or `POST /api/quiz_questions/{id}/answers`
+  with `{"order_index": "abc"}` returns `400 "order_index must be an
+  integer"`, and the next append still succeeds.
 
 **Tests (DB)**
 - `PRAGMA foreign_keys` on every connection returns `1` (enabled via SQLAlchemy `connect` event). Cascade deletes (`ondelete="CASCADE"`) are actually enforced at the DB layer, not only by the ORM.
@@ -2397,6 +2471,17 @@ have a participant cookie are limited **per person**, not per address.
   storing secrets; restore validates the archive and database, requires an
   explicit confirmation flag, and creates a pre-restore recovery archive
   before replacing current data.
+- **And** restoring into a data folder that has no database yet (a new
+  machine) skips the pre-restore archive, since there is nothing to keep,
+  restores the archive, and says there was no previous data
+- **And** a backup or restore that fails (no database to back up, no
+  `--confirm`, a missing or unsafe archive) prints one plain line
+  starting `Backup failed:` or `Restore failed:` on standard error and
+  exits 1, with no traceback. This holds for `prashna backup …` and for
+  the container form `python -m prashna.backup …`
+- **And** every SQLite connection the backup tool opens is closed before
+  its temporary folder is removed, so cleanup can't fail on Windows,
+  where an open file can't be deleted
 
 **Tests (Ops)**
 - Root Compose config resolves with no env file and no `PRASHNA_SECRET_KEY`
@@ -2407,6 +2492,20 @@ have a participant cookie are limited **per person**, not per address.
   with an actionable message (`test_compose_config_reports_missing_secret_actionably`).
 - Backup/restore round-trip restores the original SQLite contents and uploads;
   restore refuses without `--confirm` and rejects archive path traversal.
+
+**Tests (API)**
+- `prashna --data-dir <empty> backup restore <archive> --confirm` and
+  `python -m prashna.backup restore <archive> --confirm` (with
+  `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` pointing at an empty folder)
+  each exit 0, restore the database and uploads, write no pre-restore
+  archive, and print that there was no previous data
+  (`test_uc_x_10_restore_into_an_empty_data_folder`).
+- `backup create` with no database, and `backup restore` without
+  `--confirm`, each exit 1 with a `Backup failed:` / `Restore failed:`
+  line and no `Traceback`, in both forms
+  (`test_uc_x_10_backup_errors_are_plain_messages`).
+- Creating and restoring an archive closes every SQLite connection it
+  opened (`test_uc_x_10_backup_closes_its_database_connections`).
 - Release-bundle build for `1.2.3` emits `.tar.gz`, `.zip`, and `SHA256SUMS`;
   both Compose and env defaults inside the bundle pin `1.2.3`.
 - The release workflow declares amd64+arm64 publication, pulls the just-pushed
@@ -2620,6 +2719,7 @@ The new password, entered twice, decides whether it succeeds:
 | Match, at least 8 characters | Saved; prints `Password changed for <name>.`; exits 0 |
 | Differ | Exits 1; nothing changes |
 | Shorter than 8 characters | Exits 1; nothing changes |
+| Longer than 72 bytes | Exits 1 with `The password must be at most 72 bytes. Nothing changed.`; no traceback |
 
 Where the command runs does not change these results. In a terminal it
 asks twice without echoing; otherwise it reads two lines from standard
@@ -2641,6 +2741,7 @@ code without installing the command, it is
 - `prashna backup create <file>` writes an archive of that data folder.
 - `prashna --version` prints the installed version.
 - `prashna reset-password` with two matching lines on standard input exits 0 and prints `Password changed for me.`; afterwards the new password signs in and the old one gets `401`. Mismatched entries, a password under 8 characters, a database with no admin, and a folder without a database each exit 1 with their message and change nothing (`test_uc_x_15_reset_password`).
+- `prashna reset-password` with an 80-byte password exits 1, prints `The password must be at most 72 bytes. Nothing changed.`, prints no traceback, and the old password still signs in (`test_uc_x_15_reset_password_over_72_bytes`).
 - A first run prints `Created a new database: <data>/prashna.db`; a later run against the same folder prints `Using existing data: <data>/prashna.db` with `1 admin (me)` and the session and quiz counts, and `Sign in at http://127.0.0.1:<port>/ as me.` (`test_uc_x_15_reports_new_or_existing_data_and_where_to_sign_in`).
 - With a stub `cloudflared` (and, separately, a stub `ngrok`) on `PATH` that prints a known address, `prashna --tunnel …` prints `Participants join at: <address>`, sessions report it as `default_base_url`, and stopping Prashna stops the stub (`test_uc_x_15_tunnel_wires_the_public_address`).
 - Through that tunnel, a visitor who exhausts the login rate limit (`X-Forwarded-For: <visitor A>`) gets `429` while another visitor (`<visitor B>`) still gets `401` for a wrong password (`test_uc_x_15_tunnel_rate_limits_each_visitor`).

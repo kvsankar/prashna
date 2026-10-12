@@ -31,7 +31,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import selectinload
@@ -285,8 +285,36 @@ MIN_PASSWORD_LEN = 8
 MAX_USERNAME_LEN = 80
 
 
+def _text(payload: dict, field: str) -> str:
+    """A JSON text field: "" when absent or null, `400 "<field> must be
+    text"` for any other JSON type, so a wrong type never reaches `.strip()`
+    or the database (UC-X-05)."""
+    value = payload.get(field)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise HTTPException(400, f"{field} must be text")
+    return value
+
+
+def _order_index(value: Any) -> int:
+    """An `order_index` from JSON, as an integer or `400` (UC-A-14..18)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "order_index must be an integer")
+
+
+def _hash_password(password: str) -> str:
+    """auth.hash_password, with its length error as a 400 (UC-A-25)."""
+    try:
+        return auth.hash_password(password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 def _validate_credentials(username: str, password: str) -> tuple[str, str]:
-    u = (username or "").strip()
+    u = username.strip()
     if not u or len(u) > MAX_USERNAME_LEN:
         raise HTTPException(400, "username required")
     if not password or len(password) < MIN_PASSWORD_LEN:
@@ -424,6 +452,10 @@ PROFILE_FIELDS = {
 }
 
 
+# Every API timestamp is UTC with `Z`, the same form as the exports.
+iso = data_export.iso
+
+
 def serialize_session(s: m.Session, *, include_mod_key: bool = False) -> dict:
     body = {
         "code": s.code,
@@ -432,17 +464,17 @@ def serialize_session(s: m.Session, *, include_mod_key: bool = False) -> dict:
         "participant_base_url": s.participant_base_url,
         "default_base_url": PUBLIC_URL,
         "feedback_enabled": bool(s.feedback_enabled),
-        "created_at": s.created_at.isoformat(),
-        "started_at": s.started_at.isoformat() if s.started_at else None,
-        "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+        "created_at": iso(s.created_at),
+        "started_at": iso(s.started_at),
+        "ended_at": iso(s.ended_at),
     }
     if include_mod_key:
         body["mod_key"] = s.mod_key
     return body
 
 
-def normalize_optional_text(value, max_len: int) -> str | None:
-    text = (value or "").strip()
+def normalize_optional_text(payload: dict, field: str, max_len: int) -> str | None:
+    text = _text(payload, field).strip()
     return text[:max_len] or None
 
 
@@ -467,7 +499,7 @@ def serialize_feedback(f: m.SessionFeedback) -> dict:
         "rating": f.rating,
         "went_well": f.went_well,
         "to_improve": f.to_improve,
-        "updated_at": f.updated_at.isoformat() if f.updated_at else None,
+        "updated_at": iso(f.updated_at),
     }
 
 
@@ -489,7 +521,7 @@ def serialize_query(q: m.Query, viewer_participant_id: int | None, is_mod: bool)
         "vote_count": len(q.votes),
         "voted": any(v.participant_id == viewer_participant_id for v in q.votes),
         "mine": q.participant_id == viewer_participant_id,
-        "created_at": q.created_at.isoformat(),
+        "created_at": iso(q.created_at),
     }
 
 
@@ -710,6 +742,7 @@ def available_quiz_summaries(
             m.Quiz.owner_user_id == session.owner_user_id,
             m.Quiz.status.in_(statuses),
         )
+        .options(selectinload(m.Quiz.questions).selectinload(m.Question.answers))
         .order_by(m.Quiz.created_at.desc())
     ).all()
     usage = quiz_session_usage(db, session.owner_user_id, session_id=session.id)
@@ -725,6 +758,7 @@ def available_quiz_summaries(
             "status": quiz.status,
             "question_count": count,
             "in_session": in_session(quiz.id),
+            "problem": quiz_problem(quiz),
         }
         for quiz, count in quizzes
     ]
@@ -781,6 +815,23 @@ def _validate_quiz_publishable(quiz: m.Quiz) -> None:
         for ai, a in enumerate(qq.answers, start=1):
             if not a.text.strip() and not a.image_url:
                 raise HTTPException(400, f"Question {idx}, answer {ai} is empty")
+
+
+def quiz_problem(quiz: m.Quiz) -> str | None:
+    """Why a Ready quiz can't be added to a session, or None (UC-A-10).
+
+    Editing a Ready quiz keeps it Ready even when the edit breaks a publish
+    rule; the lists report the first failing rule instead, so the library
+    and the session picker can say so before an add fails. Drafts report
+    None: Publish already checks them.
+    """
+    if quiz.status != "ready":
+        return None
+    try:
+        _validate_quiz_publishable(quiz)
+    except HTTPException as exc:
+        return str(exc.detail)
+    return None
 
 
 def _mark_quiz_edited(quiz: m.Quiz) -> None:
@@ -995,13 +1046,13 @@ def admin_setup(payload: dict, request: Request, response: Response, db: DbSessi
             raise HTTPException(403, "Open the one-time setup link from the server log to create the first admin")
         try:
             username, password = _validate_credentials(
-                payload.get("username", ""),
-                payload.get("password", ""),
+                _text(payload, "username"),
+                _text(payload, "password"),
             )
         except HTTPException:
             log_diagnostic("auth.setup", outcome="invalid")
             raise
-        user = m.User(username=username, password_hash=auth.hash_password(password))
+        user = m.User(username=username, password_hash=_hash_password(password))
         db.add(user)
         try:
             db.commit()
@@ -1027,8 +1078,8 @@ def admin_login(payload: dict, request: Request, response: Response, db: DbSessi
     if not limiter.allow(ip_key, *RL_LOGIN):
         log_diagnostic("auth.login", outcome="rate_limited")
         raise HTTPException(429, "Too many login attempts — wait a moment and try again")
-    username = (payload.get("username") or "").strip()
-    password = payload.get("password") or ""
+    username = _text(payload, "username").strip()
+    password = _text(payload, "password")
     user = db.scalar(select(m.User).where(m.User.username == username)) if username else None
     if not user or not auth.verify_password(password, user.password_hash):
         log_diagnostic("auth.login", outcome="failure")
@@ -1054,8 +1105,8 @@ def admin_change_password(
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
-    current = payload.get("current_password") or ""
-    new = payload.get("new_password") or ""
+    current = _text(payload, "current_password")
+    new = _text(payload, "new_password")
     if not auth.verify_password(current, me.password_hash):
         log_diagnostic(
             "auth.password_change",
@@ -1070,7 +1121,7 @@ def admin_change_password(
             actor_id=me.id,
         )
         raise HTTPException(400, f"new password must be at least {MIN_PASSWORD_LEN} characters")
-    me.password_hash = auth.hash_password(new)
+    me.password_hash = _hash_password(new)
     # Bumping session_version invalidates every cookie issued under the old
     # version — anywhere the old password may have been stored stops working.
     me.session_version = (me.session_version or 1) + 1
@@ -1122,11 +1173,33 @@ def list_sessions(db: DbSession = Depends(get_db), me: m.User = Depends(auth.cur
         .correlate(m.Session)
         .scalar_subquery()
     )
+    feedback_count = (
+        select(func.count(m.SessionFeedback.id))
+        .where(m.SessionFeedback.session_id == m.Session.id)
+        .correlate(m.Session)
+        .scalar_subquery()
+    )
+    # Participants with any profile field or a photograph (UC-A-04); the
+    # same rule as participant_has_profile.
+    profile_count = (
+        select(func.count(m.Participant.id))
+        .where(
+            m.Participant.session_id == m.Session.id,
+            or_(
+                m.Participant.photo_url.is_not(None),
+                *(func.coalesce(getattr(m.Participant, field), "") != "" for field in PROFILE_FIELDS),
+            ),
+        )
+        .correlate(m.Session)
+        .scalar_subquery()
+    )
     rows = db.execute(
         select(
             m.Session,
             query_count.label("query_count"),
             quiz_run_count.label("quiz_run_count"),
+            feedback_count.label("feedback_count"),
+            profile_count.label("profile_count"),
         )
         .where(m.Session.owner_user_id == me.id)
         .order_by(m.Session.created_at.desc())
@@ -1136,14 +1209,16 @@ def list_sessions(db: DbSession = Depends(get_db), me: m.User = Depends(auth.cur
             **serialize_session(s, include_mod_key=True),
             "query_count": query_total,
             "quiz_run_count": run_total,
+            "feedback_count": feedback_total,
+            "profile_count": profile_total,
         }
-        for s, query_total, run_total in rows
+        for s, query_total, run_total, feedback_total, profile_total in rows
     ]
 
 
 @app.post("/api/sessions")
 def create_session(payload: dict, db: DbSession = Depends(get_db), me: m.User = Depends(auth.current_admin)):
-    title = (payload.get("title") or "").strip()
+    title = _text(payload, "title").strip()
     if not title:
         raise HTTPException(400, "Session title is required")
     if len(title) > 200:
@@ -1269,7 +1344,7 @@ async def update_session(
     # shouldn't be able to rename someone else's session.
     require_session_owner(s, me)
     if "title" in payload:
-        new_title = (payload.get("title") or "").strip()
+        new_title = _text(payload, "title").strip()
         if not new_title:
             raise HTTPException(400, "Session title is required")
         if len(new_title) > 200:
@@ -1299,7 +1374,7 @@ async def set_participant_base_url(
     # Owner-only: base URL determines the QR shown to attendees; delegating
     # moderators shouldn't be able to redirect the audience elsewhere.
     require_session_owner(s, me)
-    url = (payload.get("url") or "").strip()
+    url = _text(payload, "url").strip()
     if url:
         if not (url.startswith("http://") or url.startswith("https://")):
             raise HTTPException(400, "URL must start with http:// or https://")
@@ -1416,7 +1491,12 @@ async def delete_session(
     require_session_owner(s, me)
     if s.status == "live":
         raise HTTPException(400, "End the session before deleting it")
-    has_data = bool(s.queries) or bool(s.quiz_runs)
+    # Feedback and attendee profiles are data too (UC-A-07); a participant
+    # who only opened the page is not.
+    has_data = (
+        bool(s.queries) or bool(s.quiz_runs) or bool(s.feedback)
+        or any(participant_has_profile(p) for p in s.participants)
+    )
     if has_data:
         confirm_title = (payload or {}).get("confirm_title", "")
         if confirm_title != s.title:
@@ -1477,15 +1557,15 @@ async def update_my_participant(
     s = get_session_by_code(db, code)
     if not allow_person("profile", request, voter_token):
         raise HTTPException(429, PROFILE_TOO_FAST)
-    linkedin = normalize_optional_text(payload.get("linkedin_url"), PROFILE_FIELDS["linkedin_url"])
+    linkedin = normalize_optional_text(payload, "linkedin_url", PROFILE_FIELDS["linkedin_url"])
     if linkedin and not linkedin.lower().startswith(("http://", "https://")):
         raise HTTPException(400, "LinkedIn profile must start with http:// or https://")
-    if "photo_url" in payload and normalize_optional_text(payload.get("photo_url"), 500) is not None:
+    if "photo_url" in payload and normalize_optional_text(payload, "photo_url", 500) is not None:
         raise HTTPException(400, "photo must be uploaded")
     p = current_participant(s, request, response, voter_token, db)
     for field, max_len in PROFILE_FIELDS.items():
         if field in payload:
-            setattr(p, field, normalize_optional_text(payload.get(field), max_len))
+            setattr(p, field, normalize_optional_text(payload, field, max_len))
     old_photo = p.photo_url
     if "photo_url" in payload:
         p.photo_url = None
@@ -1576,8 +1656,8 @@ async def submit_feedback(
     rating = payload.get("rating")
     if not isinstance(rating, int) or isinstance(rating, bool) or rating < 1 or rating > 5:
         raise HTTPException(400, "rating must be an integer from 1 to 5")
-    went_well = (payload.get("went_well") or "").strip()[:2000] or None
-    to_improve = (payload.get("to_improve") or "").strip()[:2000] or None
+    went_well = _text(payload, "went_well").strip()[:2000] or None
+    to_improve = _text(payload, "to_improve").strip()[:2000] or None
     p = current_participant(s, request, response, voter_token, db)
     # Record an immutable version for every submission (participants may
     # resubmit any number of times; the backend keeps the full trail).
@@ -1715,7 +1795,7 @@ async def create_query(
         raise HTTPException(400, "Session has ended")
     if not allow_person("ask", request, voter_token):
         raise HTTPException(429, "You're asking too fast — wait a moment and try again")
-    text = (payload.get("text") or "").strip()
+    text = _text(payload, "text").strip()
     if not text:
         raise HTTPException(400, "text required")
     if len(text) > 1000:
@@ -1723,7 +1803,7 @@ async def create_query(
     p = current_participant(s, request, response, voter_token, db)
     # A name only when the asker chose to show one for this question; the
     # profile is neither read nor changed (Anonymity, UC-P-04).
-    author_name = (str(payload.get("author_name") or "")).strip()[:80] or None
+    author_name = _text(payload, "author_name").strip()[:80] or None
     q = m.Query(session_id=s.id, text=text, participant_id=p.id, author_name=author_name)
     db.add(q)
     db.commit()
@@ -1794,7 +1874,7 @@ async def respond_to_query(
     q = db.get(m.Query, qid)
     if not q or q.session_id != s.id:
         raise HTTPException(404)
-    q.response_text = (payload.get("response_text") or "").strip() or None
+    q.response_text = _text(payload, "response_text").strip() or None
     q.responded_at = datetime.utcnow() if payload.get("responded", True) else None
     db.commit()
     await broadcast_session(s, "query_responded")
@@ -1888,6 +1968,7 @@ def list_quizzes(
     stmt = (
         select(m.Quiz, question_count.label("question_count"))
         .where(m.Quiz.owner_user_id == me.id)
+        .options(selectinload(m.Quiz.questions).selectinload(m.Question.answers))
         .order_by(m.Quiz.created_at.desc())
     )
     if ready_only:
@@ -1898,6 +1979,7 @@ def list_quizzes(
         {
             "id": q.id, "title": q.title, "status": q.status, "question_count": count,
             "sessions": list(usage.get(q.id, {}).values()),
+            "problem": quiz_problem(q),
         }
         for q, count in quizzes
     ]
@@ -1909,7 +1991,7 @@ def create_quiz(
     db: DbSession = Depends(get_db),
     me: m.User = Depends(auth.current_admin),
 ):
-    title = (payload.get("title") or "").strip() or "Untitled quiz"
+    title = _text(payload, "title").strip() or "Untitled quiz"
     quiz = m.Quiz(title=title, owner_user_id=me.id)
     db.add(quiz)
     db.commit()
@@ -1973,7 +2055,7 @@ def update_quiz(
 ):
     quiz = _owned_quiz_or_404(db, quiz_id, me)
     if "title" in payload:
-        new_title = (str(payload["title"] or "")).strip() or quiz.title
+        new_title = _text(payload, "title").strip() or quiz.title
         if new_title != quiz.title:
             quiz.title = new_title
             _mark_quiz_edited(quiz)
@@ -2059,8 +2141,11 @@ def add_quiz_question(
     existing = list(quiz.questions)
     position = payload.get("position")
     if position is None:
-        order_index = payload.get(
-            "order_index", max((qq.order_index for qq in existing), default=-1) + 1)
+        raw_order = payload.get("order_index")
+        order_index = (
+            max((qq.order_index for qq in existing), default=-1) + 1
+            if raw_order is None else _order_index(raw_order)
+        )
     else:
         # Insert at a 0-based index (UC-A-14): later questions shift down and
         # every question is renumbered 0..n in this same transaction.
@@ -2073,7 +2158,7 @@ def add_quiz_question(
         order_index = position
     qq = m.Question(
         quiz_id=quiz_id,
-        text=(payload.get("text") or "").strip(),
+        text=_text(payload, "text").strip(),
         image_url=payload.get("image_url"),
         qtype=qtype,
         graded=bool(payload.get("graded", True)),
@@ -2099,6 +2184,7 @@ def _apply_order(items: list, ids: object, message: str) -> None:
     by_id = {item.id: item for item in items}
     if (
         not isinstance(ids, list)
+        or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids)
         or len(ids) != len(by_id)
         or set(ids) != set(by_id)
     ):
@@ -2152,7 +2238,7 @@ def update_quiz_question(
 ):
     qq = _owned_quiz_question_or_404(db, question_id, me)
     if "text" in payload:
-        qq.text = str(payload["text"] or "").strip()
+        qq.text = _text(payload, "text").strip()
     if "image_url" in payload:
         v = payload["image_url"]
         qq.image_url = str(v) if v else None
@@ -2163,10 +2249,7 @@ def update_quiz_question(
     if "graded" in payload:
         qq.graded = bool(payload["graded"])
     if "order_index" in payload:
-        try:
-            qq.order_index = int(payload["order_index"])
-        except (TypeError, ValueError):
-            raise HTTPException(400, "order_index must be an integer")
+        qq.order_index = _order_index(payload["order_index"])
     _mark_quiz_edited(qq.quiz)
     db.commit()
     return {"ok": True}
@@ -2194,13 +2277,17 @@ def add_quiz_answer(
     me: m.User = Depends(auth.current_admin),
 ):
     qq = _owned_quiz_question_or_404(db, question_id, me)
-    next_order = (max((a.order_index for a in qq.answers), default=-1)) + 1
+    raw_order = payload.get("order_index")
+    order_index = (
+        max((a.order_index for a in qq.answers), default=-1) + 1
+        if raw_order is None else _order_index(raw_order)
+    )
     a = m.Answer(
         question_id=question_id,
-        text=(payload.get("text") or "").strip(),
+        text=_text(payload, "text").strip(),
         image_url=payload.get("image_url"),
         is_correct=bool(payload.get("is_correct", False)),
-        order_index=payload.get("order_index", next_order),
+        order_index=order_index,
     )
     db.add(a)
     _mark_quiz_edited(qq.quiz)
@@ -2225,17 +2312,14 @@ def update_quiz_answer(
 ):
     a = _owned_quiz_answer_or_404(db, answer_id, me)
     if "text" in payload:
-        a.text = str(payload["text"] or "").strip()
+        a.text = _text(payload, "text").strip()
     if "image_url" in payload:
         v = payload["image_url"]
         a.image_url = str(v) if v else None
     if "is_correct" in payload:
         a.is_correct = bool(payload["is_correct"])
     if "order_index" in payload:
-        try:
-            a.order_index = int(payload["order_index"])
-        except (TypeError, ValueError):
-            raise HTTPException(400, "order_index must be an integer")
+        a.order_index = _order_index(payload["order_index"])
     _mark_quiz_edited(a.question.quiz)
     db.commit()
     return {"ok": True}
@@ -2363,9 +2447,9 @@ def list_all_quiz_runs(
             "current_question_idx": r.current_question_idx,
             "question_count": questions,
             "respondent_count": respondents,
-            "created_at": r.created_at.isoformat(),
-            "started_at": r.started_at.isoformat() if r.started_at else None,
-            "closed_at": r.closed_at.isoformat() if r.closed_at else None,
+            "created_at": iso(r.created_at),
+            "started_at": iso(r.started_at),
+            "closed_at": iso(r.closed_at),
         })
     return out
 

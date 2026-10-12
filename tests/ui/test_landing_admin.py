@@ -311,6 +311,30 @@ def test_uc_a_07_delete_with_data_typed_title_flow(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_a_07_profile_and_feedback_open_the_confirm_card(base_url, admin_setup, page):
+    """UC-A-07: a session whose only data is an attendee profile and feedback
+    needs the typed title; the warning names both counts."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A07prof {secrets.token_hex(3)}")
+    c.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True}).raise_for_status()
+    with httpx.Client(base_url=base_url, timeout=5.0) as attendee:
+        attendee.patch(f"/api/sessions/{s['code']}/me", json={"organization": "Acme"}).raise_for_status()
+        attendee.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4}).raise_for_status()
+    dialogs: list[str] = []
+    try:
+        admin_login_via_ui(page, base_url)
+        page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+        row = page.locator("#session-rows tr").filter(has_text=s["title"])
+        row.locator("button.danger").click()
+        expect(page.locator("#confirm-delete-card")).to_be_visible()
+        warn = page.locator("#cd-warn")
+        expect(warn).to_contain_text("1 feedback response")
+        expect(warn).to_contain_text("1 attendee profile")
+        assert dialogs == []
+    finally:
+        c.close()
+
+
 def test_uc_a_07_delete_from_session_page(base_url, admin_setup, page):
     """UC-A-07: #set-delete on the session page runs the list's delete flow."""
     c = api_login(base_url)
@@ -541,4 +565,26 @@ def test_uc_a_07_double_click_delete_sends_once(base_url, admin_setup, page):
         assert len(deletes) == 1, deletes
         expect(page.locator(".toast-error")).to_have_count(0)
     finally:
+        c.close()
+
+
+def test_uc_a_04_created_time_uses_the_viewer_time_zone(base_url, admin_setup, browser):
+    """UC-A-04: in an Asia/Kolkata browser, the Created cell shows the
+    creation time in that zone (UTC + 5 h 30 min)."""
+    from datetime import UTC, datetime, timedelta
+
+    c = api_login(base_url)
+    created = datetime.now(UTC)
+    s = api_make_session(c, f"UI-A04tz {secrets.token_hex(3)}")
+    context = browser.new_context(timezone_id="Asia/Kolkata", locale="en-US")
+    page = context.new_page()
+    try:
+        admin_login_via_ui(page, base_url)
+        row = page.locator("#session-rows tr").filter(has_text=s["title"])
+        shown = row.locator("td").nth(5).inner_text().replace("\u202f", " ").strip()
+        local = datetime.strptime(shown, "%m/%d/%Y, %I:%M:%S %p")
+        expected = (created + timedelta(hours=5, minutes=30)).replace(tzinfo=None)
+        assert abs(local - expected) < timedelta(minutes=1), (shown, expected)
+    finally:
+        context.close()
         c.close()

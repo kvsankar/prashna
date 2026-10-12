@@ -224,12 +224,17 @@ async function deleteNoData(s: SessionRow): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 function startDeleteFlow(s: SessionRow): void {
   if (s.status === "live") {
     errorToast("End the session before deleting it.");
     return;
   }
-  const hasData = s.query_count > 0 || s.quiz_run_count > 0;
+  // Feedback and attendee profiles count as data too (UC-A-07).
+  const hasData = s.query_count > 0 || s.quiz_run_count > 0 || s.feedback_count > 0 || s.profile_count > 0;
   if (!hasData) {
     if (confirm(`Delete empty session "${s.title}"?`)) void deleteNoData(s);
     return;
@@ -237,7 +242,8 @@ function startDeleteFlow(s: SessionRow): void {
   const warn = $("#cd-warn");
   warn.textContent =
     `This permanently deletes "${s.title}" and everything in it: ` +
-    `${s.query_count} question(s), ${s.quiz_run_count} quiz run(s), ` +
+    `${count(s.query_count, "question")}, ${count(s.quiz_run_count, "quiz run")}, ` +
+    `${count(s.feedback_count, "feedback response")}, ${count(s.profile_count, "attendee profile")}, ` +
     `and all participant responses. Cannot be undone.`;
   const confInp = $<HTMLInputElement>("#cd-confirm");
   const goBtn = $<HTMLButtonElement>("#cd-go");

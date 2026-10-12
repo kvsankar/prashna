@@ -140,7 +140,7 @@ def test_backup_round_trip_includes_consistent_db_and_uploads(tmp_path, monkeypa
 
     pre_restore = restore_archive(archive, confirmed=True)
 
-    assert pre_restore.is_file()
+    assert pre_restore is not None and pre_restore.is_file()
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("SELECT username FROM users").fetchone()[0] == "before"
         assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"

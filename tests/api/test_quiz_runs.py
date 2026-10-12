@@ -332,6 +332,21 @@ def test_uc_m_03_available_quizzes_drafts_for_owner_only(admin_client, make_quiz
     assert [q["id"] for q in delegate] == [ready["id"]]
 
 
+def test_uc_m_03_available_quizzes_report_problem(admin_client, make_quiz, make_session, mod_headers):
+    """UC-M-03: the picker's entries carry `problem`, so a delegate sees that a
+    Ready quiz edited into an invalid state can't be added."""
+    good = make_quiz("Still fine")
+    broken = make_quiz("Broken later")
+    admin_client.delete(f"/api/quiz_questions/{broken['question_id']}")
+    s = make_session()
+    path = f"/api/sessions/{s['code']}/available_quizzes"
+    owner = {q["id"]: q["problem"] for q in admin_client.get(path).json()}
+    assert owner == {good["id"]: None, broken["id"]: "Quiz needs at least one question"}
+    admin_client.cookies.clear()
+    delegate = {q["id"]: q["problem"] for q in admin_client.get(path, headers=mod_headers(s["mod_key"])).json()}
+    assert delegate == owner
+
+
 def test_uc_m_03_available_quizzes_report_in_session(admin_client, make_quiz, make_session):
     """UC-M-03: in_session is null until queued, then reports the run state here."""
     q = make_quiz("membership")

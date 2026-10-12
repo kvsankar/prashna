@@ -113,9 +113,11 @@ _signer = TimestampSigner(_secret)
 
 
 def hash_password(pw: str) -> str:
+    """bcrypt-hash *pw*. Raises ValueError past 72 bytes; the routes turn it
+    into a 400 and the command line into a plain message (UC-A-25, UC-X-15)."""
     pw_bytes = pw.encode("utf-8")
     if len(pw_bytes) > MAX_PASSWORD_BYTES:
-        raise HTTPException(400, f"password must be at most {MAX_PASSWORD_BYTES} bytes")
+        raise ValueError(f"password must be at most {MAX_PASSWORD_BYTES} bytes")
     return bcrypt.hashpw(pw_bytes, bcrypt.gensalt()).decode("utf-8")
 
 

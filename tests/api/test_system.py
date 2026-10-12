@@ -686,3 +686,83 @@ def test_uc_x_07_corrupt_key_files_are_replaced(tmp_path, monkeypatch, corrupt):
     assert token and token.startswith("prashna_st_")
     assert token_file.read_text().strip() == token
     assert (token_file.stat().st_mode & 0o777) == 0o600
+
+
+# ---------- UC-X-05: wrong JSON types never reach storage ----------
+
+PROFILE_TEXT_FIELDS = ("name", "email", "contact_number", "organization", "role",
+                       "linkedin_url", "current_work", "learning_goal", "photo_url")
+
+
+def _text_field_cases(admin_client, make_session) -> list[tuple[str, str, dict, str]]:
+    s = make_session("types")
+    code = s["code"]
+    admin_client.post(f"/api/sessions/{code}/feedback_enabled", json={"enabled": True})
+    qid = admin_client.post(f"/api/sessions/{code}/queries", json={"text": "hi"}).json()["id"]
+    quiz = admin_client.post("/api/quizzes", json={"title": "types"}).json()["id"]
+    question = admin_client.post(f"/api/quizzes/{quiz}/questions", json={"text": "q"}).json()["id"]
+    answer = admin_client.post(f"/api/quiz_questions/{question}/answers", json={"text": "a"}).json()["id"]
+    cases = [
+        ("POST", "/api/sessions", {}, "title"),
+        ("PATCH", f"/api/sessions/{code}", {}, "title"),
+        ("POST", f"/api/sessions/{code}/participant_base_url", {}, "url"),
+        ("POST", f"/api/sessions/{code}/queries", {}, "text"),
+        ("POST", f"/api/sessions/{code}/queries", {"text": "hi"}, "author_name"),
+        ("POST", f"/api/sessions/{code}/queries/{qid}/respond", {}, "response_text"),
+        ("POST", f"/api/sessions/{code}/feedback", {"rating": 3}, "went_well"),
+        ("POST", f"/api/sessions/{code}/feedback", {"rating": 3}, "to_improve"),
+        ("POST", "/api/quizzes", {}, "title"),
+        ("PATCH", f"/api/quizzes/{quiz}", {}, "title"),
+        ("POST", f"/api/quizzes/{quiz}/questions", {}, "text"),
+        ("PATCH", f"/api/quiz_questions/{question}", {}, "text"),
+        ("POST", f"/api/quiz_questions/{question}/answers", {}, "text"),
+        ("PATCH", f"/api/quiz_answers/{answer}", {}, "text"),
+        ("POST", "/api/admin/login", {"password": "testpass1"}, "username"),  # pragma: allowlist secret
+        ("POST", "/api/admin/login", {"username": "admin"}, "password"),
+        ("POST", "/api/admin/change_password", {"new_password": "longenough"}, "current_password"),  # pragma: allowlist secret
+        ("POST", "/api/admin/change_password", {"current_password": "testpass1"}, "new_password"),  # pragma: allowlist secret
+    ]
+    cases += [("PATCH", f"/api/sessions/{code}/me", {}, field) for field in PROFILE_TEXT_FIELDS]
+    return cases
+
+
+@pytest.mark.parametrize("bad", [5, ["x"], {"a": 1}, True])
+def test_uc_x_05_text_fields_reject_other_json_types(admin_client, make_session, bad):
+    """UC-X-05 / conventions: a non-string text field → 400, never 500."""
+    for method, url, base, field in _text_field_cases(admin_client, make_session):
+        r = admin_client.request(method, url, json={**base, field: bad})
+        assert r.status_code == 400, (method, url, field, r.status_code, r.text)
+        assert r.json() == {"detail": f"{field} must be text"}, (method, url, field)
+    # Nothing was stored: the admin still signs in with the old password.
+    assert admin_client.post("/api/admin/login", json={"username": "admin", "password": "testpass1"}).status_code == 200  # pragma: allowlist secret
+
+
+@pytest.mark.parametrize("field", ["username", "password"])
+def test_uc_x_05_setup_rejects_non_string_credentials(client, field):
+    """UC-X-05 / UC-A-01: first-run setup refuses a non-string username or password."""
+    from ..support import SETUP_TOKEN
+    body = {"username": "alice", "password": "longenough", "setup_token": SETUP_TOKEN, field: 12345678}  # pragma: allowlist secret
+    r = client.post("/api/admin/setup", json=body)
+    assert r.status_code == 400
+    assert r.json() == {"detail": f"{field} must be text"}
+    assert client.get("/api/admin/status").json()["initialized"] is False
+
+
+def test_uc_x_05_order_index_must_be_an_integer_on_create(admin_client):
+    """UC-X-05 / UC-A-14 / UC-A-17: order_index on create is an integer."""
+    quiz = admin_client.post("/api/quizzes", json={"title": "order"}).json()["id"]
+    r = admin_client.post(f"/api/quizzes/{quiz}/questions", json={"text": "a", "order_index": "abc"})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "order_index must be an integer"}
+    question = admin_client.post(f"/api/quizzes/{quiz}/questions", json={"text": "b"})
+    assert question.status_code == 200, question.text
+    question_id = question.json()["id"]
+    r = admin_client.post(f"/api/quiz_questions/{question_id}/answers", json={"text": "a", "order_index": "abc"})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "order_index must be an integer"}
+    assert admin_client.post(f"/api/quiz_questions/{question_id}/answers", json={"text": "b"}).status_code == 200
+    body = admin_client.get(f"/api/quizzes/{quiz}").json()
+    assert [q["text"] for q in body["questions"]] == ["b"]
+    assert [a["text"] for a in body["questions"][0]["answers"]] == ["b"]
+    # An integer order_index is still accepted.
+    assert admin_client.post(f"/api/quizzes/{quiz}/questions", json={"text": "c", "order_index": 5}).status_code == 200

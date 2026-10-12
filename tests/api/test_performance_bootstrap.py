@@ -75,6 +75,7 @@ def test_moderator_bootstrap_accepts_owner_or_delegate(
             "status": "ready",
             "question_count": 1,
             "in_session": None,
+            "problem": None,
         }
     ]
 

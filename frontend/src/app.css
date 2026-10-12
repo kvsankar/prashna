@@ -413,7 +413,7 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 }
 .badge-live, .badge-ready { background: var(--good-bg); color: var(--good); }
 .badge-queued { background: var(--accent-bg); color: var(--accent-2); }
-.badge-draft { background: var(--warn-bg); color: var(--warn); }
+.badge-draft, .badge-needs-fixing { background: var(--warn-bg); color: var(--warn); }
 .badge-planning { color: var(--text); }
 
 /* QR lightbox — any QR rendered via renderQR is click-to-enlarge for scanning. */

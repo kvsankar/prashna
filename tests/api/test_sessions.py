@@ -89,6 +89,66 @@ def test_uc_a_04_aggregate_counts_are_correct(
     assert row["quiz_run_count"] == 1
 
 
+def _as_participant(admin_client, action):
+    """Run `action` with a fresh participant cookie, then restore the admin's."""
+    admin = dict(admin_client.cookies)
+    admin_client.cookies.clear()
+    try:
+        return action()
+    finally:
+        admin_client.cookies.clear()
+        admin_client.cookies.update(admin)
+
+
+def _profile_and_feedback(admin_client, code: str) -> None:
+    """One participant saves a profile and rates; another only opens the page."""
+    r = admin_client.post(f"/api/sessions/{code}/feedback_enabled", json={"enabled": True})
+    assert r.status_code == 200, r.text
+
+    def profiled():
+        assert admin_client.patch(f"/api/sessions/{code}/me", json={"organization": "Acme"}).status_code == 200
+        assert admin_client.post(f"/api/sessions/{code}/feedback", json={"rating": 5}).status_code == 200
+
+    def lurker():
+        assert admin_client.get(f"/api/sessions/{code}/me").status_code == 200
+
+    _as_participant(admin_client, profiled)
+    _as_participant(admin_client, lurker)
+
+
+def test_uc_a_04_counts_feedback_and_profiles(admin_client, make_session):
+    """UC-A-04: the list counts feedback and attendee profiles separately."""
+    s = make_session("profiles only")
+    _profile_and_feedback(admin_client, s["code"])
+    row = next(r for r in admin_client.get("/api/sessions").json() if r["code"] == s["code"])
+    assert row["query_count"] == 0
+    assert row["quiz_run_count"] == 0
+    assert row["feedback_count"] == 1
+    assert row["profile_count"] == 1
+
+
+def test_uc_a_04_timestamps_are_utc_with_z(admin_client, make_quiz, make_session):
+    """UC-A-04 / conventions: API timestamps are UTC ISO 8601 with Z."""
+    from datetime import UTC, datetime, timedelta
+
+    before = datetime.now(UTC).replace(microsecond=0)
+    s = make_session("times")
+    assert admin_client.post(f"/api/sessions/{s['code']}/start").status_code == 200
+    assert admin_client.post(f"/api/sessions/{s['code']}/end").status_code == 200
+    q = make_quiz()
+    other = make_session("run here")
+    r = admin_client.post(f"/api/sessions/{other['code']}/quiz_runs", json={"quiz_id": q["id"]})
+    assert r.status_code == 200, r.text
+    row = next(r for r in admin_client.get("/api/sessions").json() if r["code"] == s["code"])
+    run = admin_client.get("/api/quiz_runs").json()[0]
+    stamps = [row["created_at"], row["started_at"], row["ended_at"], run["created_at"]]
+    for stamp in stamps:
+        assert stamp.endswith("Z"), stamp
+        parsed = datetime.fromisoformat(stamp)
+        assert parsed.tzinfo is not None
+        assert before <= parsed <= datetime.now(UTC) + timedelta(seconds=1)
+
+
 def test_uc_a_04_only_my_sessions(client, admin_client, make_session):
     """UC-A-04: only sessions owned by me."""
     make_session("mine")
@@ -309,9 +369,39 @@ def test_uc_a_07_delete_session_removes_profile_photos(admin_client, make_sessio
     assert admin_client.get(photo).status_code == 200
     admin_client.cookies.clear()
     admin_client.cookies.update(admin)
-    r = admin_client.request("DELETE", f"/api/sessions/{s['code']}")
+    # A photograph is an attendee profile, so the typed title is needed.
+    r = admin_client.request("DELETE", f"/api/sessions/{s['code']}", json={"confirm_title": "Photos"})
     assert r.status_code == 200
     assert admin_client.get(photo).status_code == 404
+
+
+def test_uc_a_07_feedback_or_profile_needs_typed_title(admin_client, make_session):
+    """UC-A-07: feedback or an attendee profile counts as data; a visit doesn't."""
+    s = make_session("Visited only")
+
+    def lurker():
+        assert admin_client.get(f"/api/sessions/{s['code']}/me").status_code == 200
+
+    _as_participant(admin_client, lurker)
+    assert admin_client.request("DELETE", f"/api/sessions/{s['code']}", json={}).status_code == 200
+
+    for title, body in (("Feedback only", {"rating": 4}), ("Profile only", None)):
+        s = make_session(title)
+        admin_client.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True})
+
+        def act(code=s["code"], body=body):
+            if body is None:
+                r = admin_client.patch(f"/api/sessions/{code}/me", json={"email": "a@example.invalid"})
+            else:
+                r = admin_client.post(f"/api/sessions/{code}/feedback", json=body)
+            assert r.status_code == 200, r.text
+
+        _as_participant(admin_client, act)
+        r = admin_client.request("DELETE", f"/api/sessions/{s['code']}", json={})
+        assert r.status_code == 400, title
+        assert r.json() == {"detail": "Type the session title exactly to confirm deletion"}
+        r = admin_client.request("DELETE", f"/api/sessions/{s['code']}", json={"confirm_title": title})
+        assert r.status_code == 200
 
 
 def test_uc_a_07_delete_non_owner_403(admin_client, make_session):

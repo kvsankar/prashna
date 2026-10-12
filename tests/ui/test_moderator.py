@@ -186,6 +186,28 @@ def test_uc_m_03_delegate_quiz_select_lists_ready_only(base_url, admin_setup, pa
         c.close()
 
 
+def test_uc_m_03_needs_fixing_quiz_is_disabled_in_picker(base_url, admin_setup, page):
+    """UC-M-03: a Ready quiz edited into an invalid state is a disabled option
+    labelled "needs fixing in the quiz library" for a delegate."""
+    c = api_login(base_url)
+    broken = api_make_quiz(c, f"UI-M03broken {secrets.token_hex(3)}", publish=True)
+    question = c.get(f"/api/quizzes/{broken['id']}").json()["questions"][0]["id"]
+    c.delete(f"/api/quiz_questions/{question}").raise_for_status()
+    fine = api_make_quiz(c, f"UI-M03fine {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M03nf {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        page.wait_for_selector("#quiz-select option[value]:not([value=''])", state="attached")
+        option = page.locator(f"#quiz-select option[value='{broken['id']}']")
+        expect(option).to_be_disabled()
+        expect(option).to_contain_text("needs fixing in the quiz library")
+        good = page.locator(f"#quiz-select option[value='{fine['id']}']")
+        expect(good).to_be_enabled()
+        expect(good).not_to_contain_text("needs fixing")
+    finally:
+        c.close()
+
+
 def test_uc_m_03_owner_quiz_select_includes_drafts(base_url, admin_setup, page):
     """UC-M-03: the admin owner's #quiz-select also lists drafts, labelled as drafts."""
     c = api_login(base_url)

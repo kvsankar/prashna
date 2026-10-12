@@ -43,6 +43,30 @@ def test_uc_a_10_list_quizzes(admin_client, make_quiz):
         assert k in rows[0]
 
 
+def test_uc_a_10_ready_quiz_edited_into_an_invalid_state_reports_problem(admin_client, make_quiz):
+    """UC-A-10: an edit that breaks a publish rule keeps the quiz Ready and
+    reports the rule as `problem`; fixing it clears `problem`."""
+    quiz = make_quiz("Broken later")
+    draft = admin_client.post("/api/quizzes", json={"title": "Plain draft"}).json()
+
+    def row(quiz_id):
+        return next(r for r in admin_client.get("/api/quizzes").json() if r["id"] == quiz_id)
+
+    assert row(quiz["id"])["problem"] is None
+    assert row(draft["id"])["problem"] is None
+    admin_client.delete(f"/api/quiz_questions/{quiz['question_id']}")
+    broken = row(quiz["id"])
+    assert broken["status"] == "ready"
+    assert broken["problem"] == "Quiz needs at least one question"
+    question = admin_client.post(f"/api/quizzes/{quiz['id']}/questions", json={"text": "1+1?"}).json()["id"]
+    assert row(quiz["id"])["problem"] == "Question 1 needs at least 2 answers"
+    admin_client.post(f"/api/quiz_questions/{question}/answers", json={"text": "2", "is_correct": True})
+    admin_client.post(f"/api/quiz_questions/{question}/answers", json={"text": "3"})
+    fixed = row(quiz["id"])
+    assert fixed["status"] == "ready"
+    assert fixed["problem"] is None
+
+
 def test_uc_a_10_aggregate_question_count(admin_client, make_quiz):
     """Quiz summaries count questions without loading answer trees."""
     quiz = make_quiz("two questions")
@@ -771,6 +795,20 @@ def test_uc_a_28_question_order_bad_lists_400(admin_client):
         assert r.status_code == 400, bad
         assert r.json() == msg
     assert _question_texts(admin_client, qid) == ["A?", "B?", "C?"]
+
+
+def test_uc_a_28_reorder_rejects_non_integer_ids(admin_client):
+    """UC-A-28: entries that aren't integers → 400, not 500; order unchanged."""
+    qid = admin_client.post("/api/quizzes", json={"title": "One"}).json()["id"]
+    q = admin_client.post(f"/api/quizzes/{qid}/questions", json={"text": "Only"}).json()["id"]
+    admin_client.post(f"/api/quiz_questions/{q}/answers", json={"text": "x"})
+    for bad in ([{"a": 1}], [[1]], [str(q)], [True]):
+        r = admin_client.put(f"/api/quizzes/{qid}/question_order", json={"question_ids": bad})
+        assert r.status_code == 400, (bad, r.text)
+        assert r.json() == {"detail": "question_ids must list every question in this quiz exactly once"}
+        r = admin_client.put(f"/api/quiz_questions/{q}/answer_order", json={"answer_ids": bad})
+        assert r.status_code == 400, (bad, r.text)
+        assert r.json() == {"detail": "answer_ids must list every answer of this question exactly once"}
 
 
 def test_uc_a_28_question_order_non_owner_404(admin_client):

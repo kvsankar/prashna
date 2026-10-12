@@ -29,7 +29,9 @@ async function loadQuizzes(): Promise<void> {
     const tr = el("tr", { class: "rowable" + (editingId === q.id ? " selected" : "") });
     tr.appendChild(el("td", {}, q.title));
     tr.appendChild(el("td", {},
-      el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft")));
+      el("span", { class: "badge " + (isReady ? "badge-ready" : "badge-draft") }, isReady ? "Ready" : "Draft"),
+      // An edit broke a publish rule; the quiz stays Ready (UC-A-10).
+      q.problem ? [" ", el("span", { class: "badge badge-needs-fixing", title: q.problem }, "Needs fixing")] : null));
     tr.appendChild(el("td", { class: "num muted" }, String(q.question_count)));
     const actions = el("td", { class: "actions" });
     const toggleBtn = isReady
@@ -92,8 +94,15 @@ function addToSessionMenu(q: QuizSummary): HTMLElement {
       // Fresh quiz list too: the server's `sessions` says where this quiz
       // already is (UC-A-10), the same source the session page uses.
       const [sessions, quizzes] = await Promise.all([openSessions(), api<QuizSummary[]>("/api/quizzes")]);
-      const held = new Map((quizzes.find((x) => x.id === q.id)?.sessions ?? []).map((u) => [u.code, u.run_status]));
+      const fresh = quizzes.find((x) => x.id === q.id);
+      const held = new Map((fresh?.sessions ?? []).map((u) => [u.code, u.run_status]));
       panel.replaceChildren();
+      // Say why up front instead of offering an add that would fail (UC-A-29).
+      if (fresh?.problem) {
+        panel.appendChild(el("div", { class: "muted small" },
+          `Can't be added to a session yet: ${fresh.problem}. Open the quiz to fix it.`));
+        return;
+      }
       if (!sessions.length) {
         panel.appendChild(el("div", { class: "muted small" },
           "No open sessions. ", el("a", { href: "/" }, "Create one →")));

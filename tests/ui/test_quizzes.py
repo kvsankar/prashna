@@ -949,3 +949,48 @@ def test_uc_a_09_double_enter_creates_one_quiz(base_url, admin_setup, page):
         assert len(quizzes) == 1, quizzes
     finally:
         c.close()
+
+
+def _broken_ready_quiz(c, title: str) -> dict:
+    """A Ready quiz whose only question was then deleted: still Ready, but it
+    fails the publish checks (UC-A-10 `problem`)."""
+    quiz = api_make_quiz(c, title, publish=True)
+    question = c.get(f"/api/quizzes/{quiz['id']}").json()["questions"][0]["id"]
+    c.delete(f"/api/quiz_questions/{question}").raise_for_status()
+    return quiz
+
+
+def test_uc_a_10_needs_fixing_badge(base_url, admin_setup, page):
+    """UC-A-10: a Ready quiz with a problem shows Ready and Needs fixing; a
+    valid Ready quiz doesn't show Needs fixing."""
+    c = api_login(base_url)
+    broken = _broken_ready_quiz(c, f"UI-A10broken {secrets.token_hex(3)}")
+    fine = api_make_quiz(c, f"UI-A10fine {secrets.token_hex(3)}", publish=True)
+    try:
+        _goto_quizzes(page, base_url)
+        row = page.locator("#quiz-rows tr").filter(has_text=broken["title"])
+        expect(row.locator(".badge-ready")).to_be_visible()
+        expect(row.locator(".badge-needs-fixing")).to_have_text("Needs fixing")
+        fine_row = page.locator("#quiz-rows tr").filter(has_text=fine["title"])
+        expect(fine_row.locator(".badge-ready")).to_be_visible()
+        expect(fine_row.locator(".badge-needs-fixing")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def test_uc_a_29_needs_fixing_quiz_cannot_be_added(base_url, admin_setup, page):
+    """UC-A-29: the Add to session menu of a quiz that needs fixing explains
+    why and lists no sessions."""
+    c = api_login(base_url)
+    broken = _broken_ready_quiz(c, f"UI-A29broken {secrets.token_hex(3)}")
+    s = api_make_session(c, f"UI-A29bs {secrets.token_hex(3)}")
+    try:
+        _goto_quizzes(page, base_url)
+        row = page.locator("#quiz-rows tr").filter(has_text=broken["title"])
+        _open_add_menu(row)
+        panel = row.locator("details.add-to-session .menu-panel")
+        expect(panel).to_contain_text("Can't be added to a session yet: Quiz needs at least one question")
+        expect(panel.locator("button")).to_have_count(0)
+        assert c.get(f"/api/sessions/{s['code']}/quiz_runs").json() == []
+    finally:
+        c.close()

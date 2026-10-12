@@ -293,6 +293,33 @@ def test_uc_a_25_short_new_password(admin_client):
     assert r.json() == {"detail": "new password must be at least 8 characters"}
 
 
+def test_uc_a_25_password_over_72_bytes_is_refused(client):
+    """UC-A-25 / UC-A-01: a password over 72 bytes → 400, nothing changes."""
+    too_long = "é" * 37  # 74 bytes in UTF-8, 37 characters
+    r = client.post("/api/admin/setup", json={"username": "alice", "password": too_long, "setup_token": SETUP_TOKEN})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "password must be at most 72 bytes"}
+    assert client.get("/api/admin/status").json()["initialized"] is False
+
+    r = client.post("/api/admin/setup", json={"username": "alice", "password": "testpass1", "setup_token": SETUP_TOKEN})
+    assert r.status_code == 200
+    r = client.post("/api/admin/change_password", json={"current_password": "testpass1", "new_password": too_long})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "password must be at most 72 bytes"}
+    client.cookies.clear()
+    assert client.post("/api/admin/login", json={"username": "alice", "password": "testpass1"}).status_code == 200
+
+
+def test_uc_a_25_hash_password_raises_value_error():
+    """UC-A-25: the auth module raises ValueError, not an HTTP error, so the
+    command line can report it plainly (UC-X-15)."""
+    import pytest
+
+    from prashna import auth
+    with pytest.raises(ValueError, match="at most 72 bytes"):
+        auth.hash_password("a" * 73)
+
+
 def test_uc_a_25_no_cookie_401(client):
     """UC-A-25: no cookie → 401 Not authenticated."""
     r = client.post("/api/admin/change_password", json={

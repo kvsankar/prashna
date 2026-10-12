@@ -12,8 +12,10 @@ import json
 import os
 import shutil
 import sqlite3
+import sys
 import tarfile
 import tempfile
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
@@ -47,7 +49,9 @@ def create_archive(destination: Path) -> Path:
 
     with tempfile.TemporaryDirectory(prefix="prashna-backup-") as temp:
         snapshot = Path(temp) / "prashna.db"
-        with sqlite3.connect(source_db) as source, sqlite3.connect(snapshot) as target:
+        # closing(): a connection's `with` only commits. The snapshot must be
+        # closed before the temporary folder goes, or Windows can't delete it.
+        with closing(sqlite3.connect(source_db)) as source, closing(sqlite3.connect(snapshot)) as target:
             source.backup(target)
 
         manifest = {
@@ -112,7 +116,7 @@ def _validate_snapshot(snapshot: Path, manifest_path: Path) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("format") != ARCHIVE_FORMAT:
         raise RuntimeError(f"unsupported backup format: {manifest.get('format')!r}")
-    with sqlite3.connect(f"file:{snapshot}?mode=ro", uri=True) as connection:
+    with closing(sqlite3.connect(f"file:{snapshot}?mode=ro", uri=True)) as connection:
         result = connection.execute("PRAGMA quick_check").fetchone()
         if not result or result[0] != "ok":
             raise RuntimeError(f"backup database failed quick_check: {result!r}")
@@ -126,8 +130,12 @@ def _validate_snapshot(snapshot: Path, manifest_path: Path) -> None:
         raise RuntimeError("backup database is not a Prashna database")
 
 
-def restore_archive(archive_path: Path, *, confirmed: bool = False) -> Path:
-    """Restore an archive after creating a sibling pre-restore backup."""
+def restore_archive(archive_path: Path, *, confirmed: bool = False) -> Path | None:
+    """Restore an archive after creating a sibling pre-restore backup.
+
+    Returns that backup, or None when there was no database to keep (a new
+    machine), in which case the restore goes ahead without one.
+    """
     if not confirmed:
         raise RuntimeError("restore requires --confirm and a stopped Prashna service")
     archive_path = archive_path.resolve()
@@ -140,9 +148,11 @@ def restore_archive(archive_path: Path, *, confirmed: bool = False) -> Path:
         snapshot = extracted / "prashna.db"
         _validate_snapshot(snapshot, extracted / "manifest.json")
 
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        pre_restore = archive_path.with_name(f"prashna-pre-restore-{stamp}.tar.gz")
-        create_archive(pre_restore)
+        pre_restore = None
+        if _db_path().is_file():
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            pre_restore = archive_path.with_name(f"prashna-pre-restore-{stamp}.tar.gz")
+            create_archive(pre_restore)
 
         target_db = _db_path()
         target_db.parent.mkdir(parents=True, exist_ok=True)
@@ -182,11 +192,21 @@ def main(argv: list[str] | None = None) -> int:
     restore.add_argument("--confirm", action="store_true")
     args = parser.parse_args(argv)
 
+    # A failure is one plain line, not a traceback (UC-X-10).
     if args.command == "create":
-        print(create_archive(args.archive))
+        try:
+            print(create_archive(args.archive))
+        except (RuntimeError, OSError) as exc:
+            print(f"Backup failed: {exc}", file=sys.stderr)
+            return 1
         return 0
-    pre_restore = restore_archive(args.archive, confirmed=args.confirm)
-    print(f"restored {args.archive}; previous state: {pre_restore}")
+    try:
+        pre_restore = restore_archive(args.archive, confirmed=args.confirm)
+    except (RuntimeError, OSError, tarfile.TarError, sqlite3.Error, ValueError) as exc:
+        print(f"Restore failed: {exc}", file=sys.stderr)
+        return 1
+    previous = f"previous state: {pre_restore}" if pre_restore else "there was no previous data"
+    print(f"restored {args.archive}; {previous}")
     return 0
 
 

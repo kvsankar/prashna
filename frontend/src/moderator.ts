@@ -331,8 +331,11 @@ function applyQuizzes(rows: QuizSummary[]): void {
     // source as the quiz library's Add to session menu.
     const label = `${q.title} (${q.question_count} questions)`
       + (q.status === "draft" ? " (draft)" : "")
-      + (q.in_session ? ` — already added · ${statusLabel(q.in_session.run_status)}` : "");
-    sel.appendChild(el("option", { value: q.id }, label));
+      + (q.in_session ? ` — already added · ${statusLabel(q.in_session.run_status)}` : "")
+      + (q.problem ? " — needs fixing in the quiz library" : "");
+    // A Ready quiz an edit broke can't be added; show it, disabled, so a
+    // delegate sees why instead of getting an error (UC-M-03).
+    sel.appendChild(el("option", { value: q.id, disabled: Boolean(q.problem) }, label));
   }
   if (quizzes.some((q) => String(q.id) === previous)) sel.value = previous;
 }

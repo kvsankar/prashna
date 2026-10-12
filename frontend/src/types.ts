@@ -132,6 +132,8 @@ export interface SessionRow extends Session {
   mod_key: string;
   query_count: number;
   quiz_run_count: number;
+  feedback_count: number; // participants who submitted feedback
+  profile_count: number; // participants who filled in an attendee profile
   created_at: string;
 }
 
@@ -153,6 +155,9 @@ export interface QuizSummary {
   question_count: number;
   sessions?: QuizSessionUse[]; // GET /api/quizzes
   in_session?: { run_status: string; run_count: number } | null; // available_quizzes
+  /** Why a Ready quiz can't be added to a session (an edit broke a publish
+   *  rule), or null (UC-A-10). */
+  problem: string | null;
 }
 
 export interface EditorAnswer {
