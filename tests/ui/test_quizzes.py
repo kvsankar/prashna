@@ -666,16 +666,125 @@ def test_uc_a_21_publish_valid_quiz_flips_badge(base_url, admin_setup, page):
         c.close()
 
 
-def test_uc_a_21_publish_invalid_quiz_toasts_error(base_url, admin_setup, page):
-    """UC-A-21: publishing an invalid (empty) quiz toasts the failing-rule and badge stays draft."""
+def test_uc_a_21_publish_empty_quiz_marks_where_questions_are_added(base_url, admin_setup, page):
+    """UC-A-21: publishing an empty quiz keeps it Draft and marks the place
+    where questions are added."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-Q21bad {secrets.token_hex(3)}")
     try:
         _goto_quizzes(page, base_url)
         row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
         row.locator("button", has_text="Publish").click()
-        expect(page.locator(".toast-error")).to_contain_text("Quiz needs at least one question")
+        expect(page.locator("#editor-card")).to_be_visible(timeout=5000)
+        add_first = page.get_by_role("button", name="Add the first question")
+        expect(add_first).to_have_accessible_description("Add at least one question")
+        expect(page.locator("#editor-body .problem-note")).to_have_text(["Add at least one question"])
+        expect(page.locator("#editor-problem-count")).to_have_text("1 to fix")
         expect(row.locator(".badge-draft")).to_be_visible()
+        expect(page.locator(".toast-error")).to_have_count(0)
+    finally:
+        c.close()
+
+
+def _three_problem_quiz(c, title: str) -> dict:
+    """A draft whose three questions each break one publish rule: Q1 has no
+    text, Q2 (single choice) has no correct answer, Q3 has an empty answer."""
+    return api_make_quiz(c, title, questions=[
+        {"text": "", "qtype": "single",
+         "answers": [{"text": "a", "is_correct": True}, {"text": "b"}]},
+        {"text": "Pick one", "qtype": "single",
+         "answers": [{"text": "c"}, {"text": "d"}]},
+        {"text": "Third", "qtype": "single",
+         "answers": [{"text": "e", "is_correct": True}, {"text": ""}]},
+    ])
+
+
+def test_uc_a_21_failed_publish_marks_every_problem_inline(base_url, admin_setup, page):
+    """UC-A-21: a failed Publish from the library row opens the editor with
+    every problem marked in place; the navigator walks them and wraps;
+    fixing them clears the marks and Publish then succeeds."""
+    c = api_login(base_url)
+    quiz = _three_problem_quiz(c, f"UI-Q21all {secrets.token_hex(3)}")
+    try:
+        _goto_quizzes(page, base_url)
+        expect(page.locator("#editor-card")).to_be_hidden()
+        row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
+        row.locator("button", has_text="Publish").click()
+        expect(page.locator("#editor-card")).to_be_visible(timeout=5000)
+        expect(page.locator(".toast").last).to_have_text("Not published: fix the marked problems")
+        expect(page.locator(".toast-error")).to_have_count(0)
+        expect(row.locator(".badge-draft")).to_be_visible()
+
+        cards = page.locator("#editor-body .editor-q")
+        notes = page.locator("#editor-body .problem-note")
+        expect(notes).to_have_text([
+            "Add the question text", "Mark exactly one correct answer", "Add answer text or an image",
+        ])
+        for i in range(3):
+            expect(cards.nth(i)).to_have_class(re.compile(r"\bhas-problem\b"))
+            expect(cards.nth(i).locator(".problem-note")).to_have_count(1)
+        # The answer's note sits in that answer's row.
+        expect(cards.nth(2).locator(".editor-opt").nth(1).locator(".problem-note")).to_have_count(1)
+        count = page.locator("#editor-problem-count")
+        expect(count).to_have_text("3 to fix")
+        expect(page.locator("#editor-problem-pos")).to_be_hidden()
+
+        q1_text = page.get_by_role("textbox", name="Question 1 text")
+        q2_correct = cards.nth(1).get_by_role("checkbox", name="Answer 1 is correct")
+        q3_answer = cards.nth(2).get_by_role("textbox", name="Answer 2 text")
+        expect(q1_text).to_have_accessible_description("Add the question text")
+        expect(q3_answer).to_have_accessible_description("Add answer text or an image")
+
+        nxt = page.get_by_role("button", name="Next problem")
+        prev = page.get_by_role("button", name="Previous problem")
+        nxt.click()
+        expect(q1_text).to_be_focused()
+        expect(page.locator("#editor-problem-pos")).to_have_text("1 of 3")
+        nxt.click()
+        expect(q2_correct).to_be_focused()
+        nxt.click()
+        expect(q3_answer).to_be_focused()
+        expect(page.locator("#editor-problem-pos")).to_have_text("3 of 3")
+        nxt.click()
+        expect(q1_text).to_be_focused()
+        prev.click()
+        expect(q3_answer).to_be_focused()
+
+        # Fixing each problem updates the marks without a Publish.
+        q1_text.fill("First")
+        q1_text.press("Tab")
+        expect(count).to_have_text("2 to fix", timeout=5000)
+        expect(cards.nth(0)).not_to_have_class(re.compile(r"\bhas-problem\b"))
+        q2_correct.check()
+        expect(count).to_have_text("1 to fix", timeout=5000)
+        q3_answer.fill("f")
+        q3_answer.press("Tab")
+        expect(page.locator("#editor-problem-nav")).to_be_hidden(timeout=5000)
+        expect(notes).to_have_count(0)
+        expect(page.locator("#editor-body .has-problem")).to_have_count(0)
+
+        row.locator("button", has_text="Publish").click()
+        expect(row.locator(".badge-ready")).to_be_visible(timeout=5000)
+    finally:
+        c.close()
+
+
+def test_uc_a_21_draft_shows_no_problems_before_publish(base_url, admin_setup, page):
+    """UC-A-21: a draft being written shows no problem marks until a Publish
+    fails, also after an edit."""
+    c = api_login(base_url)
+    quiz = _three_problem_quiz(c, f"UI-Q21quiet {secrets.token_hex(3)}")
+    try:
+        _open_editor(page, base_url, quiz["title"])
+        expect(page.locator("#editor-body .editor-q")).to_have_count(3)
+        text = page.get_by_role("textbox", name="Question 2 text")
+        text.fill("Pick one, please")
+        text.press("Tab")
+        expect(page.locator("#quiz-rows tr").filter(has_text=quiz["title"])).to_be_visible()
+        page.wait_for_load_state("networkidle")
+        expect(page.locator("#editor-body .problem-note")).to_have_count(0)
+        expect(page.locator("#editor-body .has-problem")).to_have_count(0)
+        expect(page.locator("#editor-problem-nav")).to_be_hidden()
     finally:
         c.close()
 
@@ -1001,27 +1110,47 @@ def test_uc_a_29_needs_fixing_quiz_cannot_be_added(base_url, admin_setup, page):
 
 
 def test_uc_a_10_editor_warns_when_an_edit_breaks_a_publish_rule(base_url, admin_setup, page):
-    """UC-A-10: the open editor shows Needs fixing and the reason after an edit
-    breaks a publish rule, and hides both once the cause is gone."""
+    """UC-A-10: the open editor shows Needs fixing, the inline notes and the
+    navigator after an edit breaks a publish rule, and hides them once the
+    cause is gone."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-A10ed {secrets.token_hex(3)}", publish=True)
     try:
         _open_editor(page, base_url, quiz["title"])
-        problem = page.locator("#editor-problem")
+        nav = page.locator("#editor-problem-nav")
+        notes = page.locator("#editor-body .problem-note")
+        badge = page.locator("#editor-body .badge-needs-fixing")
         expect(page.locator("#editor-body .badge-ready")).to_be_visible()
-        expect(problem).to_be_hidden()
+        expect(nav).to_be_hidden()
+        expect(notes).to_have_count(0)
+        # Clearing the text (a field edit, no re-render) breaks a rule.
+        text = page.get_by_role("textbox", name="Question 1 text")
+        text.fill("")
+        text.press("Tab")
+        expect(notes).to_have_text(["Add the question text"], timeout=5000)
+        expect(page.locator("#editor-problem-count")).to_have_text("1 to fix")
+        expect(badge).to_have_text("Needs fixing")
+        text.fill("2+2?")
+        text.press("Tab")
+        expect(nav).to_be_hidden(timeout=5000)
+        expect(notes).to_have_count(0)
+        expect(badge).to_be_hidden()
         # A blank question at the end has no answers: the quiz stays Ready
         # but can't be added to a session.
         page.get_by_role("button", name="Add a question at the end").click()
         expect(page.locator("#editor-body .editor-q")).to_have_count(2)
-        expect(problem).to_be_visible(timeout=5000)
-        expect(problem).to_have_text("Can't be added to a session yet: Question 2 needs at least 2 answers")
-        expect(page.locator("#editor-body .badge-needs-fixing")).to_have_text("Needs fixing")
+        q2 = page.locator("#editor-body .editor-q").nth(1)
+        expect(q2.locator(".problem-note")).to_have_text(
+            ["Add at least 2 answers", "Mark exactly one correct answer"], timeout=5000)
+        expect(q2).to_have_class(re.compile(r"\bhas-problem\b"))
+        expect(page.locator("#editor-problem-count")).to_have_text("2 to fix")
+        expect(badge).to_have_text("Needs fixing")
         page.once("dialog", lambda d: d.accept())
-        page.locator("#editor-body .editor-q").nth(1).get_by_role("button", name="Delete", exact=True).click()
+        q2.get_by_role("button", name="Delete", exact=True).click()
         expect(page.locator("#editor-body .editor-q")).to_have_count(1, timeout=5000)
-        expect(problem).to_be_hidden(timeout=5000)
-        expect(page.locator("#editor-body .badge-needs-fixing")).to_be_hidden()
+        expect(nav).to_be_hidden(timeout=5000)
+        expect(notes).to_have_count(0)
+        expect(badge).to_be_hidden()
     finally:
         c.close()
 

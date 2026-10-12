@@ -344,6 +344,15 @@ input.limit-input { width: 10ch; text-align: right; }
 .editor-opt { display: flex; flex-wrap: wrap; gap: var(--gap-related); align-items: center; padding: var(--gap-tight) 0; }
 .editor-opt input[type="text"] { flex: 1; min-width: 80px; }
 
+/* Inline problems (UX.md §7): a thin warning stripe on the question and a
+   short note under the field it is about; the navigator sits in the
+   editor card's header. */
+.editor-q.compact.has-problem { box-shadow: inset 3px 0 0 var(--warn); }
+.problem-note { color: var(--warn); font-size: var(--text-sm); margin-top: var(--gap-tight); }
+.editor-opt .problem-note { flex-basis: 100%; margin-top: 0; }
+.problem-nav { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--gap-tight); }
+.problem-count { color: var(--warn); font-size: var(--text-md); font-weight: var(--weight-semibold); margin-right: var(--gap-tight); }
+
 /* Reorder (UX.md §7): drag handle + move buttons. touch-action keeps touch
    drags from scrolling the page. */
 .drag-handle { cursor: grab; touch-action: none; }

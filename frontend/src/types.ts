@@ -177,11 +177,22 @@ export interface EditorQuestion {
   answers: EditorAnswer[];
 }
 
+/** One failing publish rule (UC-A-21). `question_id` is null for the
+ *  quiz-level rule; `answer_id` is set only when the rule is about one answer. */
+export interface PublishProblem {
+  question_id: number | null;
+  answer_id: number | null;
+  field: "questions" | "text" | "answers" | "correct" | "answer";
+  message: string;
+}
+
 export interface QuizEditor {
   id: number;
   title: string;
   status: string;
   questions: EditorQuestion[];
+  /** Every failing publish rule, empty when the quiz can be published. */
+  problems: PublishProblem[];
 }
 
 export interface QuizRunRow {

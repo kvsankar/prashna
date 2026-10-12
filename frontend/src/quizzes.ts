@@ -1,13 +1,23 @@
 import { $, answerOption, api, bindMenuDismiss, el, errorToast, exportLinks, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type {
-  EditorAnswer, EditorQuestion, QuizEditor, QuizRun, QuizRunResults, QuizRunRow, QuizSummary, SessionRow,
+  EditorAnswer, EditorQuestion, PublishProblem, QuizEditor, QuizRun, QuizRunResults, QuizRunRow, QuizSummary,
+  SessionRow,
 } from "./types";
 
 let editing: QuizEditor | null = null;
 let editingId: number | null = null;
-// Why the quiz open in the editor can't be added to a session, from the
-// library list (UC-A-10 `problem`); refreshed whenever the list reloads.
-let editorProblem: string | null = null;
+// Quizzes whose publish problems the editor marks (UC-A-21): a draft after
+// a failed Publish, a Ready quiz as soon as it has problems. Once shown,
+// the marks stay for that quiz and follow every edit.
+const problemsShownFor = new Set<number>();
+// The marked problems in quiz order, each with the field it is about.
+interface MarkedProblem { key: string; target: HTMLElement }
+let markedProblems: MarkedProblem[] = [];
+// The problem the navigator last moved to: its index (-1 before the first
+// move) and its key, so the position survives edits that fix others.
+let problemCursor = -1;
+let problemCursorKey: string | null = null;
+let problemsFetch = 0;
 let resultsId: number | null = null;
 type RunView = "flat" | "quiz" | "version" | "session";
 const RUN_VIEWS: RunView[] = ["flat", "quiz", "version", "session"];
@@ -27,10 +37,6 @@ async function loadQuizzes(): Promise<void> {
     return;
   }
   tbody.innerHTML = "";
-  if (editingId !== null) {
-    editorProblem = quizzes.find((q) => q.id === editingId)?.problem ?? null;
-    renderEditorProblem();
-  }
   for (const q of quizzes) {
     const isReady = q.status === "ready";
     const tr = el("tr", { class: "rowable" + (editingId === q.id ? " selected" : "") });
@@ -306,6 +312,7 @@ function showEditor(title: string): void {
 function closeEditor(): void {
   editingId = null;
   editing = null;
+  markedProblems = [];
   setVisible($("#editor-card"), false);
   void loadQuizzes();
 }
@@ -364,7 +371,14 @@ async function publishQuiz(id: number): Promise<void> {
     void loadQuizzes();
     toast("Quiz published");
     if (editingId === id) void openQuizDetail(id);
-  } catch (e) { errorToast("Can't publish: " + (e as Error).message); }
+  } catch (e) {
+    // The server names only the first problem; the editor marks them all
+    // where they are (UC-A-21). The plain toast says why the editor opened.
+    problemsShownFor.add(id);
+    if (!await openQuizDetail(id)) return;
+    if (editing?.problems.length) toast("Not published: fix the marked problems");
+    else errorToast("Can't publish: " + (e as Error).message);
+  }
 }
 
 async function unpublishQuiz(id: number): Promise<void> {
@@ -377,17 +391,22 @@ async function unpublishQuiz(id: number): Promise<void> {
 
 // ---------- quiz editor ----------
 
-async function openQuizDetail(id: number): Promise<void> {
+/** Load and show a quiz in the editor; false when it couldn't be loaded. */
+async function openQuizDetail(id: number): Promise<boolean> {
   try {
     const opening = editingId !== id;
     editing = await api<QuizEditor>(`/api/quizzes/${id}?include_correct=true`);
-    if (opening) editorProblem = null;
+    if (opening) { problemCursor = -1; problemCursorKey = null; }
     editingId = id;
     showEditor(`Editing quiz: ${editing.title}`);
     renderEditor();
     // Re-renders after each edit keep the scroll position.
     if (opening) revealCard($("#editor-card"));
-  } catch (e) { errorToast((e as Error).message); }
+    return true;
+  } catch (e) {
+    errorToast((e as Error).message);
+    return false;
+  }
 }
 
 function renderEditor(): void {
@@ -400,8 +419,6 @@ function renderEditor(): void {
   body.appendChild(el("div", { class: "row gap" },
     el("span", { class: "badge badge-" + quiz.status }, statusLabel(quiz.status)),
     el("span", { id: "editor-needs-fixing", class: "badge badge-needs-fixing", hidden: true }, "Needs fixing")));
-  body.appendChild(el("div", { id: "editor-problem", class: "info-banner mt-2", hidden: true }));
-  renderEditorProblem();
 
   body.appendChild(el("div", { class: "small muted mb-2" },
     "Changes apply the next time you add this quiz to a session; past results stay as they were."));
@@ -436,17 +453,121 @@ function renderEditor(): void {
   });
   body.appendChild(list);
   const count = quiz.questions.length;
-  body.appendChild(insertPoint(count, count ? "Add a question at the end" : "Add the first question"));
+  const endPoint = insertPoint(count, count ? "Add a question at the end" : "Add the first question");
+  endPoint.id = "editor-insert-end";
+  body.appendChild(endPoint);
+  renderProblems();
 }
 
-/** Show why the open quiz can't be added to a session, if it can't. */
-function renderEditorProblem(): void {
-  const banner = document.getElementById("editor-problem");
+// ---------- publish problems (UC-A-21, UX.md §7 Inline problems) ----------
+
+function problemKey(p: PublishProblem): string {
+  return `${p.field}:${p.question_id ?? ""}:${p.answer_id ?? ""}`;
+}
+
+/** The field a problem is about, and the element its note follows. */
+function problemPlace(p: PublishProblem): { target: HTMLElement; after: HTMLElement } | null {
+  if (p.question_id === null) {
+    const end = document.getElementById("editor-insert-end");
+    return end ? { target: end, after: end } : null;
+  }
+  const card = document.querySelector<HTMLElement>(`#editor-questions .editor-q-slot[data-id="${p.question_id}"] .editor-q`);
+  const text = card?.querySelector<HTMLTextAreaElement>(":scope > textarea");
+  if (!card || !text) return null;
+  if (p.answer_id !== null) {
+    const row = card.querySelector<HTMLElement>(`.editor-opt[data-id="${p.answer_id}"]`);
+    const input = row?.querySelector<HTMLInputElement>('input[type="text"]');
+    // The note goes last in the answer's row, on a line of its own.
+    return row && input ? { target: input, after: row.lastElementChild as HTMLElement } : null;
+  }
+  // Question rules: the note goes under the text, after any earlier notes.
+  let after: HTMLElement = text;
+  while (after.nextElementSibling?.classList.contains("problem-note")) after = after.nextElementSibling as HTMLElement;
+  const target = p.field === "answers" ? card.querySelector<HTMLElement>("button.add-answer")
+    : p.field === "correct" ? card.querySelector<HTMLElement>('.editor-opt input[type="checkbox"]')
+      : null;
+  return { target: target ?? text, after };
+}
+
+/** Mark the open quiz's problems in place and update the navigator. A
+ *  draft shows none until a Publish fails; a Ready quiz always does. */
+function renderProblems(): void {
+  const body = $("#editor-body");
+  for (const n of body.querySelectorAll(".problem-note")) n.remove();
+  for (const c of body.querySelectorAll(".has-problem")) c.classList.remove("has-problem");
+  for (const f of body.querySelectorAll("[data-problem-note]")) {
+    f.removeAttribute("aria-describedby");
+    f.removeAttribute("data-problem-note");
+  }
+  markedProblems = [];
+  const quiz = editing;
   const badge = document.getElementById("editor-needs-fixing");
-  if (!banner || !badge) return;
-  banner.textContent = editorProblem ? `Can't be added to a session yet: ${editorProblem}` : "";
-  setVisible(banner, Boolean(editorProblem));
-  setVisible(badge, Boolean(editorProblem));
+  if (quiz && badge) setVisible(badge, quiz.status === "ready" && quiz.problems.length > 0);
+  if (quiz?.status === "ready" && quiz.problems.length) problemsShownFor.add(quiz.id);
+  const problems = quiz && problemsShownFor.has(quiz.id) ? quiz.problems : [];
+  problems.forEach((p, i) => {
+    const place = problemPlace(p);
+    if (!place) return;
+    const note = el("div", { class: "problem-note", id: `problem-note-${i}` }, p.message);
+    place.after.after(note);
+    const described = (place.target.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean);
+    place.target.setAttribute("aria-describedby", [...described, note.id].join(" "));
+    place.target.setAttribute("data-problem-note", "");
+    place.target.closest(".editor-q")?.classList.add("has-problem");
+    markedProblems.push({ key: problemKey(p), target: place.target });
+  });
+  if (problemCursorKey !== null) {
+    const found = markedProblems.findIndex((m) => m.key === problemCursorKey);
+    if (found >= 0) problemCursor = found;
+    else {
+      // The current problem was fixed: the next move goes to the one that
+      // took its place.
+      problemCursorKey = null;
+      problemCursor = Math.min(problemCursor - 1, markedProblems.length - 1);
+    }
+  }
+  renderProblemNav();
+}
+
+function renderProblemNav(): void {
+  const n = markedProblems.length;
+  setVisible($("#editor-problem-nav"), n > 0);
+  $("#editor-problem-count").textContent = n ? `${n} to fix` : "";
+  const pos = $("#editor-problem-pos");
+  pos.textContent = problemCursorKey !== null ? `${problemCursor + 1} of ${n}` : "";
+  setVisible(pos, problemCursorKey !== null);
+}
+
+/** Scroll to the next (1) or previous (-1) problem, wrapping at the ends,
+ *  and put the cursor in its field. */
+function moveToProblem(step: 1 | -1): void {
+  const n = markedProblems.length;
+  if (!n) return;
+  problemCursor = step > 0 ? (problemCursor + 1) % n : (problemCursor <= 0 ? n - 1 : problemCursor - 1);
+  const { key, target } = markedProblems[problemCursor];
+  problemCursorKey = key;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+  target.focus({ preventScroll: true });
+  renderProblemNav();
+}
+$("#editor-problem-next").addEventListener("click", () => moveToProblem(1));
+$("#editor-problem-prev").addEventListener("click", () => moveToProblem(-1));
+
+/** After a field edit, re-read the problems and re-mark them in place,
+ *  keeping the focus where the author is typing. */
+async function refreshProblems(): Promise<void> {
+  const quiz = editing;
+  if (!quiz || (quiz.status !== "ready" && !problemsShownFor.has(quiz.id))) return;
+  const fetchNo = ++problemsFetch;
+  try {
+    const fresh = await api<QuizEditor>(`/api/quizzes/${quiz.id}?include_correct=true`);
+    // A later edit or another quiz opened meanwhile: its own fetch wins.
+    if (fetchNo !== problemsFetch || editing !== quiz) return;
+    quiz.problems = fresh.problems;
+    quiz.status = fresh.status;
+    renderProblems();
+  } catch { /* the edit itself was saved; the next edit refreshes the marks */ }
 }
 
 function insertPoint(position: number, label: string): HTMLButtonElement {
@@ -515,7 +636,7 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
   qq.answers.forEach((op, aIdx) => opts.appendChild(renderAnswer(qq, op, aIdx)));
   wrap.appendChild(opts);
   wrap.appendChild(guardClick(
-    el("button", { class: "ghost small mt-1" }, "+ Answer") as HTMLButtonElement,
+    el("button", { class: "ghost small mt-1 add-answer" }, "+ Answer") as HTMLButtonElement,
     async () => {
       try { await api(`/api/quiz_questions/${qq.id}/answers`, { method: "POST", body: { text: "New answer" } }); }
       catch (e) { errorToast((e as Error).message); return; }
@@ -647,12 +768,14 @@ async function patchQuestion(id: number, body: Record<string, unknown>): Promise
   try {
     await api(`/api/quiz_questions/${id}`, { method: "PATCH", body });
     void loadQuizzes();
+    void refreshProblems();
   } catch (e) { errorToast((e as Error).message); }
 }
 async function patchAnswer(id: number, body: Record<string, unknown>): Promise<void> {
   try {
     await api(`/api/quiz_answers/${id}`, { method: "PATCH", body });
     void loadQuizzes();
+    void refreshProblems();
   } catch (e) { errorToast((e as Error).message); }
 }
 /** Add a blank question at `position` (0-based) and put the cursor in its

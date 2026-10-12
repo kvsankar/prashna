@@ -46,7 +46,16 @@
     <section hidden class="card compact" id="editor-card">
       <div class="card-head">
         <h2 id="editor-title">Editing quiz</h2>
-        <button class="ghost small" id="editor-close">Close</button>
+        <div class="card-tools">
+          <!-- Publish problems navigator (UC-A-21, UX.md §7 Inline problems). -->
+          <div hidden class="problem-nav" id="editor-problem-nav" role="group" aria-label="Problems to fix">
+            <span class="problem-count" id="editor-problem-count" aria-live="polite"></span>
+            <span hidden class="muted small" id="editor-problem-pos"></span>
+            <button class="ghost small" type="button" id="editor-problem-prev" aria-label="Previous problem" title="Previous problem">↑</button>
+            <button class="ghost small" type="button" id="editor-problem-next" aria-label="Next problem" title="Next problem">↓</button>
+          </div>
+          <button class="ghost small" id="editor-close">Close</button>
+        </div>
       </div>
       <div id="editor-body"></div>
     </section>

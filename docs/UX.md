@@ -430,8 +430,39 @@ named verb buttons**, never a status dropdown:
 Why: each transition has different validation rules and side effects;
 forcing the user to think in verbs prevents accidental jumps.
 
-A failed transition (e.g., publish-but-incomplete) shows the validation
-message in a banner attached to the detail pane, not an `alert()`.
+A failed transition (e.g., publish-but-incomplete) never uses an
+`alert()`. When the failure is about specific items, mark them in place
+(see **Inline problems** below); otherwise show the server's message in
+an error toast.
+
+### Inline problems
+
+Shows every reason an entity can't move to its next state at the item it
+is about, so the author fixes them all in one pass. First use: the publish
+rules in the quiz editor (UC-A-21), shown after a failed Publish and for a
+Ready quiz that an edit broke (UC-A-10).
+
+- The detail pane opens on the entity if it was closed. A short plain
+  toast says what happened ("Not published: fix the marked problems");
+  the marks carry the detail.
+- Each item with a problem (`.has-problem`) gets a thin inset stripe in
+  `--warn` (`box-shadow: inset 3px 0 0 var(--warn)`), the same shape as
+  the feedback card's accent stripe. No border, tint or icon.
+- Each problem has a one-line `.problem-note`: small text in `--warn`,
+  directly under the field it is about, worded as an instruction ("Add
+  the question text", "Mark exactly one correct answer"). The note is
+  the field's accessible description (`aria-describedby`).
+- A navigator in the detail card's header (`.problem-nav`) reads "N to
+  fix", with **↑** / **↓** `.ghost.small` buttons labelled "Previous
+  problem" / "Next problem". Each press scrolls the next problem to the
+  centre of the screen (smoothly, unless the person prefers reduced
+  motion), focuses its field, wraps at the ends and shows the position
+  ("2 of 3"). The count is a polite live region.
+- Once shown, the marks update after every edit and go away as each
+  problem is fixed; the navigator goes with the last one. Don't show
+  them before the author asks for the transition: a draft being written
+  is not an error.
+- No modal and no error block listing the problems.
 
 ### Bulk actions
 
@@ -469,6 +500,7 @@ create affordance.
 | -------------------- | ------------------------------------------------------------ |
 | Transient action     | Toast (bottom right), 2.8 s; an error toast stays 4 s        |
 | Form / sticky error  | `.error-banner` *inside* the affected card, until dismissed  |
+| Item-specific rules  | Inline problem notes and the navigator (§7 Inline problems)  |
 | Blocking failure     | Banner on the page; no modal                                 |
 | Session deleted      | `#session-deleted` banner replaces the page's content (`showSessionDeleted()`, UC-X-01) |
 | Auth expired         | Redirect to `/` (handled in `api()`)                         |
@@ -478,9 +510,9 @@ Never use `alert()` or `prompt()`.
 ### Info / lifecycle hint
 
 `.info-banner` inside the detail pane, for a sticky, non-error note about
-the entity's state, e.g., "Can't be added to a session yet: Question 2
-needs at least 2 answers" on a Ready quiz that an edit broke (UC-A-10).
-Its text uses `--text`, so it stays readable on the tint.
+the entity's state as a whole. Its text uses `--text`, so it stays
+readable on the tint. Problems with specific items use **Inline
+problems** (§7) instead.
 
 ---
 

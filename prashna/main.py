@@ -12,6 +12,7 @@ import time
 import uuid
 from collections import Counter
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
@@ -796,25 +797,65 @@ def _no_queued_quiz_run(db: DbSession, session: m.Session) -> None:
 
 # ---------- quiz lifecycle helpers ----------
 
-def _validate_quiz_publishable(quiz: m.Quiz) -> None:
+@dataclass(frozen=True)
+class PublishProblem:
+    """One failing publish rule (UC-A-21).
+
+    `message` is the short instruction shown at its place in the editor;
+    `numbered` names the question and answer by position, for the API's
+    400 detail and the lists' `problem` (UC-A-10).
+    """
+
+    question_id: int | None
+    answer_id: int | None
+    field: str  # questions | text | answers | correct | answer
+    message: str
+    numbered: str
+
+    def as_json(self) -> dict:
+        return {
+            "question_id": self.question_id,
+            "answer_id": self.answer_id,
+            "field": self.field,
+            "message": self.message,
+        }
+
+
+def _publish_problems(quiz: m.Quiz) -> list[PublishProblem]:
+    """Every publish rule the quiz breaks, in quiz order (UC-A-21)."""
     if not quiz.questions:
-        raise HTTPException(400, "Quiz needs at least one question")
+        return [PublishProblem(None, None, "questions", "Add at least one question",
+                               "Quiz needs at least one question")]
+    problems: list[PublishProblem] = []
     for idx, qq in enumerate(quiz.questions, start=1):
+        rules: list[tuple[str, str, str, int | None]] = []
         if not qq.text.strip():
-            raise HTTPException(400, f"Question {idx} is missing text")
+            rules.append(("text", "Add the question text", f"Question {idx} is missing text", None))
         if len(qq.answers) < 2:
-            raise HTTPException(400, f"Question {idx} needs at least 2 answers")
+            rules.append(("answers", "Add at least 2 answers", f"Question {idx} needs at least 2 answers", None))
         # Poll/survey questions (graded=False) intentionally have no correct
         # answer — skip the correctness requirement for them.
         if qq.graded:
             correct = [a for a in qq.answers if a.is_correct]
             if qq.qtype == "single" and len(correct) != 1:
-                raise HTTPException(400, f"Question {idx} (single choice) needs exactly one correct answer")
+                rules.append(("correct", "Mark exactly one correct answer",
+                              f"Question {idx} (single choice) needs exactly one correct answer", None))
             if qq.qtype == "multi" and len(correct) < 1:
-                raise HTTPException(400, f"Question {idx} (multiple choice) needs at least one correct answer")
+                rules.append(("correct", "Mark at least one correct answer",
+                              f"Question {idx} (multiple choice) needs at least one correct answer", None))
         for ai, a in enumerate(qq.answers, start=1):
             if not a.text.strip() and not a.image_url:
-                raise HTTPException(400, f"Question {idx}, answer {ai} is empty")
+                rules.append(("answer", "Add answer text or an image", f"Question {idx}, answer {ai} is empty", a.id))
+        problems.extend(PublishProblem(qq.id, answer_id, field, message, numbered)
+                        for field, message, numbered, answer_id in rules)
+    return problems
+
+
+def _validate_quiz_publishable(quiz: m.Quiz) -> None:
+    """Raise 400 naming the first failing publish rule (UC-A-21)."""
+    problems = _publish_problems(quiz)
+    if problems:
+        raise HTTPException(400, problems[0].numbered)
 
 
 def quiz_problem(quiz: m.Quiz) -> str | None:
@@ -827,11 +868,8 @@ def quiz_problem(quiz: m.Quiz) -> str | None:
     """
     if quiz.status != "ready":
         return None
-    try:
-        _validate_quiz_publishable(quiz)
-    except HTTPException as exc:
-        return str(exc.detail)
-    return None
+    problems = _publish_problems(quiz)
+    return problems[0].numbered if problems else None
 
 
 def _mark_quiz_edited(quiz: m.Quiz) -> None:
@@ -2017,7 +2055,11 @@ def get_quiz(
     me: m.User = Depends(auth.current_admin),
 ):
     quiz = _owned_quiz_or_404(db, quiz_id, me)
-    return serialize_quiz(quiz, include_correct=include_correct)
+    # Every failing publish rule, so the editor can mark them all (UC-A-21).
+    return {
+        **serialize_quiz(quiz, include_correct=include_correct),
+        "problems": [p.as_json() for p in _publish_problems(quiz)],
+    }
 
 
 @app.post("/api/quizzes/{quiz_id}/publish")

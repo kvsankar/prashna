@@ -1107,6 +1107,66 @@ def test_uc_a_21_publish_non_owner_404(admin_client, make_quiz):
     assert r.status_code == 404
 
 
+
+def _add_question(client, quiz_id, text, answers, *, qtype="single", graded=True):
+    """Add a question with `answers` as (text, is_correct) pairs; return ids."""
+    q = client.post(f"/api/quizzes/{quiz_id}/questions",
+                    json={"text": text, "qtype": qtype, "graded": graded}).json()
+    ids = []
+    for a_text, correct in answers:
+        a = client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": a_text}).json()
+        if correct:
+            client.patch(f"/api/quiz_answers/{a['id']}", json={"is_correct": True}).raise_for_status()
+        ids.append(a["id"])
+    return q["id"], ids
+
+
+def test_uc_a_21_quiz_detail_lists_every_problem(admin_client):
+    """UC-A-21: the quiz detail lists every failing publish rule with the
+    question and answer it is about; publish still names only the first."""
+    qz = admin_client.post("/api/quizzes", json={"title": "Broken"}).json()
+    q1, _ = _add_question(admin_client, qz["id"], "", [("a", True), ("b", False)])
+    q2, _ = _add_question(admin_client, qz["id"], "One answer", [("a", True)])
+    q3, _ = _add_question(admin_client, qz["id"], "Two correct", [("a", True), ("b", True)])
+    q4, q4_answers = _add_question(admin_client, qz["id"], "Empty answer", [("", True), ("b", False)])
+    _add_question(admin_client, qz["id"], "Poll", [("x", False), ("y", False)], graded=False)
+    q6, _ = _add_question(admin_client, qz["id"], "Multi none", [("a", False), ("b", False)], qtype="multi")
+
+    body = admin_client.get(f"/api/quizzes/{qz['id']}?include_correct=true").json()
+    assert body["problems"] == [
+        {"question_id": q1, "answer_id": None, "field": "text", "message": "Add the question text"},
+        {"question_id": q2, "answer_id": None, "field": "answers", "message": "Add at least 2 answers"},
+        {"question_id": q3, "answer_id": None, "field": "correct", "message": "Mark exactly one correct answer"},
+        {"question_id": q4, "answer_id": q4_answers[0], "field": "answer", "message": "Add answer text or an image"},
+        {"question_id": q6, "answer_id": None, "field": "correct", "message": "Mark at least one correct answer"},
+    ]
+    # Without include_correct the problems are the same.
+    assert admin_client.get(f"/api/quizzes/{qz['id']}").json()["problems"] == body["problems"]
+
+    r = admin_client.post(f"/api/quizzes/{qz['id']}/publish")
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Question 1 is missing text"}
+
+
+def test_uc_a_21_quiz_level_and_empty_problem_lists(admin_client, make_quiz):
+    """UC-A-21: an empty quiz has one quiz-level problem; a publishable draft
+    and a valid Ready quiz have none; a Ready quiz an edit broke has some."""
+    empty = admin_client.post("/api/quizzes", json={"title": "Empty"}).json()
+    assert admin_client.get(f"/api/quizzes/{empty['id']}").json()["problems"] == [
+        {"question_id": None, "answer_id": None, "field": "questions", "message": "Add at least one question"},
+    ]
+    draft = admin_client.post("/api/quizzes", json={"title": "Fine"}).json()
+    _add_question(admin_client, draft["id"], "Q?", [("a", True), ("b", False)])
+    assert admin_client.get(f"/api/quizzes/{draft['id']}").json()["problems"] == []
+    ready = make_quiz()
+    assert admin_client.get(f"/api/quizzes/{ready['id']}").json()["problems"] == []
+    # A Ready quiz that an edit broke lists its problems too (UC-A-10).
+    admin_client.delete(f"/api/quiz_questions/{ready['question_id']}").raise_for_status()
+    detail = admin_client.get(f"/api/quizzes/{ready['id']}").json()
+    assert detail["status"] == "ready"
+    assert [p["message"] for p in detail["problems"]] == ["Add at least one question"]
+
+
 # ---------- UC-A-22: Unpublish ----------
 
 def test_uc_a_22_unpublish(admin_client, make_quiz):

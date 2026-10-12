@@ -205,6 +205,8 @@ def test_text_colours_meet_wcag_contrast():
         "muted text on a row": (t["--muted"], panel2),
         "body text on a row": (t["--text"], panel2),
         "info banner text": (t["--text"], _over(t["--accent-bg"], panel)),
+        "problem note on a question": (t["--warn"], panel2),
+        "problem count on a card": (t["--warn"], panel),
     }
     low = {name: round(_contrast(fg, bg), 2) for name, (fg, bg) in pairs.items() if _contrast(fg, bg) < 4.5}
     assert low == {}

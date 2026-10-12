@@ -465,7 +465,7 @@ own use case so tests and PRs can cite one ID per behavior.
 **Tests (UI)**
 - On `/quizzes` (authed), `#quiz-rows` contains a row per owned quiz with title, status badge, and question count.
 - A Ready quiz with a `problem` shows `.badge-ready` and `.badge-needs-fixing` ("Needs fixing") in its row; a valid Ready quiz shows no `.badge-needs-fixing` (`test_uc_a_10_needs_fixing_badge`).
-- The open editor says the same, so the author sees it while editing: after an edit that breaks a publish rule (for example inserting a blank question into a Ready quiz), `#editor-body` shows `.badge-needs-fixing` beside the Ready badge and `#editor-problem` reads "Can't be added to a session yet: <problem>"; fixing or removing the cause hides both (`test_uc_a_10_editor_warns_when_an_edit_breaks_a_publish_rule`).
+- The open editor says the same, so the author sees it while editing: after an edit that breaks a publish rule (for example inserting a blank question into a Ready quiz, or clearing a question's text), `#editor-body` shows `.badge-needs-fixing` beside the Ready badge, the affected question carries its inline problem notes, and the editor's problem navigator shows the count (UC-A-21); fixing or removing the cause hides the badge, the notes and the navigator (`test_uc_a_10_editor_warns_when_an_edit_breaks_a_publish_rule`).
 - Order: most recently created first.
 
 ### UC-A-11: Open a quiz for editing
@@ -478,7 +478,7 @@ own use case so tests and PRs can cite one ID per behavior.
   across owners)
 
 **Tests (API)**
-- `GET /api/quizzes/{id}?include_correct=true` → `200 {id, title, status, questions: [{id, text, image_url, qtype, order_index, answers: [{id, text, image_url, order_index, is_correct}]}]}`. Auth: admin cookie.
+- `GET /api/quizzes/{id}?include_correct=true` → `200 {id, title, status, questions: [{id, text, image_url, qtype, order_index, answers: [{id, text, image_url, order_index, is_correct}]}], problems: [{question_id, answer_id, field, message}]}`. Auth: admin cookie. `problems` lists every failing publish rule (UC-A-21) for drafts and Ready quizzes alike, and is `[]` when the quiz can be published.
 - `include_correct=false` (default) omits `is_correct` from answer objects.
 - `GET /api/quizzes/{id}` for a quiz owned by another admin → `404`.
 - `GET /api/quizzes/{id}` for a non-existent id → `404`.
@@ -784,8 +784,33 @@ Used by question and answer editors to set `image_url`.
 - **And** a **poll** question (`graded: false`) is exempt from the
   correct-answer rules — it needs only text + ≥ 2 non-empty answers
 - **And** on pass, status → `ready`
-- **And** on fail, returns `400` with the specific failing rule
-  message ("Question 2 (single choice) needs exactly one correct answer")
+- **And** on fail, returns `400` with the first failing rule's message
+  ("Question 2 (single choice) needs exactly one correct answer")
+- **And** the quiz detail (`GET /api/quizzes/{id}`, UC-A-11) lists every
+  failing rule in `problems`, in quiz order. Each entry has
+  `question_id` (`null` for the quiz-level rule), `answer_id` (`null`
+  unless the rule is about one answer), `field` (`questions`, `text`,
+  `answers`, `correct` or `answer`) and `message`, a short instruction
+  written for its place in the editor: "Add at least one question",
+  "Add the question text", "Add at least 2 answers", "Mark exactly one
+  correct answer", "Mark at least one correct answer", "Add answer text
+  or an image"
+- **And** a failed Publish shows every problem in the editor, not one
+  message: the quiz's editor opens if it was closed, each question with a
+  problem gets a thin warning-coloured stripe, and each problem's note
+  sits next to the field it is about (under the question text for the
+  text, answer-count and correct-answer rules; under the answer for an
+  empty answer; beside **Add the first question** for an empty quiz).
+  A short toast says "Not published: fix the marked problems". A
+  navigator in the editor header reads "N to fix"; its **↑** and **↓**
+  buttons ("Previous problem", "Next problem") scroll to each problem in
+  turn, focus its field, wrap at the ends and show the position ("2 of
+  3"). Each note is the field's accessible description
+- **And** once shown for a quiz, the notes update after every edit and
+  disappear as each problem is fixed; the navigator disappears with the
+  last one. A Ready quiz that an edit broke shows its notes and the
+  navigator without a Publish (UC-A-10). A draft that hasn't failed a
+  Publish shows no notes while it is being written
 
 **Tests (API)**
 - `POST /api/quizzes/{id}/publish` on a quiz with ≥ 1 question, each having text, ≥ 2 answers, valid correctness, and non-empty answers → `200 {status: "ready"}`. Auth: admin cookie.
@@ -797,10 +822,14 @@ Used by question and answer editors to set `image_url`.
 - A **poll** question (`graded: false`) with text + 2 non-empty answers and **no correct answer** → publish `200 {status: "ready"}` (correct-answer rules skipped). On a launched run the serialized current question reports `graded: false` and its answers carry **no** `is_correct` even after reveal/close; `GET /api/quiz_runs/{id}/results` reports `is_correct: false` for every poll answer.
 - Answer with empty text and no `image_url` → `400 "Question N, answer M is empty"`.
 - For a non-owner quiz → `404`.
+- For a draft with a question missing text, a question with one answer, a graded single-choice question with two correct answers, a question with an empty answer, and a poll with no correct answer, `GET /api/quizzes/{id}` lists one problem per broken rule with its `question_id`, `answer_id`, `field` and `message`, and none for the poll; Publish still returns `400` with the first numbered message (`test_uc_a_21_quiz_detail_lists_every_problem`).
+- A quiz with no questions lists one quiz-level problem `{question_id: null, answer_id: null, field: "questions", message: "Add at least one question"}`; a publishable draft or Ready quiz lists `problems: []` (`test_uc_a_21_quiz_level_and_empty_problem_lists`).
 
 **Tests (UI)**
 - In `#quiz-rows`, clicking a valid draft quiz's Publish button flips its status badge to `.badge-ready`.
-- Clicking Publish on an invalid quiz surfaces an error toast with the exact failing-rule message and status stays `draft`.
+- Clicking a draft's Publish in `#quiz-rows` while its editor is closed, when three questions break rules, opens `#editor-card`; the three questions carry `.has-problem` and one `.problem-note` each, `#editor-problem-count` reads "3 to fix", and the toast says "Not published: fix the marked problems" (no error toast). **Next problem** focuses each problem's field in turn and wraps to the first; **Previous problem** goes back; `#editor-problem-pos` shows the position. Fixing one problem updates the count; fixing all hides the notes and the navigator, and Publish then flips the badge to `.badge-ready` (`test_uc_a_21_failed_publish_marks_every_problem_inline`).
+- Publishing an empty quiz from its row keeps it `draft` and shows "Add at least one question" beside **Add the first question**, with the navigator reading "1 to fix" (`test_uc_a_21_publish_empty_quiz_marks_where_questions_are_added`).
+- A draft with problems that hasn't failed a Publish shows no `.problem-note`, no `.has-problem` and no navigator, also after an edit (`test_uc_a_21_draft_shows_no_problems_before_publish`).
 
 ### UC-A-22: Unpublish a quiz
 
