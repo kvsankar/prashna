@@ -649,7 +649,14 @@ Participants are almost always on phones; admins and moderators sometimes
 are. Check every change at 390 px wide (UC-X-12).
 
 - **No sideways page scroll.** Wide tables go in `.table-scroll`; row
-  headers that hold controls use `flex-wrap: wrap`. Don't wrap a table in
+  headers that hold controls use `flex-wrap: wrap`.
+- **Wide lists stack on phones.** A table too wide for 390 px gets the
+  `stack` class (`table.ctable.stack`): at 720 px and narrower each row
+  becomes a block — the first cell (`.stack-line`) on its own line, then
+  the status, code, counts and date wrapping on the next, then the
+  actions (`.actions`) on their own line. Counts carry their unit through
+  `data-label` ("2 questions"), because the column headers are hidden.
+  The session list and the quiz runs list use it. Don't wrap a table in
   `.table-scroll` if its rows hold `details.menu` dropdowns — the scroll
   box clips them; let the actions cell wrap instead.
 - **16 px inputs on narrow screens.** iOS Safari zooms the page when a

@@ -163,11 +163,14 @@ async function loadSessions(): Promise<void> {
       const sessionUrl = `/m/${s.code}`;
       const tr = el("tr", { class: "rowable" });
       tr.addEventListener("click", () => { location.href = sessionUrl; });
-      tr.appendChild(el("td", {}, el("a", { href: sessionUrl }, s.title)));
+      tr.appendChild(el("td", { class: "stack-line" }, el("a", { href: sessionUrl }, s.title)));
       tr.appendChild(el("td", {}, el("code", { class: "small" }, s.code)));
       tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + s.status }, statusLabel(s.status))));
-      tr.appendChild(el("td", { class: "num muted" }, String(s.query_count)));
-      tr.appendChild(el("td", { class: "num muted" }, String(s.quiz_run_count)));
+      // The labels name the counts when the headers are hidden on phones (UX.md §16a).
+      tr.appendChild(el("td", { class: "num muted", "data-label": s.query_count === 1 ? "question" : "questions" },
+        String(s.query_count)));
+      tr.appendChild(el("td", { class: "num muted", "data-label": s.quiz_run_count === 1 ? "quiz run" : "quiz runs" },
+        String(s.quiz_run_count)));
       tr.appendChild(el("td", { class: "muted small" }, when));
 
       const actions = el("td", { class: "actions" });

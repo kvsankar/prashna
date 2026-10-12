@@ -230,3 +230,46 @@ def test_uc_x_14_revealed_answers_match_on_every_surface(base_url, admin_setup, 
         for ctx in pages:
             ctx.close()
         c.close()
+
+
+STACK_JS = """(rowSel) => {
+  const vw = window.innerWidth;
+  const boxes = [...document.querySelectorAll('.table-scroll')].filter(e => e.offsetParent)
+    .filter(e => e.scrollWidth > e.clientWidth + 1).map(e => (e.closest('section') || {}).id);
+  const rows = [...document.querySelectorAll(rowSel)].filter(r => r.offsetParent);
+  const outside = rows.flatMap(r => [...r.querySelectorAll('td')])
+    .filter(td => td.getBoundingClientRect().right > vw + 1).map(td => td.textContent.trim().slice(0, 20));
+  return { boxes, outside, rows: rows.length, text: rows.map(r => r.innerText).join(' | ') };
+}"""
+
+
+def test_uc_x_12_admin_lists_stack_on_phones(base_url, admin_setup, page):
+    """UC-X-12: at 390 px the session list and the quiz runs list fit, with counts in words."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-X12s {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-X12 stacked {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/queries", json={"text": "One?"}).raise_for_status()
+    c.post(f"/api/sessions/{s['code']}/queries", json={"text": "Two?"}).raise_for_status()
+    try:
+        page.set_viewport_size({"width": 390, "height": 844})
+        admin_login_via_ui(page, base_url)
+        page.wait_for_selector("#session-rows td.actions")
+        got = page.evaluate(STACK_JS, "#session-rows tr")
+        assert got["boxes"] == [] and got["outside"] == [], got
+        # Counts carry their words through CSS-generated text (`data-label`).
+        words = page.locator("#session-rows tr", has_text=s["title"]).locator("td[data-label]").evaluate_all(
+            "tds => tds.map(td => td.textContent.trim() + getComputedStyle(td, '::after').content.replace(/\"/g, ''))")
+        assert words == ["2 questions", "1 quiz run"], words
+
+        page.goto(base_url + "/quizzes")
+        page.wait_for_selector("#qs-rows tr")
+        got = page.evaluate(STACK_JS, "#qs-rows tr")
+        assert got["boxes"] == [] and got["outside"] == [], got
+        page.locator('[data-run-view="quiz"]').click()
+        page.wait_for_selector(".run-group")
+        page.locator(".run-group > summary").first.click()
+        got = page.evaluate(STACK_JS, ".run-group tbody tr")
+        assert got["boxes"] == [] and got["outside"] == [], got
+    finally:
+        c.close()

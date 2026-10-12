@@ -2651,6 +2651,7 @@ out and signed in, `/quizzes` (list, editor open, run results open),
 - a visible control without an accessible name (label, `aria-label`, `title`, or text);
 - at 390 and 360 px: a visible text input, text area, or select under 16 px;
 - at 1280 px: a visible button (other than answer options, rating stars, and vote buttons) whose height is not 40, 32, or 24 px (UC-X-13), or a `.profile-cta` that isn't 40 px;
+- at 390 px on `/` signed in and on `/quizzes` (flat and grouped quiz runs): a `.table-scroll` box wider inside than its own width, or a session-list or quiz-run row whose actions or counts fall outside the viewport (`test_uc_x_12_admin_lists_stack_on_phones`, which also checks that counts read with their words, e.g. "2 questions");
 - in a touch-emulating context at 390 px: a visible `button`, `details.menu > summary`, `.section-links a`, `.breadcrumbs a`, `header.top a`, table row action link (`.ctable td.actions a`), or menu link (`a.menu-link`) under 32 px tall. Links inside a sentence are exempt, as in WCAG 2.2.
 
 ### UC-X-13: One button size scale

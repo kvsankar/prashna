@@ -7,6 +7,14 @@ the behaviour specification.
 
 ## Current follow-ups
 
+### Human review: stacked admin lists on phones
+
+At 720 px and narrower, the session list and the quiz runs list now show
+each row as a block (title; status, code, counts and date; actions)
+instead of a sideways-scrolling table (UX.md §16a, UC-X-12). Sankar
+reviews the result on a real phone: the session list on `/` and the quiz
+runs list on `/quizzes` (flat and grouped views), signed in as the admin.
+
 ### Remove the legacy admin-cookie compatibility shim
 
 `prashna/auth.py::_parse_cookie` still accepts the old signed cookie containing

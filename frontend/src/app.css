@@ -418,6 +418,20 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 .qr-lightbox-hint { position: fixed; bottom: 28px; left: 0; right: 0; text-align: center; color: var(--overlay-text); font-size: var(--text-md); }
 
 @media (max-width: 720px) {
+  /* Wide lists stack on phones (UX.md §16a): each row becomes a block -
+     the first cell on its own line, then status, code, counts and date,
+     then the actions. Headers are hidden, so counts carry their words. */
+  .ctable.stack thead { display: none; }
+  .ctable.stack tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-tight) var(--gap-related);
+    padding: var(--gap-related) 0; border-bottom: 1px solid var(--border);
+  }
+  .ctable.stack tr:last-child { border-bottom: none; }
+  .ctable.stack td { display: block; padding: 0; border-bottom: none; white-space: normal; min-width: 0; text-align: left; }
+  .ctable.stack td.stack-line, .ctable.stack td.actions { flex-basis: 100%; }
+  .ctable.stack td[data-label]::after { content: " " attr(data-label); }
+  .ctable.stack td[data-prefix]::before { content: attr(data-prefix) " "; }
+  .ctable.stack td.actions > :first-child { margin-left: 0; }
   header.top { align-items: flex-start; gap: var(--gap-related); }
   .page-nav { position: static; align-items: flex-start; flex-direction: column; }
   .section-links { justify-content: flex-start; }

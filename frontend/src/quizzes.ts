@@ -166,7 +166,7 @@ async function loadQSessions(): Promise<void> {
 
 function renderRunRow(r: QuizRunRow): HTMLTableRowElement {
   const tr = el("tr", { class: "rowable" + (resultsId === r.id ? " selected" : "") }) as HTMLTableRowElement;
-  tr.appendChild(el("td", {}, r.quiz_title));
+  tr.appendChild(el("td", { class: "stack-line" }, r.quiz_title));
   tr.appendChild(el("td", { class: "muted small" }, "v" + r.version_no));
   tr.appendChild(el("td", {},
     el("span", { class: "muted small" }, r.session_title + " "),
@@ -174,8 +174,11 @@ function renderRunRow(r: QuizRunRow): HTMLTableRowElement {
   tr.appendChild(el("td", {}, el("span", { class: "badge badge-" + r.status }, statusLabel(r.status))));
   const progress = r.status === "queued" ? "—"
     : `${Math.min(r.current_question_idx + 1, r.question_count)}/${r.question_count}`;
-  tr.appendChild(el("td", { class: "num muted" }, progress));
-  tr.appendChild(el("td", { class: "num muted" }, String(r.respondent_count)));
+  // The prefix and label name the numbers when the headers are hidden on
+  // phones (UX.md §16a).
+  tr.appendChild(el("td", { class: "num muted", "data-prefix": "Question" }, progress));
+  tr.appendChild(el("td", { class: "num muted", "data-label": r.respondent_count === 1 ? "response" : "responses" },
+    String(r.respondent_count)));
   tr.appendChild(el("td", { class: "muted small" }, new Date(r.created_at).toLocaleString()));
   tr.addEventListener("click", () => void openQSDetail(r.id));
   return tr;
@@ -187,7 +190,7 @@ function renderRunTable(rows: QuizRunRow[], tbody?: HTMLTableSectionElement): HT
     for (const row of rows) tbody.appendChild(renderRunRow(row));
     return tbody.closest("table") as HTMLTableElement;
   }
-  const table = el("table", { class: "ctable" }) as HTMLTableElement;
+  const table = el("table", { class: "ctable stack" }) as HTMLTableElement;
   table.appendChild(el("thead", {}, el("tr", {},
     el("th", {}, "Quiz"),
     el("th", {}, "Version"),
