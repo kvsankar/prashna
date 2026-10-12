@@ -318,8 +318,10 @@ class QuizSubmission(Base):
 
     One row per (run, question, answer, participant). Multi-choice picks
     create multiple rows; single-choice picks create one. Re-submitting a
-    quiz answer deletes the participant's prior rows for the same
-    (run, question) and inserts new ones — last-write-wins.
+    quiz answer replaces the participant's selection for the same
+    (run, question) — last-write-wins: rows for answers no longer picked are
+    deleted, newly picked answers are inserted, and rows for answers still
+    picked are kept, so an identical re-submission changes nothing.
     """
     __tablename__ = "quiz_submissions"
     __table_args__ = (

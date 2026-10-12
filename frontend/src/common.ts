@@ -31,15 +31,15 @@ export const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: Paren
 type Child = Node | string | number | null | false | undefined;
 type Attrs = Record<string, unknown>;
 
-/** Show or hide an element with the `hidden` attribute. app.css makes
- *  `[hidden]` win over any display rule. Use this instead of setting
- *  `style.display` (UX.md §1, enforced by test_frontend_contracts). */
 /** Start of every public link and QR code (UC-A-06): the session's own base
  * URL, else the running tunnel's address, else this page's origin. */
 export function publicBase(s: { participant_base_url: string | null; default_base_url?: string | null }): string {
   return (s.participant_base_url || s.default_base_url || location.origin).replace(/\/$/, "");
 }
 
+/** Show or hide an element with the `hidden` attribute. app.css makes
+ *  `[hidden]` win over any display rule. Use this instead of setting
+ *  `style.display` (UX.md §1, enforced by test_frontend_contracts). */
 export function setVisible(node: HTMLElement, visible: boolean): void {
   node.hidden = !visible;
 }

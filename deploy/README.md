@@ -18,8 +18,9 @@ instead; see [`distribution/README.md`](../distribution/README.md).
    anycast addresses rather than the server's IP. Verify the record and proxy
    state in Cloudflare before continuing.
 
-2. **GitHub Actions** — the `Build & publish Docker image` workflow pushes to
-   `ghcr.io/kvsankar/prashna`. No extra secrets needed; it uses the built-in
+2. **GitHub Actions** — the `CI & publish image` workflow (its `Build &
+   publish Docker image` job) pushes to `ghcr.io/kvsankar/prashna`. No extra
+   secrets needed; it uses the built-in
    `GITHUB_TOKEN` with `packages:write` permission. Trigger it once by pushing
    to `main` or running it manually so the image exists.
 
@@ -135,7 +136,9 @@ with `docker compose --project-name <printed-project> down --volumes
 ## Files
 
 - `docker-compose.yml`: the service definition, copied to `/opt/prashna/`.
-  It requires `PRASHNA_SECRET_KEY` in `.env`.
+  It requires `PRASHNA_SECRET_KEY` in `.env`. The file installed on the host
+  differs from it (see "Reconcile the production compose file" in
+  [`docs/todo.md`](../docs/todo.md)).
 - `env.example`: reference for `/opt/prashna/.env`. `setup.sh` writes that
   file with a generated key when it is missing.
 - `nginx-prashna.conf`: the nginx server block, symlinked into

@@ -10,7 +10,8 @@ contract is [`specs.md`](specs.md), and the UI rules are in [`UX.md`](UX.md).
 - Node.js 22 and npm, to build the Vite frontend.
 - Chromium for Playwright, for the UI tests (installed below).
 - Optional: Docker with the Compose plugin, for the container smoke tests.
-- Optional: the ngrok CLI, signed in, for sharing a local server.
+- Optional: `cloudflared` (no account needed) or the ngrok CLI, signed in,
+  for sharing a local server.
 
 ## Set up
 
@@ -99,9 +100,9 @@ The Compose files read further variables for image tags, ports, and host
 paths. Those are described in [`distribution/README.md`](../distribution/README.md)
 and [`deploy/README.md`](../deploy/README.md).
 
-The opt-in operations tests read `PRASHNA_NGROK_SMOKE`,
-`PRASHNA_COMPOSE_SMOKE`, and `PRASHNA_COMPOSE_SMOKE_IMAGE` (see
-[Tests](#tests)).
+The opt-in operations tests read `PRASHNA_CLOUDFLARE_SMOKE`,
+`PRASHNA_NGROK_SMOKE`, `PRASHNA_COMPOSE_SMOKE`, and
+`PRASHNA_COMPOSE_SMOKE_IMAGE` (see [Tests](#tests)).
 
 ## Tests
 
@@ -115,7 +116,10 @@ uv run pytest tests/ui/              # UI tests only
 Test layers:
 
 - `tests/api/`: in-process tests with FastAPI's `TestClient` and httpx
-  against a fresh SQLite database per test. They also cover the CLI, the rate
+  against one SQLite database per run, with every table emptied before each
+  test. A WebSocket receive in these tests fails after 5 s
+  (`tests/support.py::ws_receive`), so a missing broadcast fails the test
+  instead of hanging the run. They also cover the CLI, the rate
   limiter, the repository hooks, the frontend source contracts, and these
   documentation contracts.
 - `tests/ui/`: Playwright tests against a real uvicorn process with an
@@ -123,12 +127,15 @@ Test layers:
 - Export tests read the generated Excel workbooks with `openpyxl`, a
   dev-only dependency; the application writes them with `XlsxWriter`.
 - `tests/ops/`: packaging, distribution, nginx, Cloudflare, and performance
-  tooling. Some of them need Docker or network access. Two are opt-in:
+  tooling. Some of them need Docker or network access. Three are opt-in:
   - `PRASHNA_COMPOSE_SMOKE=1 uv run pytest tests/ops/test_compose_smoke.py`
     builds the image and checks a Compose deployment across a restart
     (`PRASHNA_COMPOSE_SMOKE_IMAGE` tests a published image instead).
   - `PRASHNA_NGROK_SMOKE=1 uv run pytest tests/ops/test_ngrok_smoke.py`
     runs the ngrok flow above through a real temporary endpoint.
+  - `PRASHNA_CLOUDFLARE_SMOKE=1 uv run pytest tests/ops/test_cloudflare_smoke.py`
+    runs `prashna --tunnel cloudflare` through a real quick tunnel; it needs
+    `cloudflared`.
 
 The suite builds the frontend once per run with
 `npm run build -- --mode test`. The test-mode build includes a socket test
@@ -196,7 +203,8 @@ tests/
   api/               API, CLI, hook, and contract tests
   ui/                Playwright tests
   ops/               packaging, distribution, deployment, and performance tests
-scripts/             build_release_bundle.py, check_pii.py, check_commit_msg.py
+scripts/             build_release_bundle.py, build_pages_site.py, check_pii.py,
+                     check_commit_msg.py
 performance/         measure.py, budgets.json, and the measurement runbook
 deploy/              Hetzner Compose file, nginx, setup and Cloudflare scripts
 distribution/        README shipped inside the Compose release bundle

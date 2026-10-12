@@ -66,8 +66,10 @@ prashna                                     # virtual environment: ~/.prashna/bi
 ```
 
 Update with `uv tool upgrade prashna`, `pipx upgrade prashna`, or
-`~/.prashna/bin/pip install --upgrade prashna`. `prashna --help` lists the
-options: port, data folder, and backups.
+`~/.prashna/bin/pip install --upgrade prashna`. `prashna --help` lists every
+option: the address and port, the data folder, `--no-browser`, `--tunnel`, and
+the `backup` and `reset-password` commands. If you forget the admin password,
+`prashna reset-password` sets a new one.
 
 ## First run
 
@@ -152,7 +154,7 @@ MIT. See [LICENSE](https://github.com/kvsankar/prashna/blob/main/LICENSE).
 ## Status
 
 Prashna runs in production at `prashna.sankara.net` for a single operator. It
-is released as a container image.
+is released as a Python package on PyPI and as a container image.
 Product ideas that need a decision are listed in the
 [deferred appendix](https://github.com/kvsankar/prashna/blob/main/docs/specs.md#deferred-decision-needed)
 of the specification.

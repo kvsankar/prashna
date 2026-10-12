@@ -192,8 +192,7 @@ bridge.
 
 Shell adapters are the FastAPI route functions, cookie and header
 dependencies, SQLAlchemy sessions, WebSocket accept and send calls, upload
-file I/O, static-file serving, GitHub redirect and callback handling, Docker
-Compose, and GitHub Actions.
+file I/O, static-file serving, Docker Compose, and GitHub Actions.
 
 Route handlers may orchestrate HTTP dependencies and commits. Business
 behaviour must stay verifiable through the API and browser tests that cite

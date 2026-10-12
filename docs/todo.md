@@ -19,7 +19,7 @@ invalidation tests.
 
 ### Split `prashna/main.py` by resource
 
-`prashna/main.py` has about 2800 lines. Split it by resource (sessions,
+`prashna/main.py` has about 3000 lines. Split it by resource (sessions,
 queries, quizzes, quiz runs, uploads, admin) in a separate change made
 outside a live event.
 
@@ -31,11 +31,6 @@ the host folder mounted at `/data`. Renaming the Compose variable (for
 example to `PRASHNA_DATA_HOST_DIR`, matching `PRASHNA_UPLOADS_HOST_DIR`) would
 remove the clash.
 
-### Ignore `secret-key` and `setup-token` in a source checkout
-
-Running from a source checkout creates `secret-key` and `setup-token` in the
-repository root. `.gitignore` does not list them, so they could be committed.
-
 ### Close test gaps
 
 - No tests flood the feedback and performance-beacon rate-limit buckets
@@ -44,6 +39,33 @@ repository root. `.gitignore` does not list them, so they could be committed.
   naming convention.
 - No automated test runs an end-to-end journey from `specs.md`.
 - No load test checks the 100-person room and 1000 ms latency targets.
+
+### Reconcile the production compose file with `deploy/docker-compose.yml`
+
+`/opt/prashna/docker-compose.yml` on the Hetzner host differs from the
+repository's file: it reads its settings from `/opt/prashna/.env` through
+`env_file`, uses the image's own start command and fixed bind-mount paths,
+while the repository's lists each setting, requires `PRASHNA_SECRET_KEY`,
+overrides the start command, and parameterises the paths. Only the journald
+`logging` block is applied to both. Decide which form is right, make the
+repository match, and install it on the host.
+
+### Stable address for `--tunnel cloudflare`
+
+A Cloudflare quick tunnel gets a new `trycloudflare.com` name on every run.
+A Cloudflare named tunnel would keep one name, but needs a Cloudflare account
+and a domain whose DNS Cloudflare manages, so it serves only such users;
+everyone else's stable option is ngrok's fixed free domain (`--tunnel
+ngrok`). Decide whether to support named tunnels (for example
+`--tunnel cloudflare --hostname quiz.example.org`) and where the tunnel's
+name and credentials live.
+
+### Prune old rollback images on the Hetzner host
+
+Each production deploy tags the previous image as
+`ghcr.io/kvsankar/prashna:rollback-<date>`, and nothing removes old tags.
+Keep the newest few and remove the rest, by hand or in the update steps of
+`deploy/README.md`.
 
 ## Required before broader hosted operation
 
@@ -57,30 +79,3 @@ These do not block the current single-process, single-operator deployment:
   for known columns and indexes.
 - Replace the in-memory WebSocket hub with shared pub/sub before running more
   than one application process.
-
-## Reconcile the production compose file with `deploy/docker-compose.yml`
-
-`/opt/prashna/docker-compose.yml` on the Hetzner host differs from the
-repository's file: it reads its settings from `/opt/prashna/.env` through
-`env_file`, uses the image's own start command and fixed bind-mount paths,
-while the repository's lists each setting, requires `PRASHNA_SECRET_KEY`,
-overrides the start command, and parameterises the paths. Only the journald
-`logging` block is applied to both. Decide which form is right, make the
-repository match, and install it on the host.
-
-## Stable address for `--tunnel cloudflare`
-
-A Cloudflare quick tunnel gets a new `trycloudflare.com` name on every run.
-A Cloudflare named tunnel would keep one name, but needs a Cloudflare account
-and a domain whose DNS Cloudflare manages, so it serves only such users;
-everyone else's stable option is ngrok's fixed free domain (`--tunnel
-ngrok`). Decide whether to support named tunnels (for example
-`--tunnel cloudflare --hostname quiz.example.org`) and where the tunnel's
-name and credentials live.
-
-## Prune old rollback images on the Hetzner host
-
-Each production deploy tags the previous image as
-`ghcr.io/kvsankar/prashna:rollback-<date>`, and nothing removes old tags.
-Keep the newest few and remove the rest, by hand or in the update steps of
-`deploy/README.md`.

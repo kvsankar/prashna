@@ -107,9 +107,9 @@ docker compose start prashna
 docker compose exec -T prashna rm "/data/$archive"
 ```
 
-After restoring, open <http://127.0.0.1:8000/api/admin/status> and confirm the
-expected session data. Copy the reported `prashna-pre-restore-*.tar.gz` out of
-the container before deleting it.
+After restoring, open <http://127.0.0.1:8000/>, sign in, and check that the
+session list shows the expected sessions. Copy the reported
+`prashna-pre-restore-*.tar.gz` out of the container before deleting it.
 
 ## Useful commands
 

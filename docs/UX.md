@@ -413,9 +413,9 @@ Entities with lifecycle (Session, Quiz, QuizRun, Query) use **explicitly
 named verb buttons**, never a status dropdown:
 
 - `Publish` / `Unpublish` (Quiz)
-- `Start` / `End` (Session); `Start` / `Close` / `Reveal results` /
-  `Next question` (QuizRun)
-- `Mark responded` / `Reopen` (Query, formerly Q&A "answer")
+- `Start` / `End` (Session); `Start` / `Reveal results` / `Next question` /
+  `Finish quiz` / `Reopen voting` (QuizRun)
+- `Mark responded` / `Reopen` (Query)
 - `Remove` / `Restore` (Query soft-remove)
 
 Why: each transition has different validation rules and side effects;
