@@ -45,14 +45,21 @@ def test_uc_p_04_text_too_long_400(client, admin_client, make_session):
     assert r.json() == {"detail": "text too long"}
 
 
-def test_uc_p_04_author_name_sets(client, admin_client, make_session):
-    """UC-P-04: author_name updates participant name."""
+def test_uc_p_04_author_name_stays_on_the_question(client, admin_client, make_session):
+    """UC-P-04: a shown name belongs to that question only; the profile is never read or changed."""
     s = make_session()
     admin_client.cookies.clear()
-    r = client.post(f"/api/sessions/{s['code']}/queries",
-                    json={"text": "Hi?", "author_name": "Bob"})
+    code = s["code"]
+    client.patch(f"/api/sessions/{code}/me", json={"name": "Alice"})
+    anon = client.post(f"/api/sessions/{code}/queries", json={"text": "First?"}).json()
+    assert anon["author_name"] is None
+    r = client.post(f"/api/sessions/{code}/queries", json={"text": "Hi?", "author_name": "  Bob  "})
     assert r.status_code == 200
     assert r.json()["author_name"] == "Bob"
+    assert client.get(f"/api/sessions/{code}/me").json()["name"] == "Alice"
+    client.patch(f"/api/sessions/{code}/me", json={"name": "Carol"})
+    names = {q["text"]: q["author_name"] for q in client.get(f"/api/sessions/{code}/queries").json()}
+    assert names == {"First?": None, "Hi?": "Bob"}
 
 
 def test_uc_p_04_ended_session_400(client, admin_client, make_session):

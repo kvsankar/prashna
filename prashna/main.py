@@ -448,16 +448,14 @@ def serialize_participant_profile(p: m.Participant) -> dict:
     }
 
 
-def serialize_feedback(f: m.SessionFeedback, *, include_author: bool = False) -> dict:
-    body = {
+def serialize_feedback(f: m.SessionFeedback) -> dict:
+    """Feedback is anonymous: no name or participant id (Anonymity)."""
+    return {
         "rating": f.rating,
         "went_well": f.went_well,
         "to_improve": f.to_improve,
         "updated_at": f.updated_at.isoformat() if f.updated_at else None,
     }
-    if include_author:
-        body["author_name"] = f.participant.name if f.participant else None
-    return body
 
 
 def participant_has_profile(p: m.Participant) -> bool:
@@ -471,7 +469,7 @@ def serialize_query(q: m.Query, viewer_participant_id: int | None, is_mod: bool)
     return {
         "id": q.id,
         "text": q.text,
-        "author_name": q.participant.name if q.participant else None,
+        "author_name": q.author_name,
         "response_text": q.response_text,
         "responded": q.responded_at is not None,
         "removed": q.removed_at is not None,
@@ -1650,7 +1648,7 @@ def feedback_summary(
         "count": count,
         "average": average,
         "distribution": distribution,
-        "items": [serialize_feedback(r, include_author=True) for r in rows],
+        "items": [serialize_feedback(r) for r in rows],
     }
 
 
@@ -1698,10 +1696,10 @@ async def create_query(
     if len(text) > 1000:
         raise HTTPException(400, "text too long")
     p = current_participant(s, request, response, voter_token, db)
-    if "author_name" in payload:
-        nm = (payload.get("author_name") or "").strip()[:80] or None
-        p.name = nm
-    q = m.Query(session_id=s.id, text=text, participant_id=p.id)
+    # A name only when the asker chose to show one for this question; the
+    # profile is neither read nor changed (Anonymity, UC-P-04).
+    author_name = (str(payload.get("author_name") or "")).strip()[:80] or None
+    q = m.Query(session_id=s.id, text=text, participant_id=p.id, author_name=author_name)
     db.add(q)
     db.commit()
     db.refresh(q)

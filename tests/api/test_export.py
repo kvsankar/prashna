@@ -21,11 +21,11 @@ SESSION_HEADERS = [
     "Quiz runs", "Feedback responses", "Average rating",
 ]
 PARTICIPANT_HEADERS = [
-    "Participant ID", "Name", "Email", "Contact number", "Organization", "Role",
+    "Name", "Email", "Contact number", "Organization", "Role",
     "LinkedIn", "Photo", "Current work", "Learning goal", "First seen", "Last seen",
 ]
 QUESTION_HEADERS = [
-    "Question ID", "Asked at", "Participant ID", "Asked by", "Question", "Votes",
+    "Question ID", "Asked at", "Asked by", "Question", "Votes",
     "Status", "Responded", "Response", "Responded at", "Removed at",
 ]
 RUN_HEADERS = [
@@ -33,11 +33,11 @@ RUN_HEADERS = [
     "Created at", "Started at", "Closed at",
 ]
 ANSWER_HEADERS = [
-    "Run ID", "Quiz", "Question no.", "Question", "Participant ID",
-    "Participant name", "Chosen answers", "Correct", "Answered at",
+    "Run ID", "Quiz", "Question no.", "Question", "Respondent",
+    "Chosen answers", "Correct", "Answered at",
 ]
 FEEDBACK_HEADERS = [
-    "Participant ID", "Name", "Rating", "Went well", "Could be better",
+    "Rating", "Went well", "Could be better",
     "Submitted at", "Updated at",
 ]
 SESSION_SHEETS = [
@@ -114,7 +114,7 @@ def populated(admin_client, make_session, make_quiz):
         assert r.status_code == 200, r.text
         alice_id = r.json()["id"]
         query = c.post(f"/api/sessions/{code}/queries", json={"text": "How do exports work?"}).json()
-        formula = c.post(f"/api/sessions/{code}/queries", json={"text": "=1+1"}).json()
+        formula = c.post(f"/api/sessions/{code}/queries", json={"text": "=1+1", "author_name": "Bob"}).json()
         assert c.post(f"/api/sessions/{code}/quiz_runs/{run['id']}/submit",
                       json={"question_id": vq["id"], "answer_ids": [right]}).status_code == 200
         assert c.post(f"/api/sessions/{code}/feedback",
@@ -180,18 +180,19 @@ def test_uc_a_30_session_json(admin_client, populated):
     assert s["code"] == code and s["title"] == "Export Day" and s["status"] == "live"
     assert s["created_at"].endswith("Z")
     assert {"participants", "questions", "quiz_runs", "feedback"} <= set(s)
-    people = {p["id"]: p for p in s["participants"]}
-    assert set(people) == {populated["alice_id"], populated["bob_id"]}
-    alice = people[populated["alice_id"]]
+    assert len(s["participants"]) == 2
+    assert all("id" not in p for p in s["participants"])
+    alice = next(p for p in s["participants"] if p["name"] == "Alice")
     assert alice["email"] == "alice@example.com"
     assert alice["linkedin_url"] == "https://www.linkedin.com/in/alice-example"
-    assert people[populated["bob_id"]]["name"] is None
     question = next(q for q in s["questions"] if q["id"] == populated["query_id"])
     assert question["vote_count"] == 1
     assert question["status"] == "responded"
     assert question["response_text"] == "As JSON or Excel"
-    assert question["participant_id"] == populated["alice_id"]
-    assert question["author_name"] == "Alice"
+    assert "participant_id" not in question
+    assert question["author_name"] is None
+    formula = next(q for q in s["questions"] if q["id"] == populated["formula_id"])
+    assert formula["author_name"] == "Bob"
     (run,) = s["quiz_runs"]
     assert run["quiz_title"] == "Arithmetic" and run["version_no"] == 1
     assert run["status"] == "closed" and run["respondent_count"] == 2
@@ -199,15 +200,17 @@ def test_uc_a_30_session_json(admin_client, populated):
     assert rq["number"] == 1 and rq["respondents"] == 2
     assert [(a["text"], a["is_correct"], a["count"]) for a in rq["answers"]] == [
         ("3", False, 1), ("4", True, 1)]
-    responses = {x["participant_id"]: x for x in run["responses"]}
-    assert responses[populated["alice_id"]]["answers"] == ["4"]
-    assert responses[populated["alice_id"]]["correct"] is True
-    assert responses[populated["bob_id"]]["correct"] is False
-    assert responses[populated["alice_id"]]["question_number"] == 1
-    ratings = {f["participant_id"]: f for f in s["feedback"]}
-    assert ratings[populated["alice_id"]]["rating"] == 5
-    assert ratings[populated["alice_id"]]["went_well"] == "Great pace"
-    assert ratings[populated["bob_id"]]["to_improve"] == "More breaks"
+    # Respondents are numbered within the run by first answer: Alice, then Bob.
+    responses = {x["respondent"]: x for x in run["responses"]}
+    assert all("participant_id" not in x and "participant_name" not in x for x in run["responses"])
+    assert responses[1]["answers"] == ["4"]
+    assert responses[1]["correct"] is True
+    assert responses[2]["correct"] is False
+    assert responses[1]["question_number"] == 1
+    assert all("participant_id" not in f and "author_name" not in f for f in s["feedback"])
+    ratings = {f["rating"]: f for f in s["feedback"]}
+    assert ratings[5]["went_well"] == "Great pace"
+    assert ratings[3]["to_improve"] == "More breaks"
 
 
 def test_uc_a_30_session_json_is_the_default_format(admin_client, populated):
@@ -246,16 +249,14 @@ def test_uc_a_30_session_xlsx(admin_client, populated):
     assert session["Rating open"] == "Yes"
     question = next(q for q in _records(sheets["Questions"]) if q["Question ID"] == populated["query_id"])
     assert question["Votes"] == 1 and question["Responded"] == "Yes"
-    assert question["Status"] == "Responded" and question["Asked by"] == "Alice"
-    answers = {a["Participant ID"]: a for a in _records(sheets["Quiz answers"])}
-    assert answers[populated["alice_id"]]["Chosen answers"] == "4"
-    assert answers[populated["alice_id"]]["Correct"] == "Yes"
-    assert answers[populated["alice_id"]]["Participant name"] == "Alice"
-    assert answers[populated["bob_id"]]["Correct"] == "No"
-    people = {p["Participant ID"]: p for p in _records(sheets["Participants"])}
-    assert people[populated["alice_id"]]["Email"] == "alice@example.com"
-    ratings = {f["Participant ID"]: f for f in _records(sheets["Feedback"])}
-    assert ratings[populated["alice_id"]]["Rating"] == 5
+    assert question["Status"] == "Responded" and question["Asked by"] is None
+    answers = {a["Respondent"]: a for a in _records(sheets["Quiz answers"])}
+    assert answers[1]["Chosen answers"] == "4"
+    assert answers[1]["Correct"] == "Yes"
+    assert answers[2]["Correct"] == "No"
+    people = {p["Name"]: p for p in _records(sheets["Participants"])}
+    assert people["Alice"]["Email"] == "alice@example.com"
+    assert sorted(f["Rating"] for f in _records(sheets["Feedback"])) == [3, 5]
 
 
 @pytest.mark.parametrize("part, scope, keys, sheets", [
@@ -282,9 +283,9 @@ def test_uc_a_30_profiles_part_lists_only_participants_with_profiles(admin_clien
     """UC-A-30: the profiles export leaves out participants with no profile data."""
     code = populated["code"]
     body = admin_client.get(f"/api/sessions/{code}/export?part=profiles").json()
-    assert [p["id"] for p in body["session"]["participants"]] == [populated["alice_id"]]
+    assert [p["name"] for p in body["session"]["participants"]] == ["Alice"]
     rows = _sheets(admin_client.get(f"/api/sessions/{code}/export?format=xlsx&part=profiles").content)
-    assert [p["Participant ID"] for p in _records(rows["Participants"])] == [populated["alice_id"]]
+    assert [p["Name"] for p in _records(rows["Participants"])] == ["Alice"]
 
 
 # ---------- all sessions ----------
@@ -349,13 +350,15 @@ def test_uc_a_30_quiz_run(admin_client, populated):
     assert run["session_code"] == populated["code"]
     assert [(a["text"], a["is_correct"], a["count"]) for a in run["questions"][0]["answers"]] == [
         ("3", False, 1), ("4", True, 1)]
-    assert {x["participant_id"] for x in run["responses"]} == {populated["alice_id"], populated["bob_id"]}
+    assert {x["respondent"] for x in run["responses"]} == {1, 2}
+    assert body["export"]["contains_personal_data"] is False
 
     r = admin_client.get(f"/api/quiz_runs/{run_id}/export?format=xlsx")
     _assert_download(r, f"prashna-quiz-run-{run_id}-{_today()}.xlsx", XLSX_TYPE)
     assert _sheet_order(r.content) == ["About", "Quiz run", "Results", "Quiz answers"]
     sheets = _sheets(r.content)
     assert _about(sheets["About"])["Quiz run ID"] == run_id
+    assert "Personal data" not in _about(sheets["About"])
     (info,) = _records(sheets["Quiz run"])
     assert info["Quiz"] == "Arithmetic" and info["Version"] == 1 and info["Respondents"] == 2
     results = _records(sheets["Results"])
@@ -435,6 +438,15 @@ def test_uc_a_30_secrets_never_exported(admin_client, populated):
             text = "\n".join(cells)
         for secret in secrets_:
             assert secret not in text, (url, fmt)
+
+
+def test_uc_a_30_exports_never_join_profiles(admin_client, populated):
+    """UC-A-30 (Anonymity): the profile name appears only in the Participants table."""
+    body = admin_client.get(f"/api/sessions/{populated['code']}/export?format=json").json()["session"]
+    assert "Alice" in json.dumps(body["participants"])
+    for part in ("questions", "quiz_runs", "feedback"):
+        assert "Alice" not in json.dumps(body[part]), part
+        assert "participant_id" not in json.dumps(body[part]), part
 
 
 def test_uc_a_30_xlsx_text_is_never_a_formula(admin_client, populated):

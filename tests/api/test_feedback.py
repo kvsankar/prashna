@@ -247,8 +247,8 @@ def test_uc_m_12_summary_owner_cookie(admin_client, make_session):
     assert r.json()["count"] == 0
 
 
-def test_uc_m_12_summary_includes_author_name(client, admin_client, make_session, mod_headers):
-    """A named participant's feedback carries author_name in the summary."""
+def test_uc_m_12_summary_carries_no_name(client, admin_client, make_session, mod_headers):
+    """Feedback is anonymous: no item carries a name, even with a profile name (Anonymity)."""
     s = make_session()
     _enable_feedback(admin_client, s["code"])
     admin_client.cookies.clear()
@@ -256,7 +256,9 @@ def test_uc_m_12_summary_includes_author_name(client, admin_client, make_session
     client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4, "went_well": "ok"})
     body = client.get(f"/api/sessions/{s['code']}/feedback/summary",
                       headers=mod_headers(s["mod_key"])).json()
-    assert body["items"][0]["author_name"] == "Dana"
+    (item,) = body["items"]
+    assert "author_name" not in item and "participant_id" not in item
+    assert "Dana" not in str(body)
 
 
 # ---------- UC-X-01: broadcast ----------

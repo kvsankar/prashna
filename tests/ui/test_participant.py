@@ -374,10 +374,35 @@ def test_uc_p_03_set_display_name_persists(base_url, admin_setup, page):
         page.click("#profile-submit")
         # Toast confirms.
         expect(page.locator(".toast")).to_contain_text("Alice", timeout=5000)
-        # Asking a query attributes to Alice.
-        page.fill("#query-text", "named query")
+        # Questions stay anonymous: the profile name is never attached.
+        page.fill("#query-text", "anonymous query")
         page.click("#ask-btn")
-        expect(page.locator("#queries")).to_contain_text("Alice", timeout=5000)
+        expect(page.locator("#queries")).to_contain_text("anonymous query", timeout=5000)
+        expect(page.locator("#queries")).not_to_contain_text("Alice")
+    finally:
+        c.close()
+
+
+def test_uc_p_04_show_my_name_is_a_choice_per_question(base_url, admin_setup, page):
+    """UC-P-04: ticking Show my name attaches the typed name to that question only."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P04n {secrets.token_hex(3)}")
+    try:
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#ask-card:visible")
+        expect(page.locator("#ask-name")).to_be_hidden()
+        page.check("#ask-show-name")
+        page.fill("#ask-name", "Bob")
+        page.fill("#query-text", "named question")
+        page.click("#ask-btn")
+        expect(page.locator("#queries")).to_contain_text("— Bob", timeout=5000)
+        expect(page.locator("#ask-show-name")).not_to_be_checked()
+        expect(page.locator("#ask-name")).to_be_hidden()
+        page.fill("#query-text", "second question")
+        page.click("#ask-btn")
+        row = page.locator("#queries .question", has_text="second question")
+        expect(row).to_be_visible(timeout=5000)
+        expect(row).not_to_contain_text("Bob")
     finally:
         c.close()
 

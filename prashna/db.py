@@ -105,7 +105,16 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
         ("quiz_version_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),
         ("quiz_runs", "show_live_counts", "BOOLEAN NOT NULL DEFAULT 0"),
         ("quiz_runs", "revealed_idxs", "TEXT NOT NULL DEFAULT ''"),
+        ("queries", "author_name", "VARCHAR(80)"),
     ]
+    # Run once, right after the column is added: questions asked before
+    # questions stored their own name showed the asker's name, which was
+    # sent with each question, so keep showing it (UC-P-04).
+    backfill = {
+        ("queries", "author_name"):
+            "UPDATE queries SET author_name = "
+            "(SELECT name FROM participants WHERE participants.id = queries.participant_id)",
+    }
     # Indexes to (re)create on existing DBs. `ALTER TABLE ADD COLUMN` can't
     # carry UNIQUE/partial-index constraints; create those separately.
     indexes = [
@@ -133,6 +142,8 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
             if column not in cols:
                 conn.exec_driver_sql(
                     f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                if (table, column) in backfill and "participants" in tables:
+                    conn.exec_driver_sql(backfill[(table, column)])
                 _log_diagnostic(
                     "db.migration",
                     action="add_column",

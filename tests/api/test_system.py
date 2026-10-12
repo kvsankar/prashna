@@ -511,6 +511,37 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
         assert "ix_qsub_run_question" in qsub_indexes
 
 
+def test_uc_x_05_bridge_backfills_question_names(tmp_path):
+    """UC-X-05 / UC-P-04: adding queries.author_name copies the name each old question showed."""
+    from prashna import db as app_db
+
+    old = tmp_path / "old-queries.db"
+    engine = create_engine(f"sqlite:///{old}", future=True)
+    with engine.begin() as conn:
+        conn.exec_driver_sql("""
+            CREATE TABLE participants (
+                id INTEGER NOT NULL PRIMARY KEY, session_id INTEGER NOT NULL,
+                voter_token VARCHAR(64) NOT NULL, name VARCHAR(80),
+                first_seen_at DATETIME NOT NULL, last_seen_at DATETIME NOT NULL)
+        """)
+        conn.exec_driver_sql("""
+            CREATE TABLE queries (
+                id INTEGER NOT NULL PRIMARY KEY, session_id INTEGER NOT NULL,
+                participant_id INTEGER NOT NULL, text TEXT NOT NULL, response_text TEXT,
+                responded_at DATETIME, removed_at DATETIME, created_at DATETIME NOT NULL)
+        """)
+        conn.exec_driver_sql("INSERT INTO participants VALUES (1, 1, 'a', 'Asha', '2026-01-01', '2026-01-01')")
+        conn.exec_driver_sql("INSERT INTO participants VALUES (2, 1, 'b', NULL, '2026-01-01', '2026-01-01')")
+        conn.exec_driver_sql("INSERT INTO queries VALUES (1, 1, 1, 'Named?', NULL, NULL, NULL, '2026-01-01')")
+        conn.exec_driver_sql("INSERT INTO queries VALUES (2, 1, 2, 'Anon?', NULL, NULL, NULL, '2026-01-01')")
+
+    app_db._apply_additive_migrations(bind=engine)
+    app_db._apply_additive_migrations(bind=engine)  # idempotent: a second run changes nothing
+    with engine.begin() as conn:
+        rows = conn.exec_driver_sql("SELECT id, author_name FROM queries ORDER BY id").fetchall()
+    assert rows == [(1, "Asha"), (2, None)]
+
+
 def test_uc_x_05_two_query_votes(admin_client, make_session):
     """UC-X-05: two QueryVote rows same (query, participant) → IntegrityError."""
     s = make_session()

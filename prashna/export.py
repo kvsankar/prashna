@@ -77,8 +77,9 @@ def _profile_present(p: m.Participant) -> bool:
 # ---------- builders: ORM rows -> nested dicts ----------
 
 def _participant(p: m.Participant) -> dict:
+    # No id: a profile must not be joinable to questions, quiz answers or
+    # feedback (Anonymity, UC-A-30).
     return {
-        "id": p.id,
         "name": p.name,
         "email": p.email,
         "contact_number": p.contact_number,
@@ -102,8 +103,7 @@ def _query(q: m.Query) -> dict:
         status = "open"
     return {
         "id": q.id,
-        "participant_id": q.participant_id,
-        "author_name": q.participant.name if q.participant else None,
+        "author_name": q.author_name,
         "text": q.text,
         "vote_count": len(q.votes),
         "status": status,
@@ -118,8 +118,6 @@ def _query(q: m.Query) -> dict:
 
 def _feedback(f: m.SessionFeedback) -> dict:
     return {
-        "participant_id": f.participant_id,
-        "author_name": f.participant.name if f.participant else None,
         "rating": f.rating,
         "went_well": f.went_well,
         "to_improve": f.to_improve,
@@ -130,15 +128,16 @@ def _feedback(f: m.SessionFeedback) -> dict:
 
 def build_quiz_run(db: DbSession, run: m.QuizRun) -> dict:
     """One run: its frozen version, per-question results, and each
-    participant's answers (one response per participant and question)."""
+    respondent's answers (one response per respondent and question).
+    Respondents are numbered within the run in order of first answer, so
+    they cannot be joined to a profile (Anonymity, UC-A-30)."""
     version = run.quiz_version
     subs = db.scalars(
         select(m.QuizSubmission).where(m.QuizSubmission.quiz_run_id == run.id)
     ).all()
-    names = dict(db.execute(
-        select(m.Participant.id, m.Participant.name)
-        .where(m.Participant.id.in_({s.participant_id for s in subs}))
-    ).tuples().all()) if subs else {}
+    respondent: dict[int, int] = {}
+    for sub in sorted(subs, key=lambda x: (x.created_at, x.id)):
+        respondent.setdefault(sub.participant_id, len(respondent) + 1)
     picks: dict[tuple[int, int], list[m.QuizSubmission]] = defaultdict(list)
     for s in subs:
         picks[(s.question_id, s.participant_id)].append(s)
@@ -172,12 +171,11 @@ def build_quiz_run(db: DbSession, run: m.QuizRun) -> dict:
             ],
         })
         correct_ids = {a.id for a in vq.answers if a.is_correct}
-        for pid in sorted(respondents):
+        for pid in sorted(respondents, key=respondent.__getitem__):
             rows = sorted(picks[(vq.id, pid)], key=lambda r: answers[r.answer_id].order_index)
             chosen = {r.answer_id for r in rows}
             responses.append({
-                "participant_id": pid,
-                "participant_name": names.get(pid),
+                "respondent": respondent[pid],
                 "question_number": number,
                 "answers": [answers[r.answer_id].text for r in rows],
                 "correct": (chosen == correct_ids) if vq.graded else None,
@@ -325,7 +323,6 @@ SESSION_COLUMNS: list[Column] = [
     ("Average rating", _key("average_rating")),
 ]
 PARTICIPANT_COLUMNS: list[Column] = [
-    ("Participant ID", _key("id")),
     ("Name", _key("name")),
     ("Email", _key("email")),
     ("Contact number", _key("contact_number")),
@@ -341,7 +338,6 @@ PARTICIPANT_COLUMNS: list[Column] = [
 QUESTION_COLUMNS: list[Column] = [
     ("Question ID", _key("id")),
     ("Asked at", _key("created_at")),
-    ("Participant ID", _key("participant_id")),
     ("Asked by", _key("author_name")),
     ("Question", _key("text")),
     ("Votes", _key("vote_count")),
@@ -367,15 +363,12 @@ ANSWER_COLUMNS: list[Column] = [
     ("Quiz", _key("quiz_title")),
     ("Question no.", _key("question_number")),
     ("Question", _key("question_text")),
-    ("Participant ID", _key("participant_id")),
-    ("Participant name", _key("participant_name")),
+    ("Respondent", _key("respondent")),
     ("Chosen answers", lambda r: "; ".join(r["answers"])),
     ("Correct", lambda r: _yes_no(r["correct"])),
     ("Answered at", _key("answered_at")),
 ]
 FEEDBACK_COLUMNS: list[Column] = [
-    ("Participant ID", _key("participant_id")),
-    ("Name", _key("author_name")),
     ("Rating", _key("rating")),
     ("Went well", _key("went_well")),
     ("Could be better", _key("to_improve")),
@@ -641,7 +634,8 @@ def export_session(db: DbSession, s: m.Session, fmt: str, part: str) -> Export:
 
 def export_quiz_run(db: DbSession, run: m.QuizRun, fmt: str) -> Export:
     body = build_quiz_run(db, run)
-    document = {"export": meta("quiz_run", personal=True, quiz_run_id=run.id), "quiz_run": body}
+    # Respondents are run-local numbers, so a run export holds no personal data.
+    document = {"export": meta("quiz_run", personal=False, quiz_run_id=run.id), "quiz_run": body}
     identifiers = [("Quiz run ID", run.id), ("Quiz", body["quiz_title"]),
                    ("Version", body["version_no"]), ("Session code", body["session_code"])]
     return render(fmt, document, "One quiz run", identifiers, quiz_run_sheets(body), "quiz-run", run.id)

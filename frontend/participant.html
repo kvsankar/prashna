@@ -154,10 +154,12 @@
       <label for="query-text" class="small muted">Your question</label>
       <textarea id="query-text" aria-label="Your question" placeholder="Type your question… (Cmd/Ctrl+Enter to submit)" maxlength="1000"></textarea>
       <div class="row mt-2">
-        <span class="muted small">Anonymous unless you set a name above.</span>
+        <label class="poll-toggle small muted"><input type="checkbox" id="ask-show-name"> Show my name</label>
+        <input hidden id="ask-name" class="inline" maxlength="80" placeholder="Your name" aria-label="Name to show with this question" autocomplete="name">
         <div class="spacer"></div>
         <button class="primary" id="ask-btn">Ask</button>
       </div>
+      <p class="muted small m-0 mt-2">Questions are anonymous unless you tick Show my name.</p>
     </section>
 
     <section class="card" id="questions-card">

@@ -105,6 +105,9 @@ class Query(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
     participant_id: Mapped[int] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
+    # The name the asker chose to show with this question ("Show my name"),
+    # or None. Never read from or written to the profile (Anonymity, UC-P-04).
+    author_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Soft-remove: a removed query is hidden from participants but kept for audit / preserve-session-data.

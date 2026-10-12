@@ -267,14 +267,34 @@ async function toggleVote(qid: number): Promise<void> {
   void loadQueries();
 }
 
+// "Show my name" is a choice per question (UC-P-04): the box clears after
+// each question, and the typed name is remembered on this device only. The
+// profile name is never used (Anonymity).
+const ASK_NAME_KEY = "prashna:ask-name";
+const showNameBox = $<HTMLInputElement>("#ask-show-name");
+const askName = $<HTMLInputElement>("#ask-name");
+function syncAskName(): void {
+  setVisible(askName, showNameBox.checked);
+  if (showNameBox.checked && !askName.value) {
+    try { askName.value = localStorage.getItem(ASK_NAME_KEY) ?? ""; } catch { /* storage blocked */ }
+    askName.focus();
+  }
+}
+showNameBox.addEventListener("change", syncAskName);
+
 async function askQuery(): Promise<void> {
   const text = $<HTMLTextAreaElement>("#query-text").value.trim();
   if (!text) return;
+  const name = showNameBox.checked ? askName.value.trim() : "";
+  if (showNameBox.checked && !name) { toast("Type the name to show, or untick Show my name"); askName.focus(); return; }
   try {
     await api(`/api/sessions/${CODE}/queries`, {
       method: "POST",
-      body: { text, author_name: $<HTMLInputElement>("#my-name").value || null },
+      body: name ? { text, author_name: name } : { text },
     });
+    if (name) { try { localStorage.setItem(ASK_NAME_KEY, name); } catch { /* storage blocked */ } }
+    showNameBox.checked = false;
+    syncAskName();
     $<HTMLTextAreaElement>("#query-text").value = "";
     void loadQueries();
     toast("Question submitted");

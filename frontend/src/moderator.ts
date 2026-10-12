@@ -525,9 +525,7 @@ function renderFeedback(sum: FeedbackSummary): void {
   for (const it of sum.items) {
     const stars = "★".repeat(it.rating) + "☆".repeat(5 - it.rating);
     root.appendChild(el("div", { class: "fb-item" },
-      el("div", {},
-        el("span", { class: "fb-stars-static" }, stars),
-        it.author_name ? el("span", { class: "small muted" }, "  — " + it.author_name) : null),
+      el("div", {}, el("span", { class: "fb-stars-static" }, stars)),
       it.went_well ? el("div", { class: "small" }, el("strong", {}, "Went well: "), it.went_well) : null,
       it.to_improve ? el("div", { class: "small" }, el("strong", {}, "Improve: "), it.to_improve) : null,
     ));

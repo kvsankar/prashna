@@ -19,6 +19,16 @@ reports can cite it. Acceptance tests are Given/When/Then.
 - **Participant** (`UC-P-*`) — anonymous audience member. Identified
   by a `voter_token` cookie that resolves to a per-session
   `Participant` row.
+
+**Anonymity.** Questions, quiz answers and feedback are anonymous. The
+attendee profile (UC-P-03) is a separate contact card for the moderator.
+No page, API response or export links a profile to a person's questions,
+quiz answers or feedback, and no export carries a key that joins them.
+The only name ever shown with a question is one the asker typed for that
+question with **Show my name** (UC-P-04). Internally one `Participant`
+row still owns all of these, because voting once, answering once per
+quiz question and marking "your question" need it; that link is never
+shown.
 - **Projector / Display** (`UC-D-*`) — the big-screen view at the
   front of the room (`/p/<code>`). Public, read-only, no chrome,
   updates live via WebSocket.
@@ -871,11 +881,17 @@ scope narrows with `part`.
   (Participants; Feedback; Questions; or Quiz runs and Quiz answers). A
   quiz run has About, Quiz run, Results, Quiz answers. A quiz template
   has About, Quiz, Questions, Answers, Versions.
-- In both formats, timestamps are ISO 8601 in UTC with a `Z` suffix;
-  participants are identified by an export-local participant ID (their
-  row id) and their name when given; the Participants table, present only
-  in the all-data, one-session and profiles exports, adds the other
-  profile fields; uploaded images appear
+- In both formats, timestamps are ISO 8601 in UTC with a `Z` suffix.
+  Exports keep the **Anonymity** rule: the Participants table (profiles,
+  present only in the all-data, one-session and profiles exports) has no
+  ID that appears anywhere else; a question carries only the name its
+  asker chose to show ("Asked by"); feedback carries no name; quiz
+  answers identify a respondent only by a number local to that run
+  ("Respondent", 1, 2, … in order of first answer), so one person's
+  answers within a run group together but cannot be joined to a profile,
+  another run or a question. A quiz-run export therefore holds no
+  personal data, and its About sheet has no personal-data note. Uploaded
+  images appear
   as their `/uploads/…` URL path. Excel cells hold text as text: a
   participant's entry that starts with `=` is never a formula.
 
@@ -910,6 +926,7 @@ hash or any other secret, and moderator keys.
 - `GET /api/quiz_runs/{id}/export` in both formats holds the frozen quiz title and version, per-answer counts with correctness, and each participant's chosen answers; another admin's run → `404`.
 - `GET /api/quizzes/{id}/export` in both formats holds the questions, the answers with correctness, and the versions with run counts; another admin's quiz → `404`; the About sheet carries no personal-data note.
 - No export, in either format, contains a participant's voter token, the admin's password hash, or the session's mod_key (searched in the JSON text and in every Excel cell).
+- Anonymity: in a one-session export where a participant with the profile name "Alice" asked one question without a name and one as "Bob", answered a quiz and left feedback, "Alice" appears only in the Participants table; the questions read `author_name` `null` and "Bob"; no question, feedback item or quiz answer carries a participant id; quiz answers carry `respondent` 1; Participants rows carry no `id`; a quiz-run export has `contains_personal_data: false` and no personal-data note.
 - A participant's question starting with `=` is a text cell in the workbook, not a formula.
 - With only the mod_key header (no admin cookie) → `401`; with no auth → `401`; another admin's session → `403 "Not your session"`.
 - `format=csv` → `400 "format must be json or xlsx"`; `part=everything` → `400 "part must be one of all, profiles, feedback, qna, quiz_runs"`.
@@ -1358,15 +1375,15 @@ by default while the session is `planning`.
 - **Given** a moderator (delegate or admin owner) is on the moderator page
 - **Then** a **Feedback** panel (`#feedback-card`) shows the aggregate of
   participant feedback (see UC-P-13): the average rating and response
-  count (`#feedback-summary`) plus each response — its stars, optional
-  author name, and the "went well" / "could be better" comments
-  (`#feedback-list`)
+  count (`#feedback-summary`) plus each response — its stars and the
+  "went well" / "could be better" comments (`#feedback-list`), with no
+  name (see **Anonymity**)
 - **And** the panel refreshes live via the `feedback` WS broadcast
 - **And** the same aggregate is shown in the admin session-detail card
   (`#sd-feedback`) when the owner drills into a session on `/`
 - **Backend route**: `GET /api/sessions/{code}/feedback/summary`
   (mod-or-owner auth) → `{count, average, distribution: {1..5}, items:
-  [{rating, went_well, to_improve, author_name, updated_at}, ...]}`.
+  [{rating, went_well, to_improve, updated_at}, ...]}`.
 
 **Tests (API)**
 - A new session reports `feedback_enabled: false`.
@@ -1375,7 +1392,7 @@ by default while the session is `planning`.
 - `GET /api/sessions/{code}/feedback/summary` with two participants'
   ratings (5 and 3) → `200 {count: 2, average: 4.0, distribution: {"5":1,
   "3":1, ...}, items: [...]}`. Auth: mod-key OR admin cookie.
-- A named participant's item carries `author_name`.
+- No item carries a name or participant id, even when the participant has a profile name.
 - With no auth (no admin cookie, no mod-key) → `403`.
 - Owner reaches it via cookie with no mod-key; empty session → `count: 0`,
   `average: null`.
@@ -1494,8 +1511,9 @@ once something is saved. Every field is optional:
   with `POST /api/sessions/{code}/me/photo`
 - **And** a toast confirms ("Profile submitted", naming the display name
   when there is one), and the button changes to **Resubmit profile**
-- **And** the display name appears beside the participant's questions from
-  then on; a blank name means anonymous
+- **And** the profile is a contact card for the moderator only: it is
+  never shown with, or exported alongside, the participant's questions,
+  quiz answers or feedback (see **Anonymity** above)
 - **And** text is trimmed and cut to the field's maximum length; a blank
   field is stored as `null`
 - **And** the photograph upload follows the image constraints of UC-X-04,
@@ -1520,7 +1538,7 @@ once something is saved. Every field is optional:
 - `PATCH` with `{"photo_url": "https://example.com/avatar.png"}` → `400 "photo must be uploaded"` (`test_uc_p_03_profile_photo_url_cannot_be_set_directly`).
 
 **Tests (UI)**
-- On `/s/<CODE>`, opening `#profile-card`, typing into `#my-name`, and clicking `#profile-submit` shows a toast with the name; a question the participant then asks shows that name beside it (`test_uc_p_03_set_display_name_persists`).
+- On `/s/<CODE>`, opening `#profile-card`, typing into `#my-name`, and clicking `#profile-submit` shows a toast with the name; a question the participant then asks without ticking **Show my name** shows no name (`test_uc_p_03_set_display_name_persists`).
 - The Profile card starts closed with the closed-state title and call to action; after filling every field, choosing a photograph (`#my-photo`, previewed in `#my-photo-preview`), and submitting, the toast reads "Profile submitted" and the button reads **Resubmit profile**; after a reload every field and the photograph are prefilled; `#my-photo-clear` hides the photograph (`test_uc_p_03_attendee_profile_persists`).
 
 ### UC-P-04: Ask
@@ -1530,6 +1548,14 @@ once something is saved. Every field is optional:
   Cmd/Ctrl+Enter)
 - **Then** `POST .../questions` creates a Question linked to their
   Participant; a toast confirms
+- **And** the question is anonymous unless the participant ticks **Show
+  my name** (`#ask-show-name`), which reveals a name field (`#ask-name`).
+  With the box ticked and a name typed, the question stores that name
+  (`author_name`, trimmed, at most 80 characters) and shows it on every
+  surface; later changes to the name field or the profile never change
+  it. The box clears after each question, so every question is a fresh
+  choice; the typed name is remembered on this device for next time. The
+  profile name is neither read nor changed
 - **And** an `ended` session refuses with `400 Session has ended` and
   the Ask card is hidden from the UI
 - **And** the placeholder mentions the Cmd/Ctrl+Enter shortcut only on
@@ -1537,17 +1563,19 @@ once something is saved. Every field is optional:
   "Type your question…"
 
 **Tests (API)**
-- `POST /api/sessions/{code}/queries` with `{"text": "Hi?"}` on a `planning` or `live` session → `200 {id, text, author_name, response_text: null, responded: false, removed: false, vote_count: 0, voted: false, mine: true, created_at}`. Auth: none (cookie issued on first call).
+- `POST /api/sessions/{code}/queries` with `{"text": "Hi?"}` on a `planning` or `live` session → `200 {id, text, author_name: null, response_text: null, responded: false, removed: false, vote_count: 0, voted: false, mine: true, created_at}`. Auth: none (cookie issued on first call).
 - With `{"text": ""}` → `400 "text required"`.
 - With `{"text": "   "}` → `400 "text required"`.
 - With `{"text": "a"*1001}` → `400 "text too long"`.
-- With `{"author_name": "Bob"}` → also updates participant name.
+- With `{"author_name": "Bob"}` → the question's `author_name` is `"Bob"`; `GET .../me` still has `name: null` (the profile is untouched).
+- A participant whose profile name is "Alice" asks without `author_name` → the question's `author_name` is `null`; after they ask once with `"Bob"` and then set their profile name to "Carol", that question still reads "Bob" and the first still reads `null`.
 - On an `ended` session → `400 "Session has ended"`.
 - Success broadcasts `{type: "query_new"}`.
 
 **Tests (UI)**
 - On `/s/<CODE>` (planning/live), typing into `#query-text` and clicking `#ask-btn` adds the query to `#queries` and toasts confirmation.
 - Cmd/Ctrl+Enter in `#query-text` submits.
+- Ticking `#ask-show-name`, typing "Bob" into `#ask-name` and asking shows "— Bob" with the question; afterwards `#ask-show-name` is unticked and `#ask-name` hidden; a participant with a profile name who asks without ticking the box shows no name.
 - On an `ended` session, `#ask-card` is hidden and `#ended-card` is visible.
 
 ### UC-P-05: Vote on a query

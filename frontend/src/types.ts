@@ -67,7 +67,6 @@ export interface Feedback {
   went_well: string | null;
   to_improve: string | null;
   updated_at: string | null;
-  author_name?: string | null;
 }
 
 export interface FeedbackSummary {
