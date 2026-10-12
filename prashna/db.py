@@ -104,6 +104,7 @@ def _apply_additive_migrations(*, bind: Engine | None = None):
         ("quiz_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),
         ("quiz_version_questions", "graded", "BOOLEAN NOT NULL DEFAULT 1"),
         ("quiz_runs", "show_live_counts", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("quiz_runs", "revealed_idxs", "TEXT NOT NULL DEFAULT ''"),
     ]
     # Indexes to (re)create on existing DBs. `ALTER TABLE ADD COLUMN` can't
     # carry UNIQUE/partial-index constraints; create those separately.

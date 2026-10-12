@@ -497,6 +497,7 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
         assert "graded" in columns["quiz_questions"]
         assert "graded" in columns["quiz_version_questions"]
         assert "show_live_counts" in columns["quiz_runs"]
+        assert "revealed_idxs" in columns["quiz_runs"]
 
         indexes = {
             row[1]

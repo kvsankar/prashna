@@ -1134,15 +1134,21 @@ recognizes which phase the current question is in.
 - **Given** the QuizRun is in results phase and the current question
   is not the last
 - **When** the moderator clicks **Next question →**
-- **Then** `current_question_idx` advances; `reveal_current` resets
-  to false → the next question's answering phase begins.
+- **Then** `current_question_idx` advances → the next question's
+  answering phase begins (or its results phase, if it was revealed
+  earlier in this run).
 - **Given** the QuizRun is in results phase and the current question
   **is** the last
 - **When** the moderator clicks **Finish quiz →**
 - **Then** the run closes (see UC-M-06).
 - **Prev** moves `current_question_idx` backwards (mod can revisit a
-  question). Any advance call (next / prev / to) resets
-  `reveal_current = False` server-side.
+  question). **A revealed question stays revealed** for the rest of the
+  run: returning to it by Prev, Next or a jump shows its results and
+  correct answer, and voting on it stays closed, so nobody can change an
+  answer after seeing the right one. Only ⋯ → **Reopen voting**
+  (`reveal:false`) opens it again, until it is revealed again. The run
+  stores which questions are revealed (`quiz_runs.revealed_idxs`, added by
+  the migration bridge, UC-X-05); Start clears it.
 - **Reveal closes voting.** Clicking **Reveal results →** sets
   `reveal_current=true`, which **locks participant submissions** (their
   Submit is replaced by "Voting closed — the answer has been revealed").
@@ -1175,10 +1181,12 @@ recognizes which phase the current question is in.
 
 **Tests (API)**
 - `POST /api/sessions/{code}/quiz_runs/{id}/reveal` with `{"reveal": true}` → `200 {ok: true}`; `reveal_current` is true. Auth: mod-key OR admin cookie.
-- `POST /api/sessions/{code}/quiz_runs/{id}/advance` with `{"direction": "next"}` → `200 {ok: true}`; `current_question_idx` increments by 1 (capped at `len-1`); `reveal_current` resets to false.
-- `{"direction": "prev"}` → decrements idx (floored at 0); resets `reveal_current`.
+- `POST /api/sessions/{code}/quiz_runs/{id}/advance` with `{"direction": "next"}` → `200 {ok: true}`; `current_question_idx` increments by 1 (capped at `len-1`); `reveal_current` is false on a question not yet revealed.
+- `{"direction": "prev"}` → decrements idx (floored at 0).
 - `{"direction": "to", "index": 2}` → sets idx to 2 (clamped to `[0, len-1]`).
-- `{"direction": "to", "index": "x"}` → `400 "index must be an integer"`.
+- Reveal question 1, Next, then Prev → `reveal_current` is true and a participant's submit for question 1 → `400 "Voting closed — results have been revealed"`; jumping back with `to` behaves the same.
+- Reveal question 1, Reopen voting (`reveal:false`), Next, Prev → `reveal_current` is false and a submit for question 1 succeeds.
+- `{"direction": "to", "index": "x"}` → `400 "index must be an integer"`; `{"direction": "to"}` → `400 "index is required"`; `{"direction": "sideways"}` → `400 "direction must be next, prev or to"`; none of these changes the run.
 - **Source-state guards**: `/advance` and `/reveal` require `run.status == "live"`; calling on a `queued` or `closed` run → `400 "Run is not live"`. `/close` requires `live` too — calling on `queued` → `400`; on `closed` → `400 "Run is already closed"`.
 - `POST /api/sessions/{code}/quiz_runs/{id}/live_counts` with `{"show": true}` → `200 {show_live_counts: true}`; with `{"show": false}` → `{show_live_counts: false}`. **Allowed on `queued` and `live`** (so a mod can pre-configure before Start). On a `closed` run → `400 "Cannot toggle live counts on a closed run"`.
 - Each route broadcasts `{type: "quiz_run_update"}`.

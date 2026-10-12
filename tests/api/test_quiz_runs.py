@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 # ---------- UC-A-23: Global quiz runs report ----------
 
 def test_uc_a_23_list_runs(admin_client, make_quiz, make_session):
@@ -494,6 +496,76 @@ def test_uc_m_05_advance_to_non_int_400(admin_client, make_quiz, make_session):
                           json={"direction": "to", "index": "x"})
     assert r.status_code == 400
     assert r.json() == {"detail": "index must be an integer"}
+
+
+def _two_question_run(admin_client):
+    qz = admin_client.post("/api/quizzes", json={"title": "Two"}).json()
+    for i in range(2):
+        q = admin_client.post(f"/api/quizzes/{qz['id']}/questions",
+                              json={"text": f"Q{i}?", "qtype": "single"}).json()
+        admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "a", "is_correct": True})
+        admin_client.post(f"/api/quiz_questions/{q['id']}/answers", json={"text": "b"})
+    admin_client.post(f"/api/quizzes/{qz['id']}/publish")
+    s = admin_client.post("/api/sessions", json={"title": "S"}).json()
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": qz["id"]}).json()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
+    base = f"/api/sessions/{s['code']}/quiz_runs/{run['id']}"
+    first = admin_client.get(base).json()["current_question"]
+    return base, first
+
+
+def _submit_as_participant(admin_client, base, question):
+    cookies = dict(admin_client.cookies)
+    admin_client.cookies.clear()
+    admin_client.cookies.set("voter_token", "late-changer")
+    r = admin_client.post(f"{base}/submit",
+                          json={"question_id": question["id"], "answer_ids": [question["answers"][0]["id"]]})
+    admin_client.cookies.clear()
+    for k, v in cookies.items():
+        admin_client.cookies.set(k, v)
+    return r
+
+
+def test_uc_m_05_revealed_question_stays_locked_on_return(admin_client):
+    """UC-M-05: reveal Q1, Next, then Prev or a jump back: Q1 is still revealed and locked."""
+    base, first = _two_question_run(admin_client)
+    admin_client.post(f"{base}/reveal", json={"reveal": True})
+    admin_client.post(f"{base}/advance", json={"direction": "next"})
+    assert admin_client.get(base).json()["reveal_current"] is False
+    admin_client.post(f"{base}/advance", json={"direction": "prev"})
+    assert admin_client.get(base).json()["reveal_current"] is True
+    r = _submit_as_participant(admin_client, base, first)
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Voting closed — results have been revealed"
+    admin_client.post(f"{base}/advance", json={"direction": "next"})
+    admin_client.post(f"{base}/advance", json={"direction": "to", "index": 0})
+    assert admin_client.get(base).json()["reveal_current"] is True
+
+
+def test_uc_m_05_reopened_question_stays_open_on_return(admin_client):
+    """UC-M-05: Reopen voting removes the lock, also after navigating away and back."""
+    base, first = _two_question_run(admin_client)
+    admin_client.post(f"{base}/reveal", json={"reveal": True})
+    admin_client.post(f"{base}/reveal", json={"reveal": False})
+    admin_client.post(f"{base}/advance", json={"direction": "next"})
+    admin_client.post(f"{base}/advance", json={"direction": "prev"})
+    assert admin_client.get(base).json()["reveal_current"] is False
+    assert _submit_as_participant(admin_client, base, first).status_code == 200
+
+
+@pytest.mark.parametrize(("body", "detail"), [
+    ({"direction": "sideways"}, "direction must be next, prev or to"),
+    ({"direction": "to"}, "index is required"),
+])
+def test_uc_m_05_advance_refuses_bad_moves(admin_client, body, detail):
+    """UC-M-05: an unknown direction, or 'to' without an index, is refused and changes nothing."""
+    base, _first = _two_question_run(admin_client)
+    admin_client.post(f"{base}/reveal", json={"reveal": True})
+    r = admin_client.post(f"{base}/advance", json=body)
+    assert r.status_code == 400
+    assert r.json() == {"detail": detail}
+    g = admin_client.get(base).json()
+    assert (g["current_question_idx"], g["reveal_current"]) == (0, True)
 
 
 def test_uc_m_05_live_counts_toggle(admin_client, make_quiz, make_session):

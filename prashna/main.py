@@ -2501,6 +2501,7 @@ async def start_quiz_run(
     run.status = "live"
     run.current_question_idx = 0
     run.reveal_current = False
+    run.revealed_idxs = ""
     run.started_at = datetime.utcnow()
     try:
         db.commit()
@@ -2527,6 +2528,10 @@ async def start_quiz_run(
     return {"ok": True}
 
 
+def _revealed(run: m.QuizRun) -> set[int]:
+    return {int(i) for i in (run.revealed_idxs or "").split(",") if i}
+
+
 @app.post("/api/sessions/{code}/quiz_runs/{run_id}/advance")
 async def advance_quiz_run(
     code: str,
@@ -2545,13 +2550,19 @@ async def advance_quiz_run(
         run.current_question_idx = min(run.current_question_idx + 1, max(total - 1, 0))
     elif direction == "prev":
         run.current_question_idx = max(run.current_question_idx - 1, 0)
-    elif direction == "to" and "index" in payload:
+    elif direction == "to":
+        if "index" not in payload:
+            raise HTTPException(400, "index is required")
         try:
             idx = int(payload["index"])
         except (TypeError, ValueError):
             raise HTTPException(400, "index must be an integer")
         run.current_question_idx = max(0, min(idx, max(total - 1, 0)))
-    run.reveal_current = False
+    else:
+        raise HTTPException(400, "direction must be next, prev or to")
+    # A question revealed earlier stays revealed, so its voting stays closed
+    # (UC-M-05).
+    run.reveal_current = run.current_question_idx in _revealed(run)
     db.commit()
     await broadcast_session(s, "quiz_run_update")
     log_diagnostic(
@@ -2609,6 +2620,12 @@ async def reveal_quiz_run(
     if run.status != "live":
         raise HTTPException(400, f"Cannot reveal from status: {run.status}")
     run.reveal_current = bool(payload.get("reveal", True))
+    revealed = _revealed(run)
+    if run.reveal_current:
+        revealed.add(run.current_question_idx)
+    else:
+        revealed.discard(run.current_question_idx)
+    run.revealed_idxs = ",".join(str(i) for i in sorted(revealed))
     db.commit()
     await broadcast_session(s, "quiz_run_update")
     log_diagnostic(

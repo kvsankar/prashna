@@ -293,6 +293,10 @@ class QuizRun(Base):
     status: Mapped[str] = mapped_column(String(10), default="queued")  # "queued" | "live" | "closed"
     current_question_idx: Mapped[int] = mapped_column(Integer, default=0)
     reveal_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Indices of the questions revealed in this run, comma-separated ("0,2").
+    # Returning to one keeps it revealed and locked until Reopen voting
+    # (UC-M-05).
+    revealed_idxs: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     # When true, the projector and participant pages show running answer counts
     # during the answering phase (before reveal). Correctness is still hidden
     # until reveal_current is true (or the run is closed).
