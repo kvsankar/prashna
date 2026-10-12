@@ -345,16 +345,16 @@ def test_uc_p_02_reload_keeps_token_and_mine_flag(base_url, admin_setup, page):
         token_after = next(
             (ck["value"] for ck in page.context.cookies() if ck["name"] == "voter_token"), None
         )
-        assert token_before == token_after
+        assert token_after
+        assert token_after == token_before
         # The voted/mine flag is verifiable via API.
-        if token_after:
-            r = httpx.get(
-                f"{base_url}/api/sessions/{s['code']}/queries",
-                cookies={"voter_token": token_after},
-                timeout=5.0,
-            )
-            queries = r.json()
-            assert any(q["text"] == "mine-flag-test" and q["mine"] for q in queries)
+        r = httpx.get(
+            f"{base_url}/api/sessions/{s['code']}/queries",
+            cookies={"voter_token": token_after},
+            timeout=5.0,
+        )
+        queries = r.json()
+        assert any(q["text"] == "mine-flag-test" and q["mine"] for q in queries)
     finally:
         c.close()
 

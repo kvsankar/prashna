@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import io
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -185,9 +187,13 @@ def test_release_bundle_pins_version_and_has_matching_checksums(tmp_path):
     }
     assert "${PRASHNA_IMAGE_TAG:-1.2.3}" in compose
     assert "PRASHNA_IMAGE_TAG=1.2.3" in env_example
-    checksum_text = checksums.read_text(encoding="utf-8")
-    assert tar_path.name in checksum_text
-    assert zip_path.name in checksum_text
+    listed = {
+        name: digest
+        for digest, name in (line.split("  ", 1) for line in checksums.read_text(encoding="utf-8").splitlines())
+    }
+    assert listed == {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (tar_path, zip_path)
+    }
 
 
 def test_release_bundle_rejects_non_semver(tmp_path):
@@ -213,11 +219,18 @@ def test_release_workflow_contract():
     assert "gh release upload" in workflow
 
 
+def _job(workflow: str, name: str) -> str:
+    """The text of one job in the workflow, up to the next job's header."""
+    start = workflow.index(f"\n  {name}:\n")
+    following = re.search(r"\n  [a-z][a-z0-9_-]*:\n", workflow[start + 1:])
+    return workflow[start:start + 1 + following.start()] if following else workflow[start:]
+
+
 def test_pypi_publish_contract():
     """UC-X-15: tags publish the wheel to PyPI with trusted publishing, after
     building the frontend into the package and checking the version."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    job = workflow[workflow.index("  pypi-publish:"):]
+    job = _job(workflow, "pypi-publish")
     assert "if: startsWith(github.ref, 'refs/tags/v')" in job
     assert "id-token: write" in job
     assert "environment: pypi" in job
@@ -256,7 +269,7 @@ def test_pages_publish_contract():
     """UC-X-15: tags publish the install scripts to GitHub Pages only after the
     PyPI package of that version is published."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    job = workflow[workflow.index("\n  pages:"):]
+    job = _job(workflow, "pages")
     assert "if: startsWith(github.ref, 'refs/tags/v')" in job
     assert "needs: [pypi-publish]" in job
     assert "pages: write" in job and "id-token: write" in job

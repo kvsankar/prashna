@@ -195,12 +195,12 @@ def test_uc_p_03_name_truncated_80(client, admin_client, make_session):
 
 def test_uc_p_03_broadcasts(client, admin_client, make_session):
     """UC-P-03: PATCH /me broadcasts {type: participant}."""
-    import json
+    from ..support import ws_receive
     s = make_session()
     admin_client.cookies.clear()
     with client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         client.patch(f"/api/sessions/{s['code']}/me", json={"name": "Alice"})
-        msg = json.loads(ws.receive_text())
+        msg = ws_receive(ws)
         assert msg == {"type": "participant"}
 
 
@@ -500,14 +500,14 @@ def test_uc_m_10_presence_creates_no_participant(client, admin_client, make_sess
 
 
 def test_uc_m_10_presence_after_participant_activity(client, admin_client, make_session, app_module):
-    """UC-M-10: after a participant call, online ≥ 1."""
+    """UC-M-10: after one participant call, online is 1; the presence poll itself adds nobody."""
     s = make_session()
     with TestClient(app_module.app) as c:
         c.get(f"/api/sessions/{s['code']}/me")
     # different client polls
     with TestClient(app_module.app) as c2:
         r = c2.get(f"/api/sessions/{s['code']}/presence")
-    assert r.json()["online"] >= 1
+    assert r.json() == {"online": 1}
 
 
 def test_uc_m_10_presence_expires_after_30s(client, admin_client, make_session, app_module):

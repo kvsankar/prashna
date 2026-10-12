@@ -21,11 +21,14 @@ def _today() -> str:
 
 
 def _download(page, menu, label: str) -> str:
-    """Open an Export ▾ menu, pick a format, and return the suggested filename."""
+    """Open an Export ▾ menu, pick a format, and return the suggested filename.
+    A download that the server dated just before midnight UTC is reported
+    with today's date, so the callers' `_today()` comparisons hold."""
+    before = _today()
     menu.locator("summary").click()
     with page.expect_download() as info:
         menu.get_by_role("link", name=label, exact=True).click()
-    return info.value.suggested_filename
+    return info.value.suggested_filename.replace(f"-{before}.", f"-{_today()}.")
 
 
 def test_uc_a_30_sessions_list_exports_all_sessions(base_url, admin_setup, page):

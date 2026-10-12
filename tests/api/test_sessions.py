@@ -1,8 +1,7 @@
 """UC-A-03 through UC-A-08: session CRUD and lifecycle."""
 from __future__ import annotations
 
-import json
-
+from ..support import ws_receive
 from .test_participants import PNG_BYTES
 
 # ---------- UC-A-03: Create a session ----------
@@ -233,7 +232,7 @@ def test_uc_a_05_broadcasts_session_state(admin_client, make_session):
     s = make_session()
     with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         admin_client.patch(f"/api/sessions/{s['code']}", json={"title": "New"})
-        msg = json.loads(ws.receive_text())
+        msg = ws_receive(ws)
         assert msg == {"type": "session_state"}
 
 
@@ -302,7 +301,7 @@ def test_uc_a_06_broadcasts_session_state(admin_client, make_session):
     with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         admin_client.post(f"/api/sessions/{s['code']}/participant_base_url",
                           json={"url": "https://example.com"})
-        msg = json.loads(ws.receive_text())
+        msg = ws_receive(ws)
         assert msg == {"type": "session_state"}
 
 
@@ -346,7 +345,7 @@ def test_uc_a_07_delete_wrong_confirm_400(admin_client, make_session):
 
 
 def test_uc_a_07_delete_correct_confirm_ok(admin_client, make_session):
-    """UC-A-07: correct confirm_title → ok; cascades."""
+    """UC-A-07: correct confirm_title → ok; the session is gone."""
     s = make_session("MyTitle")
     admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "hi?"})
     r = admin_client.request("DELETE", f"/api/sessions/{s['code']}",
@@ -355,6 +354,64 @@ def test_uc_a_07_delete_correct_confirm_ok(admin_client, make_session):
     assert r.json() == {"ok": True}
     # confirm gone
     assert admin_client.get(f"/api/sessions/{s['code']}").status_code == 404
+
+
+def test_uc_a_07_delete_cascades_to_session_data(admin_client, make_quiz, make_session):
+    """UC-A-07: deleting a session deletes its queries, votes, participants,
+    quiz runs, submissions and feedback; the frozen quiz version and other
+    sessions' data remain."""
+    from sqlalchemy import func, select
+
+    from prashna import models as m
+    from prashna.db import SessionLocal
+
+    q = make_quiz()
+    s = make_session("Doomed")
+    kept = make_session("Kept")
+    admin = dict(admin_client.cookies)
+    admin_client.post(f"/api/sessions/{kept['code']}/queries", json={"text": "stays?"})
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs", json={"quiz_id": q["id"]}).json()
+    base = f"/api/sessions/{s['code']}/quiz_runs/{run['id']}"
+    admin_client.post(f"{base}/start")
+    question = admin_client.get(base).json()["current_question"]
+    admin_client.cookies.clear()
+    query = admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "gone?"}).json()
+    assert admin_client.post(f"/api/sessions/{s['code']}/queries/{query['id']}/vote").status_code == 200
+    r = admin_client.post(f"{base}/submit",
+                          json={"question_id": question["id"], "answer_ids": [question["answers"][0]["id"]]})
+    assert r.status_code == 200
+    admin_client.cookies.clear()
+    admin_client.cookies.update(admin)
+    admin_client.post(f"{base}/close")
+    admin_client.post(f"/api/sessions/{s['code']}/end")
+    with SessionLocal() as db:
+        session_id = db.scalar(select(m.Session.id).where(m.Session.code == s["code"]))
+        participant_id = db.scalar(select(m.Participant.id).where(m.Participant.session_id == session_id))
+        assert session_id is not None and participant_id is not None
+        db.add(m.SessionFeedback(session_id=session_id, participant_id=participant_id, rating=4))
+        db.add(m.SessionFeedbackVersion(session_id=session_id, participant_id=participant_id, rating=4))
+        db.commit()
+
+    def counts() -> dict[str, int]:
+        tables = (m.Query, m.QueryVote, m.Participant, m.QuizRun, m.QuizSubmission,
+                  m.SessionFeedback, m.SessionFeedbackVersion, m.QuizVersion)
+        with SessionLocal() as db:
+            return {t.__tablename__: db.scalar(select(func.count()).select_from(t)) or 0 for t in tables}
+
+    assert counts() == {
+        # The admin's own page reads register a participant in each session too.
+        "queries": 2, "query_votes": 1, "participants": 3, "quiz_runs": 1,
+        "quiz_submissions": 1, "session_feedback": 1, "session_feedback_versions": 1,
+        "quiz_versions": 1,
+    }
+    r = admin_client.request("DELETE", f"/api/sessions/{s['code']}", json={"confirm_title": "Doomed"})
+    assert r.status_code == 200
+    assert counts() == {
+        "queries": 1, "query_votes": 0, "participants": 1, "quiz_runs": 0,
+        "quiz_submissions": 0, "session_feedback": 0, "session_feedback_versions": 0,
+        "quiz_versions": 1,
+    }
+    assert [row["text"] for row in admin_client.get(f"/api/sessions/{kept['code']}/queries").json()] == ["stays?"]
 
 
 def test_uc_a_07_delete_session_removes_profile_photos(admin_client, make_session):

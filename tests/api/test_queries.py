@@ -93,10 +93,19 @@ def test_uc_p_05_no_double_vote(client, admin_client, make_session):
     admin_client.cookies.clear()
     q = client.post(f"/api/sessions/{s['code']}/queries",
                     json={"text": "Hi?"}).json()
-    client.post(f"/api/sessions/{s['code']}/queries/{q['id']}/vote")
-    # vote again
+    first = client.post(f"/api/sessions/{s['code']}/queries/{q['id']}/vote").json()
+    assert first == {"voted": True, "vote_count": 1}
+    voter = client.cookies.get("voter_token")
+    client.cookies.clear()
+    client.cookies.set("voter_token", "second-voter")
+    assert client.post(f"/api/sessions/{s['code']}/queries/{q['id']}/vote").json() == {
+        "voted": True, "vote_count": 2,
+    }
+    # The first participant's second vote removes their vote; it never counts twice.
+    client.cookies.clear()
+    client.cookies.set("voter_token", voter)
     r = client.post(f"/api/sessions/{s['code']}/queries/{q['id']}/vote")
-    assert r.json()["vote_count"] in (0, 1)
+    assert r.json() == {"voted": False, "vote_count": 1}
 
 
 def test_uc_p_05_vote_removed_404(client, admin_client, make_session):
@@ -239,6 +248,21 @@ def test_uc_m_08_unknown_qid_404(admin_client, make_session):
     s = make_session()
     r = admin_client.post(f"/api/sessions/{s['code']}/queries/99999/respond", json={})
     assert r.status_code == 404
+
+
+def test_uc_m_08_query_from_other_session_404(admin_client, make_session):
+    """UC-M-08 / UC-M-09 / UC-P-05: a real query id used under another session's
+    code → 404, and the query is unchanged."""
+    s = make_session("A")
+    other = make_session("B")
+    q = admin_client.post(f"/api/sessions/{s['code']}/queries", json={"text": "Q?"}).json()
+    wrong = f"/api/sessions/{other['code']}/queries/{q['id']}"
+    assert admin_client.post(f"{wrong}/respond", json={"response_text": "x"}).status_code == 404
+    assert admin_client.post(f"{wrong}/remove", json={}).status_code == 404
+    assert admin_client.request("DELETE", wrong).status_code == 404
+    assert admin_client.post(f"{wrong}/vote").status_code == 404
+    [row] = admin_client.get(f"/api/sessions/{s['code']}/queries").json()
+    assert (row["responded"], row["response_text"], row["removed"], row["vote_count"]) == (False, None, False, 0)
 
 
 def test_uc_m_08_no_auth_403(client, admin_client, make_session):

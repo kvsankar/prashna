@@ -273,6 +273,28 @@ def test_uc_a_25_change_password_valid(admin_client):
     assert r2.status_code == 200
 
 
+def test_uc_a_25_old_cookie_rejected_after_password_change(admin_client):
+    """UC-A-25: a password change bumps session_version, so the cookie issued
+    before the change stops working and the re-issued one works."""
+    old_cookie = admin_client.cookies.get("prashna_admin")
+    assert old_cookie
+    r = admin_client.post("/api/admin/change_password", json={
+        "current_password": "testpass1",
+        "new_password": "newpass12",
+    })
+    assert r.status_code == 200
+    new_cookie = admin_client.cookies.get("prashna_admin")
+    assert new_cookie and new_cookie != old_cookie
+    assert admin_client.get("/api/sessions").status_code == 200
+
+    admin_client.cookies.clear()
+    admin_client.cookies.set("prashna_admin", old_cookie)
+    r = admin_client.get("/api/sessions")
+    assert r.status_code == 401
+    assert r.json() == {"detail": "Not authenticated"}
+    assert admin_client.get("/api/admin/status").json()["authenticated"] is False
+
+
 def test_uc_a_25_wrong_current_password(admin_client):
     """UC-A-25: wrong current_password → 401."""
     r = admin_client.post("/api/admin/change_password", json={

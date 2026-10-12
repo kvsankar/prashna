@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import create_engine
 from starlette.websockets import WebSocketDisconnect
 
-from ..support import SETUP_TOKEN
+from ..support import SETUP_TOKEN, ws_receive
 
 
 def _events(caplog):
@@ -135,7 +135,7 @@ def test_auth_session_upload_and_ws_diagnostics(client, caplog):
             headers={"origin": "https://evil.example"},
         ) as ws:
             # The server accepts, then closes with 4403 (UC-X-02).
-            ws.receive_text()
+            ws_receive(ws)
 
     r = client.post(
         "/api/admin/change_password",

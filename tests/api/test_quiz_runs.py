@@ -124,6 +124,33 @@ def test_uc_a_24_results_shape(admin_client, make_quiz, make_session):
     assert body["quiz_title"] == "MyQuiz"
 
 
+def test_uc_a_24_results_counts_after_submission(admin_client, make_quiz, make_session):
+    """UC-A-24: the results report counts each answer and the respondents."""
+    q = make_quiz()
+    s = make_session()
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                            json={"quiz_id": q["id"]}).json()
+    base = f"/api/sessions/{s['code']}/quiz_runs/{run['id']}"
+    admin_client.post(f"{base}/start")
+    question = admin_client.get(base).json()["current_question"]
+    wrong, right = [a["id"] for a in question["answers"]]
+    admin = dict(admin_client.cookies)
+    for token, answer in (("voter-a", right), ("voter-b", right), ("voter-c", wrong)):
+        admin_client.cookies.clear()
+        admin_client.cookies.set("voter_token", token)
+        r = admin_client.post(f"{base}/submit",
+                              json={"question_id": question["id"], "answer_ids": [answer]})
+        assert r.status_code == 200, r.text
+    admin_client.cookies.clear()
+    admin_client.cookies.update(admin)
+
+    body = admin_client.get(f"/api/quiz_runs/{run['id']}/results").json()
+    [result] = body["questions"]
+    assert result["respondents"] == 3
+    counts = {a["id"]: (a["count"], a["is_correct"]) for a in result["answers"]}
+    assert counts == {wrong: (1, False), right: (2, True)}
+
+
 def test_uc_a_24_quiz_title_snapshotted(admin_client, make_quiz, make_session):
     """UC-A-24: renaming quiz doesn't change snapshot title."""
     q = make_quiz("OldName")
@@ -488,6 +515,8 @@ def test_uc_m_05_reveal(admin_client, make_quiz, make_session):
                           json={"reveal": True})
     assert r.status_code == 200
     assert r.json() == {"ok": True}
+    g = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
+    assert g["reveal_current"] is True
 
 
 def test_uc_m_05_advance_next_prev(admin_client, admin_creds):
@@ -619,6 +648,28 @@ def test_uc_m_05_advance_refuses_bad_moves(admin_client, body, detail):
     assert (g["current_question_idx"], g["reveal_current"]) == (0, True)
 
 
+@pytest.mark.parametrize("state", ["queued", "closed"])
+@pytest.mark.parametrize(("action", "body"), [
+    ("advance", {"direction": "next"}),
+    ("reveal", {"reveal": True}),
+    ("close", None),
+])
+def test_uc_m_05_run_controls_require_live(admin_client, make_quiz, make_session, state, action, body):
+    """UC-M-05: advance, reveal and close on a queued or closed run → 400; nothing changes."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    base = f"/api/sessions/{s['code']}/quiz_runs/{run['id']}"
+    if state == "closed":
+        admin_client.post(f"{base}/start")
+        assert admin_client.post(f"{base}/close").status_code == 200
+    before = admin_client.get(base).json()
+    r = admin_client.post(f"{base}/{action}", json=body)
+    assert r.status_code == 400
+    assert r.json() == {"detail": f"Cannot {action} from status: {state}"}
+    after = admin_client.get(base).json()
+    for key in ("status", "current_question_idx", "reveal_current"):
+        assert after[key] == before[key]
+
+
 def test_uc_m_05_live_counts_toggle(admin_client, make_quiz, make_session):
     """UC-M-05: live_counts on/off."""
     s, q, run = _queue_run(admin_client, make_quiz, make_session)
@@ -645,7 +696,7 @@ def test_uc_m_05_no_auth_403(client, admin_client, make_quiz, make_session):
 # ---------- UC-M-06: Close ----------
 
 def test_uc_m_06_close_run(admin_client, make_quiz, make_session):
-    """UC-M-06: close live run → ok."""
+    """UC-M-06: close live run → ok; closed, revealed, closed_at set."""
     s, q, run = _queue_run(admin_client, make_quiz, make_session)
     admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
     r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/close")
@@ -654,6 +705,8 @@ def test_uc_m_06_close_run(admin_client, make_quiz, make_session):
     g = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
     assert g["status"] == "closed"
     assert g["reveal_current"] is True
+    row = next(r for r in admin_client.get("/api/quiz_runs").json() if r["id"] == run["id"])
+    assert row["closed_at"] is not None
 
 
 def test_uc_m_06_submit_after_close_404(admin_client, make_quiz, make_session):

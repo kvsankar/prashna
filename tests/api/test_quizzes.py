@@ -701,8 +701,16 @@ def test_uc_a_18_image_url_set_clear(admin_client, make_quiz):
     """UC-A-18: image_url set then clear."""
     q = make_quiz()
     aid = _first_answer_id(admin_client, q["id"])
-    admin_client.patch(f"/api/quiz_answers/{aid}", json={"image_url": "/uploads/x.png"})
-    admin_client.patch(f"/api/quiz_answers/{aid}", json={"image_url": None})
+    def image_url():
+        g = admin_client.get(f"/api/quizzes/{q['id']}?include_correct=true").json()
+        return next(a for a in g["questions"][0]["answers"] if a["id"] == aid)["image_url"]
+
+    r = admin_client.patch(f"/api/quiz_answers/{aid}", json={"image_url": "/uploads/x.png"})
+    assert r.status_code == 200
+    assert image_url() == "/uploads/x.png"
+    r = admin_client.patch(f"/api/quiz_answers/{aid}", json={"image_url": None})
+    assert r.status_code == 200
+    assert image_url() is None
 
 
 def test_uc_a_18_non_owner_404(admin_client, make_quiz):

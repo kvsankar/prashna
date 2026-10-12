@@ -1,6 +1,7 @@
 """UI-suite live-server boundary tests."""
 from __future__ import annotations
 
+import json
 import secrets
 
 import pytest
@@ -19,6 +20,7 @@ def test_websocket_accepts_no_origin(base_url, admin_setup):
     try:
         with connect(ws_url, origin=None) as ws:
             ws.send("ping")
+            assert json.loads(ws.recv(timeout=5)) == {"type": "pong"}
     finally:
         c.close()
 

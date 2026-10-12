@@ -49,6 +49,16 @@ def _today() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d")
 
 
+_START_DAY = {"day": _today()}
+
+
+@pytest.fixture(autouse=True)
+def _record_start_day():
+    """Note the UTC date before each test's requests, so a test that runs
+    across midnight accepts the date the server stamped (see _assert_download)."""
+    _START_DAY["day"] = _today()
+
+
 @contextmanager
 def _as_participant(client, token: str):
     admin = client.cookies.get("prashna_admin")
@@ -83,7 +93,8 @@ def _records(rows: list[tuple]) -> list[dict]:
 def _assert_download(r, filename: str, content_type: str) -> None:
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].split(";")[0] == content_type
-    assert r.headers["content-disposition"] == f'attachment; filename="{filename}"'
+    names = {filename, filename.replace(_today(), _START_DAY["day"])}
+    assert r.headers["content-disposition"] in {f'attachment; filename="{n}"' for n in names}
     assert r.headers["cache-control"] == "no-store"
 
 

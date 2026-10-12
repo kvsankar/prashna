@@ -327,8 +327,11 @@ def test_uc_m_03_picker_marks_quiz_already_in_session(base_url, admin_setup, pag
         expect(option).to_contain_text("already added · Queued")
         expect(page.locator(f"#quiz-select option[value='{fresh['id']}']")).not_to_contain_text("already added")
         page.locator("#quiz-select").select_option(value=str(quiz["id"]))
-        page.once("dialog", lambda d: d.dismiss())
+        dialogs: list[str] = []
+        page.once("dialog", lambda d: (dialogs.append(d.type), d.dismiss()))
         page.click("#add-quiz-btn")
+        assert dialogs == ["confirm"]
+        # Give a wrongly sent request time to land before checking nothing was queued.
         page.wait_for_timeout(500)
         assert len(c.get(f"/api/sessions/{s['code']}/quiz_runs").json()) == 1
     finally:
@@ -706,7 +709,10 @@ def test_uc_m_12_moderator_controls_rating_widget(base_url, admin_setup, page):
     s = api_make_session(c, f"UI-M12toggle {secrets.token_hex(3)}")
     try:
         page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#feedback-card", state="attached")
+        # #feedback-card is hidden in the static HTML; wait for the page to
+        # boot (the ask form shows) before checking it stays hidden.
+        page.wait_for_selector("#ask-card:visible")
+        expect(page.locator("#feedback-card")).to_be_attached()
         expect(page.locator("#feedback-card")).to_be_hidden()
 
         admin_login_via_ui(page, base_url)
@@ -842,8 +848,9 @@ def test_uc_m_11_invite_copy_button_present(base_url, admin_setup, page):
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#invite-copy")
         page.click("#invite-copy")
-        # Either success toast OR error toast (clipboard may need HTTPS).
-        expect(page.locator(".toast")).to_be_visible(timeout=5000)
+        expect(page.locator(".toast:not(.toast-error)")).to_contain_text("URL copied", timeout=5000)
+        copied = page.evaluate("navigator.clipboard.readText()")
+        assert copied.endswith(f"/s/{s['code']}")
     finally:
         c.close()
 

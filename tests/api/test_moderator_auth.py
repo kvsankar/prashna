@@ -1,9 +1,9 @@
 """UC-M-01, UC-M-02: moderator auth gates + session lifecycle."""
 from __future__ import annotations
 
-import json
-
 from fastapi.testclient import TestClient
+
+from ..support import ws_receive
 
 # ---------- UC-M-01: Auth gates on mod-or-owner routes ----------
 
@@ -103,6 +103,24 @@ def test_uc_m_02_end_live(admin_client, make_session):
     r = admin_client.post(f"/api/sessions/{s['code']}/end")
     assert r.status_code == 200
     assert r.json() == {"status": "ended"}
+    g = admin_client.get(f"/api/sessions/{s['code']}").json()
+    assert g["status"] == "ended"
+    assert g["ended_at"] is not None
+
+
+def test_uc_m_02_end_with_live_run_400(admin_client, make_quiz, make_session):
+    """UC-M-02: ending is refused while a quiz run is live; the session stays live."""
+    q = make_quiz()
+    s = make_session()
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                            json={"quiz_id": q["id"]}).json()
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
+    r = admin_client.post(f"/api/sessions/{s['code']}/end")
+    assert r.status_code == 400
+    assert r.json() == {"detail": "A quiz run is currently live — close it before ending the session"}
+    g = admin_client.get(f"/api/sessions/{s['code']}").json()
+    assert g["status"] == "live"
+    assert g["ended_at"] is None
 
 
 def test_uc_m_02_end_planning_allowed(admin_client, make_session):
@@ -141,7 +159,7 @@ def test_uc_m_02_start_broadcasts(admin_client, make_session):
     s = make_session()
     with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         admin_client.post(f"/api/sessions/{s['code']}/start")
-        msg = json.loads(ws.receive_text())
+        msg = ws_receive(ws)
         assert msg == {"type": "session_state"}
 
 
@@ -150,7 +168,7 @@ def test_uc_m_02_end_broadcasts(admin_client, make_session):
     s = make_session()
     with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
         admin_client.post(f"/api/sessions/{s['code']}/end")
-        msg = json.loads(ws.receive_text())
+        msg = ws_receive(ws)
         assert msg == {"type": "session_state"}
 
 

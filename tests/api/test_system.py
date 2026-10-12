@@ -1,15 +1,15 @@
 """UC-X-01 through UC-X-07: system invariants — WS broadcasts, headers, DB unique constraints."""
 from __future__ import annotations
 
-import json
 import re
-from pathlib import Path
 from typing import cast
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
+
+from ..support import ws_receive
 
 PNG_BYTES = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
@@ -36,7 +36,7 @@ def assert_security_headers(response, expected, label):
 def _ws_recv_types(ws, n=1):
     msgs = []
     for _ in range(n):
-        msgs.append(json.loads(ws.receive_text()))
+        msgs.append(ws_receive(ws))
     return msgs
 
 
@@ -57,8 +57,17 @@ def test_uc_x_01_ping_gets_pong(admin_client, make_session):
         ws.send_text("ping")
         # A broadcast follows, so the test never waits forever for a missing pong.
         admin_client.patch(f"/api/sessions/{s['code']}", json={"title": "x"})
-        assert ws.receive_json() == {"type": "pong"}
-        assert ws.receive_json() == {"type": "session_state"}
+        assert ws_receive(ws) == {"type": "pong"}
+        assert ws_receive(ws) == {"type": "session_state"}
+
+
+def test_uc_x_01_ws_receive_helper_times_out(admin_client, make_session):
+    """The suite's WebSocket receive helper fails when no frame arrives, so a
+    missing broadcast fails a test instead of hanging the run."""
+    s = make_session()
+    with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
+        with pytest.raises(TimeoutError):
+            ws_receive(ws, timeout=0.2)
 
 
 def test_uc_x_01_failed_socket_is_closed():
@@ -245,7 +254,7 @@ def test_uc_x_02_cross_origin_4403(admin_client, make_session):
             f"/ws/sessions/{s['code']}",
             headers={"origin": "https://evil.example"},
         ) as ws:
-            ws.receive_text()
+            ws_receive(ws)
     assert ei.value.code == 4403
 
 
@@ -273,7 +282,7 @@ def test_uc_x_02_no_session_4404(admin_client):
     from starlette.websockets import WebSocketDisconnect
     with pytest.raises(WebSocketDisconnect) as ei:
         with admin_client.websocket_connect("/ws/sessions/NOSUCH") as ws:
-            ws.receive_text()
+            ws_receive(ws)
     assert ei.value.code == 4404
 
 
@@ -288,17 +297,26 @@ def test_uc_x_03_uploads_have_security_headers(admin_client):
     assert_security_headers(r, UPLOAD_SECURITY_HEADERS, url)
 
 
+def _built_stylesheet(client) -> str:
+    """The path of the stylesheet the Vite build links from the landing page."""
+    match = re.search(r'href="(/static/assets/[^"]+\.css)"', client.get("/").text)
+    assert match, "landing page links no built stylesheet"
+    return match.group(1)
+
+
 def test_uc_x_03_static_no_extra_headers(admin_client):
     """UC-X-03: /static/* does NOT carry the uploads-tier strict CSP."""
-    r = admin_client.get("/static/app.css")
-    # If the file doesn't exist this test is moot, but assertion holds either way
+    path = _built_stylesheet(admin_client)
+    r = admin_client.get(path)
+    assert r.status_code == 200
     assert r.headers.get("content-security-policy") != "default-src 'none'; sandbox"
 
 
 def test_uc_x_03_baseline_headers_on_pages(client):
     """UC-X-03: non-uploads responses carry the clickjacking/sniffing baseline."""
-    for path in ("/", "/static/app.css"):
+    for path in ("/", _built_stylesheet(client)):
         r = client.get(path)
+        assert r.status_code == 200, path
         assert_security_headers(r, BASELINE_SECURITY_HEADERS, path)
 
 
@@ -317,7 +335,7 @@ def test_uc_x_03_baseline_headers_on_page_and_static_samples(
     )
     for path in paths:
         r = admin_client.get(path)
-        assert r.status_code in (200, 404), path
+        assert r.status_code == 200, path
         assert_security_headers(r, BASELINE_SECURITY_HEADERS, path)
 
 
@@ -403,7 +421,7 @@ def test_uc_x_05_two_live_quiz_runs_integrity(admin_client, make_quiz, make_sess
         r1 = m.QuizRun(session_id=sess.id, quiz_version_id=ver.id, status="live")
         r2 = m.QuizRun(session_id=sess.id, quiz_version_id=ver.id, status="live")
         db.add(r1); db.add(r2)
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match="UNIQUE constraint failed"):
             db.commit()
 
 
@@ -416,12 +434,15 @@ def test_uc_x_05_two_versions_same_quiz_no(admin_client, make_quiz):
         v1 = m.QuizVersion(quiz_id=q["id"], version_no=42, quiz_title="x")
         v2 = m.QuizVersion(quiz_id=q["id"], version_no=42, quiz_title="x")
         db.add(v1); db.add(v2)
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match="UNIQUE constraint failed"):
             db.commit()
 
 
-def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
-    """UC-X-05: init migration bridge upgrades persisted DBs from known old shapes."""
+def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path, monkeypatch):
+    """UC-X-05: init_db() upgrades a database with the old shape of every
+    bridged table: each bridged column appears, existing rows keep their data
+    and get the column defaults, and the live-run index refuses a second
+    live run."""
     from prashna import db as app_db
 
     old = tmp_path / "old-shape.db"
@@ -492,6 +513,18 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
             )
         """)
         conn.exec_driver_sql("""
+            CREATE TABLE queries (
+                id INTEGER NOT NULL PRIMARY KEY,
+                session_id INTEGER NOT NULL,
+                participant_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                response_text TEXT,
+                responded_at DATETIME,
+                removed_at DATETIME,
+                created_at DATETIME NOT NULL
+            )
+        """)
+        conn.exec_driver_sql("""
             CREATE TABLE quiz_submissions (
                 id INTEGER NOT NULL PRIMARY KEY,
                 quiz_run_id INTEGER NOT NULL,
@@ -501,39 +534,73 @@ def test_uc_x_05_additive_migrations_upgrade_known_old_schema(tmp_path):
                 created_at DATETIME NOT NULL
             )
         """)
+        # One existing row per table, as an older release would have left it.
+        when = "'2026-01-01 00:00:00'"
+        conn.exec_driver_sql(f"INSERT INTO users VALUES (1, 'admin', 'hash', {when})")
+        conn.exec_driver_sql(
+            f"INSERT INTO sessions VALUES (1, 'ABC123', 'Old', 'k', 1, 'live', {when}, NULL, {when})")
+        conn.exec_driver_sql("INSERT INTO quiz_questions VALUES (1, 1, 'Q?', NULL, 'single', 0)")
+        conn.exec_driver_sql("INSERT INTO quiz_version_questions VALUES (1, 1, 'Q?', NULL, 'single', 0)")
+        conn.exec_driver_sql(f"INSERT INTO quiz_runs VALUES (1, 1, 1, 'closed', 0, 1, {when}, {when}, {when})")
+        conn.exec_driver_sql(f"INSERT INTO participants VALUES (1, 1, 'tok', 'Asha', {when}, {when})")
+        conn.exec_driver_sql(f"INSERT INTO queries VALUES (1, 1, 1, 'Old?', NULL, NULL, NULL, {when})")
+        conn.exec_driver_sql(f"INSERT INTO quiz_submissions VALUES (1, 1, 1, 1, 1, {when})")
 
-    app_db._apply_additive_migrations(bind=engine)
+    monkeypatch.setattr(app_db, "engine", engine)
+    app_db.init_db()
+
+    bridged = {
+        "users": {"session_version"},
+        "sessions": {"participant_base_url", "feedback_enabled"},
+        "participants": {"email", "contact_number", "organization", "role",
+                         "linkedin_url", "photo_url", "current_work", "learning_goal"},
+        "quiz_questions": {"graded"},
+        "quiz_version_questions": {"graded"},
+        "quiz_runs": {"show_live_counts", "revealed_idxs"},
+        "queries": {"author_name"},
+    }
     with engine.begin() as conn:
-        columns = {
-            table: {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
-            for table in (
-                "users",
-                "sessions",
-                "participants",
-                "quiz_questions",
-                "quiz_version_questions",
-                "quiz_runs",
-            )
-        }
-        assert "session_version" in columns["users"]
-        assert "participant_base_url" in columns["sessions"]
-        assert "feedback_enabled" in columns["sessions"]
-        assert "photo_url" in columns["participants"]
-        assert "graded" in columns["quiz_questions"]
-        assert "graded" in columns["quiz_version_questions"]
-        assert "show_live_counts" in columns["quiz_runs"]
-        assert "revealed_idxs" in columns["quiz_runs"]
+        for table, expected in bridged.items():
+            columns = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            assert expected <= columns, (table, expected - columns)
 
-        indexes = {
-            row[1]
-            for row in conn.exec_driver_sql("PRAGMA index_list(quiz_runs)").fetchall()
-        }
-        assert "uq_session_live_run" in indexes
+        def row(sql: str) -> tuple:
+            return tuple(conn.exec_driver_sql(sql).one())
+
+        assert row("SELECT username, session_version FROM users") == ("admin", 1)
+        assert row("SELECT title, status, participant_base_url, feedback_enabled FROM sessions") == (
+            "Old", "live", None, 0)
+        assert row("SELECT text, graded FROM quiz_questions") == ("Q?", 1)
+        assert row("SELECT text, graded FROM quiz_version_questions") == ("Q?", 1)
+        assert row("SELECT status, reveal_current, show_live_counts, revealed_idxs FROM quiz_runs") == (
+            "closed", 1, 0, "")
+        assert row(
+            "SELECT voter_token, name, email, contact_number, organization, role, linkedin_url,"
+            " photo_url, current_work, learning_goal FROM participants"
+        ) == ("tok", "Asha", None, None, None, None, None, None, None, None)
+        assert row("SELECT text, author_name FROM queries") == ("Old?", "Asha")
+        assert row("SELECT answer_id FROM quiz_submissions") == (1,)
+
         qsub_indexes = {
-            row[1]
-            for row in conn.exec_driver_sql("PRAGMA index_list(quiz_submissions)").fetchall()
+            r[1] for r in conn.exec_driver_sql("PRAGMA index_list(quiz_submissions)").fetchall()
         }
         assert "ix_qsub_run_question" in qsub_indexes
+
+    # The partial unique index allows any number of queued or closed runs,
+    # but only one live run per session.
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"INSERT INTO quiz_runs (id, session_id, quiz_version_id, status,"
+                             f" current_question_idx, reveal_current, created_at)"
+                             f" VALUES (2, 1, 1, 'queued', 0, 0, {when})")
+        conn.exec_driver_sql(f"INSERT INTO quiz_runs (id, session_id, quiz_version_id, status,"
+                             f" current_question_idx, reveal_current, created_at)"
+                             f" VALUES (3, 1, 1, 'live', 0, 0, {when})")
+    with pytest.raises(IntegrityError, match="UNIQUE constraint failed"):
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f"INSERT INTO quiz_runs (id, session_id, quiz_version_id, status,"
+                                 f" current_question_idx, reveal_current, created_at)"
+                                 f" VALUES (4, 1, 1, 'live', 0, 0, {when})")
+    engine.dispose()
 
 
 def test_uc_x_05_bridge_backfills_question_names(tmp_path):
@@ -584,7 +651,7 @@ def test_uc_x_05_two_query_votes(admin_client, make_session):
         v1 = m.QueryVote(query_id=q["id"], participant_id=p.id)
         v2 = m.QueryVote(query_id=q["id"], participant_id=p.id)
         db.add(v1); db.add(v2)
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match="UNIQUE constraint failed"):
             db.commit()
 
 
@@ -609,7 +676,7 @@ def test_uc_x_05_two_quiz_submissions(admin_client, make_quiz, make_session):
         s2 = m.QuizSubmission(quiz_run_id=run["id"], question_id=vq.id,
                               answer_id=a.id, participant_id=p.id)
         db.add(s1); db.add(s2)
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match="UNIQUE constraint failed"):
             db.commit()
 
 
@@ -623,18 +690,11 @@ def test_uc_x_05_two_participants_same_token(admin_client, make_session):
         p1 = m.Participant(session_id=sess.id, voter_token="dup")
         p2 = m.Participant(session_id=sess.id, voter_token="dup")
         db.add(p1); db.add(p2)
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match="UNIQUE constraint failed"):
             db.commit()
 
 
 # ---------- UC-X-07: SECRET_KEY ----------
-
-def test_uc_x_07_secret_key_lifecycle_subprocess_contract_present():
-    """UC-X-07: restart coverage lives in a subprocess integration file."""
-    text = (Path(__file__).with_name("test_secret_lifecycle.py")).read_text()
-    assert "test_fixed_secret_survives_restart" in text
-    assert "test_unset_secret_persists_key_beside_database" in text
-
 
 def test_uc_x_07_resolve_secret(tmp_path):
     """UC-X-07: env wins; otherwise a persisted key file; ephemeral only if unwritable."""

@@ -372,8 +372,9 @@ def test_uc_a_08_share_mod_copies_url(base_url, admin_setup, page):
     try:
         _goto_session_page(page, base_url, s)
         page.click("#set-share-mod")
-        # Toast should confirm. Don't read clipboard (headless flakiness).
-        expect(page.locator(".toast")).to_be_visible()
+        expect(page.locator(".toast:not(.toast-error)")).to_contain_text("Moderator URL copied")
+        copied = page.evaluate("navigator.clipboard.readText()")
+        assert copied.endswith(f"/m/{s['code']}#k={s['mod_key']}")
     finally:
         c.close()
 
@@ -483,16 +484,26 @@ def test_uc_a_25_change_password_success_toasts_and_closes(base_url, admin_setup
     page.fill("#cp-new", new_pw)
     page.fill("#cp-new2", new_pw)
     page.click("#cp-submit")
-    expect(page.locator(".toast").first).to_contain_text("Password updated")
-    expect(page.locator("#change-pw-card")).to_be_hidden(timeout=5000)
-    # Rotate back via API so other tests still pass.
-    c = httpx.Client(base_url=base_url, timeout=5.0)
-    c.post("/api/admin/login", json={"username": admin_setup["username"], "password": new_pw})
-    c.post(
-        "/api/admin/change_password",
-        json={"current_password": new_pw, "new_password": admin_setup["password"]},
-    )
-    c.close()
+    try:
+        expect(page.locator(".toast:not(.toast-error)").first).to_contain_text("Password updated")
+        expect(page.locator("#change-pw-card")).to_be_hidden(timeout=5000)
+    finally:
+        # Rotate back via API so other tests still pass, and fail here (not in
+        # every later login) if that does not work. The UI change may not have
+        # happened, so try the new password first and fall back to the old one.
+        with httpx.Client(base_url=base_url, timeout=5.0) as c:
+            current = new_pw
+            r = c.post("/api/admin/login", json={"username": admin_setup["username"], "password": new_pw})
+            if r.status_code == 401:
+                current = admin_setup["password"]
+                r = c.post("/api/admin/login",
+                           json={"username": admin_setup["username"], "password": current})
+            r.raise_for_status()
+            if current != admin_setup["password"]:
+                c.post(
+                    "/api/admin/change_password",
+                    json={"current_password": current, "new_password": admin_setup["password"]},
+                ).raise_for_status()
 
 
 def test_uc_a_31_admin_adjusts_limits(base_url, admin_setup, page):

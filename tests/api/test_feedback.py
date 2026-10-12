@@ -2,11 +2,11 @@
 host-visible aggregate)."""
 from __future__ import annotations
 
-import json
+from ..support import ws_receive
 
 
 def _ws_recv_types(ws, n=1):
-    return [json.loads(ws.receive_text()) for _ in range(n)]
+    return [ws_receive(ws) for _ in range(n)]
 
 
 def _enable_feedback(admin_client, code: str) -> None:

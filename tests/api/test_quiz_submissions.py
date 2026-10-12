@@ -27,6 +27,47 @@ def test_uc_p_07_list_runs_includes_queued(client, admin_client, make_quiz, make
     assert rows[0]["status"] == "queued"
 
 
+def test_uc_p_07_queued_run_hidden_from_participants(client, admin_client, make_quiz, make_session):
+    """UC-P-07: a queued run lists without its question for a participant, and
+    its single-run GET is 404; a moderator sees the question."""
+    q = make_quiz()
+    s = make_session()
+    run = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                            json={"quiz_id": q["id"]}).json()
+    admin_client.cookies.clear()
+    [row] = client.get(f"/api/sessions/{s['code']}/quiz_runs").json()
+    assert row["status"] == "queued"
+    assert row["current_question"] is None
+    r = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}")
+    assert r.status_code == 404
+
+    mod = {"X-Mod-Key": s["mod_key"]}
+    [row] = client.get(f"/api/sessions/{s['code']}/quiz_runs", headers=mod).json()
+    assert row["current_question"]["text"] == "2+2?"
+    g = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}", headers=mod)
+    assert g.status_code == 200
+    assert g.json()["current_question"]["text"] == "2+2?"
+
+
+def test_uc_p_07_run_from_other_session_404(client, admin_client, make_quiz, make_session):
+    """UC-P-07 / UC-P-08: a real run id used under another session's code → 404,
+    for a participant and for that other session's moderator."""
+    s, q, run = _live_run(admin_client, make_quiz, make_session)
+    other = make_session("Other")
+    question = admin_client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()["current_question"]
+    admin_client.cookies.clear()
+    wrong_base = f"/api/sessions/{other['code']}/quiz_runs/{run['id']}"
+    assert client.get(wrong_base).status_code == 404
+    assert client.get(wrong_base, headers={"X-Mod-Key": other["mod_key"]}).status_code == 404
+    r = client.post(f"{wrong_base}/submit",
+                    json={"question_id": question["id"], "answer_ids": [question["answers"][0]["id"]]})
+    assert r.status_code == 404
+    assert r.json() == {"detail": "Quiz not live"}
+    r = client.post(f"{wrong_base}/reveal", json={"reveal": True},
+                    headers={"X-Mod-Key": other["mod_key"]})
+    assert r.status_code == 404
+
+
 def test_uc_p_07_live_run_visible(client, admin_client, make_quiz, make_session):
     """UC-P-07: live run is returned for participants with current_question."""
     s, q, run = _live_run(admin_client, make_quiz, make_session)
@@ -100,6 +141,24 @@ def test_uc_p_08_resubmit_identical_is_idempotent(client, admin_client, make_qui
         assert r.status_code == 200, r.text
     g2 = client.get(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}").json()
     assert g2["my_selections"] == [aid]
+
+
+def test_uc_p_08_submit_after_reveal_400_keeps_selection(client, admin_client, make_quiz, make_session):
+    """UC-P-08: after Reveal, changing an answer → 400 and the earlier pick stays."""
+    s, q, run = _live_run(admin_client, make_quiz, make_session)
+    admin_client.cookies.clear()
+    base = f"/api/sessions/{s['code']}/quiz_runs/{run['id']}"
+    g = client.get(base).json()
+    qid = g["current_question"]["id"]
+    a1, a2 = [a["id"] for a in g["current_question"]["answers"]]
+    assert client.post(f"{base}/submit", json={"question_id": qid, "answer_ids": [a1]}).status_code == 200
+    r = client.post(f"{base}/reveal", json={"reveal": True}, headers={"X-Mod-Key": s["mod_key"]})
+    assert r.status_code == 200
+
+    r = client.post(f"{base}/submit", json={"question_id": qid, "answer_ids": [a2]})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Voting closed — results have been revealed"}
+    assert client.get(base).json()["my_selections"] == [a1]
 
 
 def test_uc_p_08_invalid_answer_400(client, admin_client, make_quiz, make_session):

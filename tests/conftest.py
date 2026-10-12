@@ -3,7 +3,7 @@
 Two test trees:
 
 - `tests/api/` — fast, in-process tests using FastAPI's TestClient against
-  a fresh sqlite DB per test.
+  one sqlite DB per run, with every table emptied before each test.
 - `tests/ui/` — Playwright tests against a real uvicorn subprocess.
 
 Both trees inherit env settings from this file so they don't accidentally
