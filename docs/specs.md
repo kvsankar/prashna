@@ -1164,7 +1164,7 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - With `#modkey-card` showing, `#title` reads "Session <code>", `header.top .meta` and the Sessions breadcrumb are hidden, and the card's text does not mention `#k=` (`test_uc_m_01_key_gate_shows_no_session_chrome`).
 - With `#modkey-card` showing, going to `/m/<code>#k=<mod_key>` in the same tab boots the moderator surface (`test_uc_m_01_moderator_link_pasted_into_an_open_tab`).
 - `#moderator-breadcrumbs` shows Sessions → session title. The Sessions link targets `/`; the session title is the current page. The adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
-- The header links to the session's other views: `#participant-link` (`/s/<code>`) and `#projector-link` (`/p/<code>`). A delegate moderator does not see the Sessions breadcrumb, which only an admin can use (`test_uc_m_views_links_for_a_delegate`).
+- The header links to the session's other views: `#participant-link` (`/s/<code>`, same tab) and `#projector-link` (`/p/<code>`, a new tab, so the session page stays open while the projector goes on the room screen; the session list's Projector link does the same). A delegate moderator does not see the Sessions breadcrumb, which only an admin can use (`test_uc_m_views_links_for_a_delegate`).
 
 ### UC-M-02: Session lifecycle: Start → End
 

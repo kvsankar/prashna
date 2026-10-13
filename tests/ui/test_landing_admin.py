@@ -401,6 +401,9 @@ def test_uc_m_views_links_for_a_delegate(base_url, admin_setup, page):
         page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
         expect(page.locator("#participant-link")).to_have_attribute("href", f"/s/{s['code']}")
         expect(page.locator("#projector-link")).to_have_attribute("href", f"/p/{s['code']}")
+        # The projector opens in a new tab so the session page stays open.
+        expect(page.locator("#projector-link")).to_have_attribute("target", "_blank")
+        expect(page.locator("#participant-link")).not_to_have_attribute("target", "_blank")
         expect(page.locator("#moderator-breadcrumbs a[href='/']")).to_be_hidden()
     finally:
         c.close()
