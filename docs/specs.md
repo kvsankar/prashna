@@ -38,7 +38,7 @@ shown.
 
 **What each role needs.** Participants need to ask and support questions
 anonymously, answer the current quiz question, optionally share a profile,
-and rate the session with little effort. Moderators need one page to run the
+and give session feedback with little effort. Moderators need one page to run the
 room: lifecycle, Q&A triage, quiz playback, attendee profiles, and feedback.
 Admins need first-run access, session setup with owner-only controls,
 reusable quizzes, and reports that stay stable. The room needs join
@@ -1081,7 +1081,7 @@ one Wi-Fi connection.
 
 - **Given** the admin is signed in on `/`
 - **Then** a **Limits** card (`#limits-card`) lists, for asking questions,
-  voting on questions, answering quiz questions, rating the session and
+  voting on questions, answering quiz questions, sending session feedback and
   saving the attendee profile, how many times one person may do it at once and then per minute; and,
   for joining, how many people may share one network and how many more
   may join per minute. Each field shows its default as a tooltip.
@@ -1524,18 +1524,19 @@ by default while the session is `planning`.
 - Clicking `#base-url-clear` (owner view) clears the override; the QR/URL fall back to `location.origin`.
 - Clicking `#invite-copy` copies `#invite-url` text to clipboard.
 
-### UC-M-12: Open rating and view session feedback
+### UC-M-12: Open feedback and view the responses
 
 - **Given** a moderator (delegate or admin owner) is on the moderator page
-- **Then** the Lifecycle card (`#lifecycle-actions`) shows **Open rating**
-  while rating is closed and **Close rating** while it is open, in every
-  session status
+- **Then** the Lifecycle card (`#lifecycle-actions`) shows **Open feedback**
+  while feedback is closed and **Close feedback** while it is open, in every
+  session status; a click confirms with a "Feedback opened" or "Feedback
+  closed" toast
 - **When** they click it → `POST /api/sessions/{code}/feedback_enabled`
   with `{"enabled": true|false}` (mod-or-owner auth) sets the session's
   `feedback_enabled` flag, returns `{feedback_enabled}`, and broadcasts
   `{type: "feedback_state"}`, so participant pages show or hide the
-  rating card (UC-P-13)
-- **And** rating starts closed on a new session (`feedback_enabled:
+  Feedback card (UC-P-13)
+- **And** feedback starts closed on a new session (`feedback_enabled:
   false`)
 
 - **Given** a moderator (delegate or admin owner) is on the moderator page
@@ -1562,7 +1563,7 @@ by default while the session is `planning`.
   `average: null`.
 
 **Tests (UI)**
-- A participant page hides `#feedback-card` while rating is closed; after the moderator clicks **Open rating** in `#lifecycle-actions`, the button reads **Close rating** and the participant page shows `#feedback-card` (`test_uc_m_12_moderator_controls_rating_widget`).
+- A participant page hides `#feedback-card` while feedback is closed; after the moderator clicks **Open feedback** in `#lifecycle-actions`, a "Feedback opened" toast appears, the button reads **Close feedback**, and the participant page shows `#feedback-card`; clicking **Close feedback** shows a "Feedback closed" toast and the button reads **Open feedback** again (`test_uc_m_12_moderator_controls_rating_widget`).
 - After a participant submits feedback, on `/m/<code>` the `#feedback-card`
   is visible, `#feedback-summary` shows the average, and `#feedback-list`
   contains the comment text.
@@ -1919,7 +1920,7 @@ once something is saved. Every field is optional:
 - Existing queries in `#queries` remain visible, and `#quiz-card` stays hidden.
 - On an ended session the vote counts are plain text, not buttons (`#queries .vote-btn` are not `<button>`s), because voting is closed (`test_uc_p_11_ended_session_votes_are_not_buttons`).
 - On an ended session with no questions, `#queries` reads "No questions were asked." (not an invitation to ask).
-- The participant section links show only sections that are visible: on an ended session with no quiz and rating closed, the Ask, Quiz, and Rating links are hidden; Profile and Questions remain.
+- The participant section links show only sections that are visible: on an ended session with no quiz and feedback closed, the Ask, Quiz, and Feedback links are hidden; Profile and Questions remain.
 
 ### UC-P-12: Live answer counts during voting
 
@@ -1956,16 +1957,17 @@ answer, so the split is the point.
 - With live counts on and a poll question, each answer shows a bar with `<count> (<pct>%)`.
 - With live counts off (default), the answering phase shows only question + answer texts.
 
-### UC-P-13: Rate the session (feedback)
+### UC-P-13: Give session feedback
 
-A participant can rate the session and leave course feedback while the
-moderator has rating open (**Open rating** on the session page, UC-M-12;
-`feedback_enabled`; any session status, including `ended`). While rating is
-closed the rating card is hidden, and `POST` or `DELETE
-/api/sessions/{code}/feedback` returns `403 "feedback is not enabled"`. The
-control is a **collapsible
-card** (`#feedback-card`, a `<details>`) placed right after the Profile
-card. It is **open** until the participant submits; after a submit, and
+The session form with a star rating and two optional comments is called
+**Feedback** wherever people see it; "rating" means only the stars. A
+participant can give feedback while the moderator has feedback open
+(**Open feedback** on the session page, UC-M-12; `feedback_enabled`; any
+session status, including `ended`). While feedback is closed the Feedback
+card is hidden, and `POST` or `DELETE /api/sessions/{code}/feedback`
+returns `403 "Feedback is closed for this session"`. The control is a
+**collapsible card** titled **Feedback** (`#feedback-card`, a `<details>`;
+section link **Feedback**) placed right after the Profile card. It is **open** until the participant submits; after a submit, and
 on later visits, it **collapses** to a one-line summary in its header
 (`#fb-summary`, e.g. "Rated ★★★★☆") and reopens when tapped. It uses
 progressive disclosure: a 1–5 **star** rating that, once a star is
@@ -1973,9 +1975,9 @@ picked, expands to reveal "What went well?" and "What could be better?"
 text fields plus Submit. Hovering a star previews the fill up to that
 star (hovering the 5th lights all five).
 
-**Card order.** The participant page shows Profile, Rating (when open),
+**Card order.** The participant page shows Profile, Feedback (when open),
 Ask, Questions, and Invite. While a quiz is live, the **Live quiz card
-moves to the top**, above Profile and Rating, so a participant who joins
+moves to the top**, above Profile and Feedback, so a participant who joins
 or reloads mid-quiz sees the question first; it returns to its place
 when the run is no longer live.
 
@@ -1988,14 +1990,16 @@ when the run is no longer live.
   cue instead of silently doing nothing
 - **And** clicking **Submit feedback** sends the rating and comments together
   (`POST /api/sessions/{code}/feedback`), confirms "Submitted ✓", and changes
-  the action to **Resubmit feedback**; the rating card is visually distinct
+  the action to **Resubmit feedback**; the Feedback card is visually distinct
   from the Q&A/quiz cards
 - **And** the participant can retract their feedback via a subtle
-  **two-step inline confirm** (`#fb-clear` → "Clear feedback? Yes / No"):
+  **two-step inline confirm** (**Clear feedback**, `#fb-clear` → "Clear
+  feedback? Yes / No"):
   "Yes" (`#fb-clear-yes`) issues `DELETE /api/sessions/{code}/feedback`,
   "No" (`#fb-clear-no`) cancels. (Deterministic — no auto-revert timer.)
   History in `SessionFeedbackVersion` is retained; afterward `mine`
-  returns null and the summary count drops
+  returns null and the summary count drops; a "Feedback cleared" toast
+  confirms it
 - **And** participants may **resubmit their feedback any number of times**:
   each submission is appended to an immutable history (`SessionFeedbackVersion`)
   and the **latest** version is mirrored into the current view
@@ -2005,7 +2009,7 @@ when the run is no longer live.
   `GET /api/sessions/{code}/feedback/mine`, which returns the latest) and
   shows **Resubmit feedback**
 - **And** live updates never overwrite a draft: the page loads the saved
-  feedback when it first loads and when rating opens (closed to open),
+  feedback when it first loads and when feedback opens (closed to open),
   and leaves the stars and comments alone while they have unsent changes.
   Renaming or ending the session, or a reconnect, keeps what the
   participant was typing
@@ -2020,20 +2024,20 @@ when the run is no longer live.
 **Tests (API)**
 - `POST /api/sessions/{code}/feedback` with `{"rating": 4, "went_well": "...", "to_improve": "..."}` → `200 {rating, went_well, to_improve, updated_at}`. Auth: none (cookie issued on first call).
 - A bare `{"rating": 5}` → `200` with null comment fields.
-- With rating closed (the default for a new session) → `403 "feedback is not enabled"` (`test_uc_p_13_feedback_disabled_by_default`).
-- Allowed on an `ended` session once the moderator opens rating (`test_uc_p_13_allowed_when_ended`).
+- With feedback closed (the default for a new session) → `403 "Feedback is closed for this session"` for both `POST` and `DELETE` (`test_uc_p_13_feedback_disabled_by_default`).
+- Allowed on an `ended` session once the moderator opens feedback (`test_uc_p_13_allowed_when_ended`).
 - Resubmitting is allowed any number of times: each call appends a `SessionFeedbackVersion` (history retained), while the current view stays one row per participant — `summary.count` stays 1 and the latest values win.
 - `rating` of `0`, `6`, missing, a string, a float, or a bool → `400 "rating must be an integer from 1 to 5"`.
 - `GET .../feedback/mine` → `null` before submitting, then the row.
 - `DELETE /api/sessions/{code}/feedback` after a submit → `200 {ok: true}`; `mine` then returns null and `summary.count` drops by one. The `SessionFeedbackVersion` history is retained.
 
 **Tests (UI)**
-- With rating open and no prior feedback, `#feedback-card` immediately follows `#profile-card` and is an open `<details>`.
-- After a submit, `#feedback-card` closes and `#fb-summary` reads "Rated" with the chosen number of filled stars; tapping the summary reopens it.
+- With feedback open and no prior feedback, `#feedback-card` immediately follows `#profile-card`, is an open `<details>` titled "Feedback", and the **Feedback** section link is visible.
+- After a submit, `#feedback-card` closes, its title still reads "Feedback", and `#fb-summary` reads "Rated" with the chosen number of filled stars; tapping the summary reopens it.
 - While a quiz is live, `#quiz-card` is the first card in `main`; once the run closes, `#quiz-card` is hidden and `#profile-card` is first again.
 - `#fb-submit` is present and enabled. With no rating it shows a "Choose a rating first" cue; selecting a star reveals `#fb-expand` without submitting, and clicking **Submit feedback** fires one `POST .../feedback` with the rating and both comments.
 - After reload, `#feedback-card` is closed with `#fb-summary` showing the prior rating; opening it shows the prior rating (filled stars count) and comment values prefilled, and the button reads **Resubmit feedback**. Editing then resubmitting fires another `POST`.
-- Clicking `#fb-clear` reveals an inline confirm (`#fb-clear-confirm`); `#fb-clear-no` cancels (rating unchanged), `#fb-clear-yes` clears the stars (filled count 0) and hides `#fb-expand`.
+- `#fb-clear` reads **Clear feedback**; clicking it reveals an inline confirm (`#fb-clear-confirm`); `#fb-clear-no` cancels (rating unchanged), `#fb-clear-yes` clears the stars (filled count 0), hides `#fb-expand`, and shows a "Feedback cleared" toast.
 - With a star picked and text typed in `#fb-went-well` but not submitted, the moderator renaming the session and then ending it leaves the typed text and the filled stars in place (`test_uc_p_13_live_updates_keep_feedback_draft`).
 
 ---
@@ -2474,7 +2478,7 @@ have a participant cookie are limited **per person**, not per address.
   | `POST .../queries` (ask) | person, and an address ceiling | 6 | 6 per minute | yes | `detail` says "too fast" |
   | `POST .../queries/{id}/vote` | person, and an address ceiling | 30 | 120 per minute | yes | |
   | `POST .../quiz_runs/{id}/submit` | person, and an address ceiling | 20 | 30 per minute | yes | |
-  | `POST .../feedback` | person, and an address ceiling | 10 | 30 per minute | yes | Checked after the rating-open check (UC-P-13) |
+  | `POST .../feedback` | person, and an address ceiling | 10 | 30 per minute | yes | Checked after the feedback-open check (UC-P-13) |
   | `PATCH .../me` and `POST .../me/photo` (profile) | person, and an address ceiling | 10 | 10 per minute | yes | One bucket for both; submitting a profile with a photograph uses two (UC-P-03) |
   | new `Participant` row (joining) | address | 300 (people on one network) | 120 per minute | yes | Bounds row growth from a cookie-rotating script |
   | `POST /api/admin/login` | address | 8 | 1 per 30 s | no | Checked **before** `verify_password` (bcrypt is costly); a successful login clears the bucket |
@@ -2691,7 +2695,7 @@ out and signed in, `/quizzes` (list, editor open, run results open),
   use one size
 
 **Tests (UI)**
-- At 1280×800 on `/s/<code>` with rating open, `.profile-cta`, `#fb-submit`, and `#ask-btn` have the same height (within 1 px), 40 px, and a 14 px font.
+- At 1280×800 on `/s/<code>` with feedback open, `.profile-cta`, `#fb-submit`, and `#ask-btn` have the same height (within 1 px), 40 px, and a 14 px font.
 - At 1280×800 on `/` signed out, `#join-btn` and `#li-btn` have that same height and font size.
 
 ### UC-X-14: One answer-option component
@@ -2879,8 +2883,8 @@ use case's tests.
   the moderator responds (UC-M-08) → the moderator queues, starts, walks
   through, reveals, and closes a quiz (UC-M-03 to UC-M-06) while
   participants answer (UC-P-07 to UC-P-09) and the projector follows
-  (UC-D-01, UC-D-06) → the moderator opens rating and participants rate
-  the session (UC-M-12, UC-P-13) → the moderator ends the session
+  (UC-D-01, UC-D-06) → the moderator opens feedback and participants give
+  feedback (UC-M-12, UC-P-13) → the moderator ends the session
   (UC-M-02). Final check: the ended session's Q&A, quiz results, projector
   view, and feedback summary agree.
 - **Quiz history.** Author a quiz with an image (UC-A-09 to UC-A-20) →

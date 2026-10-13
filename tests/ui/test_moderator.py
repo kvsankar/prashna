@@ -705,7 +705,8 @@ def test_uc_m_12_feedback_panel_shows_summary(base_url, admin_setup, page):
 
 
 def test_uc_m_12_moderator_controls_rating_widget(base_url, admin_setup, page):
-    """UC-M-12: moderator opens participant rating from the lifecycle tools."""
+    """UC-M-12: the moderator opens and closes participant feedback from the
+    lifecycle tools, with buttons and toasts that say "feedback"."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-M12toggle {secrets.token_hex(3)}")
     try:
@@ -721,14 +722,25 @@ def test_uc_m_12_moderator_controls_rating_widget(base_url, admin_setup, page):
         page.wait_for_selector("#lifecycle-card:visible")
         page.locator(
             "#lifecycle-actions button",
-            has_text="Open rating",
+            has_text="Open feedback",
         ).click()
+        expect(page.locator(".toast", has_text="Feedback opened")).to_be_visible()
         expect(
-            page.locator("#lifecycle-actions button", has_text="Close rating")
+            page.locator("#lifecycle-actions button", has_text="Close feedback")
         ).to_be_visible(timeout=5000)
 
         page.goto(f"{base_url}/s/{s['code']}")
         expect(page.locator("#feedback-card")).to_be_visible(timeout=5000)
+
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.locator(
+            "#lifecycle-actions button",
+            has_text="Close feedback",
+        ).click()
+        expect(page.locator(".toast", has_text="Feedback closed")).to_be_visible()
+        expect(
+            page.locator("#lifecycle-actions button", has_text="Open feedback")
+        ).to_be_visible(timeout=5000)
     finally:
         c.close()
 

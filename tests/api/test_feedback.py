@@ -25,12 +25,16 @@ def test_uc_p_13_feedback_disabled_by_default(
     admin_client,
     make_session,
 ):
-    """A participant cannot submit feedback until a moderator opens rating."""
+    """A participant cannot submit or clear feedback until a moderator opens
+    feedback; the error says so in plain words (B-32)."""
     s = make_session()
     admin_client.cookies.clear()
     r = client.post(f"/api/sessions/{s['code']}/feedback", json={"rating": 4})
     assert r.status_code == 403
-    assert r.json() == {"detail": "feedback is not enabled"}
+    assert r.json() == {"detail": "Feedback is closed for this session"}
+    r = client.delete(f"/api/sessions/{s['code']}/feedback")
+    assert r.status_code == 403
+    assert r.json() == {"detail": "Feedback is closed for this session"}
 
 
 def test_uc_m_12_feedback_toggle_by_moderator(
@@ -39,7 +43,7 @@ def test_uc_m_12_feedback_toggle_by_moderator(
     make_session,
     mod_headers,
 ):
-    """A moderator can open and close participant ratings."""
+    """A moderator can open and close participant feedback."""
     s = make_session()
     admin_client.cookies.clear()
     r = client.post(

@@ -161,7 +161,7 @@ details#profile-card .fb-chevron { margin-left: 0; }
   border: 1px solid var(--border);
   background: var(--panel-2);
 }
-/* Collapsible "Rate this session" card (participant) — visually distinct
+/* Collapsible "Feedback" card (participant) — visually distinct
    from the Q&A / quiz cards, with breathing room below it. */
 /* Same box model as section.card (1px border + 16px padding) so the header
    aligns with the other cards; the accent stripe is an inset shadow (no

@@ -529,7 +529,7 @@ async function clearFeedback(): Promise<void> {
   $("#fb-status").textContent = "";
   renderStars();
   renderFeedbackSummary();
-  toast("Rating cleared");
+  toast("Feedback cleared");
 }
 $("#fb-clear").addEventListener("click", () => {
   setVisible($("#fb-clear"), false);

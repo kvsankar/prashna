@@ -1691,7 +1691,7 @@ async def submit_feedback(
     """Upsert the caller's feedback when the moderator has enabled it."""
     s = get_session_by_code(db, code)
     if not s.feedback_enabled:
-        raise HTTPException(403, "feedback is not enabled")
+        raise HTTPException(403, "Feedback is closed for this session")
     if not allow_person("feedback", request, voter_token):
         raise HTTPException(429, "You're submitting feedback too fast — wait a moment and try again")
     rating = payload.get("rating")
@@ -1748,7 +1748,7 @@ async def delete_my_feedback(
     page). Version history in SessionFeedbackVersion is left intact."""
     s = get_session_by_code(db, code)
     if not s.feedback_enabled:
-        raise HTTPException(403, "feedback is not enabled")
+        raise HTTPException(403, "Feedback is closed for this session")
     p = current_participant(s, request, response, voter_token, db)
     f = db.scalar(select(m.SessionFeedback).where(
         m.SessionFeedback.session_id == s.id,

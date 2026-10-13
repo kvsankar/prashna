@@ -188,7 +188,7 @@ function renderLifecycle(): void {
   const actions = $("#lifecycle-actions"); actions.innerHTML = "";
   const hint = $("#lifecycle-hint");
   const feedbackBtn = el("button", { class: "ghost small" },
-    sessionState.feedback_enabled ? "Close rating" : "Open rating");
+    sessionState.feedback_enabled ? "Close feedback" : "Open feedback");
   feedbackBtn.addEventListener("click", () => {
     void setFeedbackEnabled(!sessionState?.feedback_enabled);
   });
@@ -221,7 +221,7 @@ async function setFeedbackEnabled(enabled: boolean): Promise<void> {
       body: { enabled },
     });
     await loadSession();
-    toast(enabled ? "Rating opened" : "Rating closed");
+    toast(enabled ? "Feedback opened" : "Feedback closed");
   } catch (e) { errorToast((e as Error).message); }
 }
 

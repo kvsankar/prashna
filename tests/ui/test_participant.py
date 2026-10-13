@@ -94,6 +94,7 @@ def test_uc_p_13_submit_and_resubmit_prefills_prior_values(
         expect(submit).to_have_text("Resubmit feedback")
         # A submitted rating collapses to a one-line summary.
         expect(page.locator("#feedback-card")).not_to_have_attribute("open", "")
+        expect(page.locator("#feedback-card > summary h2")).to_have_text("Feedback")
         expect(page.locator("#fb-summary")).to_have_text("Rated ★★★★☆")
         # Reload → still collapsed; opening shows the prior feedback.
         page.reload()
@@ -116,7 +117,7 @@ def test_uc_p_13_submit_and_resubmit_prefills_prior_values(
 
 
 def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
-    """UC-P-13: 'Clear rating' is a two-step undo via an inline confirm —
+    """UC-P-13: 'Clear feedback' is a two-step undo via an inline confirm —
     'No' cancels, 'Yes' clears the rating and hides the comment fields."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P13c {secrets.token_hex(3)}")
@@ -136,6 +137,7 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
         # The card collapsed after submitting; reopen it to clear.
         page.locator("#feedback-card > summary").click()
         # First tap reveals the confirm; "No" cancels (no delete).
+        expect(page.locator("#fb-clear")).to_have_text("Clear feedback")
         page.click("#fb-clear")
         expect(page.locator("#fb-clear-confirm")).to_be_visible()
         page.click("#fb-clear-no")
@@ -149,6 +151,7 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
             page.click("#fb-clear-yes")
         expect(page.locator("#fb-stars button.star.filled")).to_have_count(0)
         expect(page.locator("#fb-expand")).to_be_hidden()
+        expect(page.locator(".toast", has_text="Feedback cleared")).to_be_visible()
     finally:
         c.close()
 
@@ -157,7 +160,8 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
 
 
 def test_uc_p_13_rating_card_follows_profile_and_opens(base_url, admin_setup, page):
-    """UC-P-13: with no prior feedback the open rating card follows the profile card."""
+    """UC-P-13: with no prior feedback the open Feedback card follows the
+    profile card, and its title and section link say "Feedback"."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P13o {secrets.token_hex(3)}")
     c.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True}).raise_for_status()
@@ -168,6 +172,8 @@ def test_uc_p_13_rating_card_follows_profile_and_opens(base_url, admin_setup, pa
             "document.querySelector('#profile-card').nextElementSibling.id") == "feedback-card"
         expect(page.locator("#feedback-card")).to_have_attribute("open", "")
         expect(page.locator("#fb-summary")).to_be_hidden()
+        expect(page.locator("#feedback-card > summary h2")).to_have_text("Feedback")
+        expect(page.locator(".section-links a[href='#feedback-card']")).to_have_text("Feedback")
     finally:
         c.close()
 
@@ -778,7 +784,7 @@ def test_uc_p_11_ended_empty_state_and_section_links(base_url, admin_setup, page
         expect(page.locator("#ended-card")).to_be_visible(timeout=5000)
         expect(page.locator("#queries")).to_contain_text("No questions were asked.")
         links = page.locator(".section-links a")
-        for hidden in ("Ask", "Quiz", "Rating"):
+        for hidden in ("Ask", "Quiz", "Feedback"):
             expect(links.filter(has_text=hidden)).to_be_hidden()
         for shown in ("Profile", "Questions"):
             expect(links.filter(has_text=shown)).to_be_visible()

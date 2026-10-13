@@ -119,7 +119,7 @@ flowchart TB
   profiles, and feedback.
 - **Participant room** (`/s/<code>`): anonymous identity, the optional
   attendee profile and photograph, questions, votes, quiz answers, and
-  feedback when the moderator opens rating.
+  feedback when the moderator opens it.
 - **Projector display** (`/p/<code>`): public join details and the current
   room state.
 - **Quiz library** (`/quizzes`): reusable quiz templates, images, validation,
@@ -383,7 +383,7 @@ compose command's `logging.basicConfig`, or uvicorn's handlers), the
 `prashna` logger writes through it; only when none is configured (a plain
 `uvicorn prashna.main:app`) does the helper print the line to standard
 error itself. State changes made by a signed-in admin, including session
-start, end, and opening or closing the rating, carry the admin's
+start, end, and opening or closing feedback, carry the admin's
 `actor_id`; a delegate's carry none.
 
 Diagnostics go to the process log stream, which is what the containers

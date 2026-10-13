@@ -303,7 +303,7 @@ const LIMIT_ROWS: [string, string, string][] = [
   ["Asking questions", "ask_burst", "ask_per_minute"],
   ["Voting on questions", "vote_burst", "vote_per_minute"],
   ["Answering quiz questions", "submit_burst", "submit_per_minute"],
-  ["Rating the session", "feedback_burst", "feedback_per_minute"],
+  ["Sending session feedback", "feedback_burst", "feedback_per_minute"],
   ["Saving the attendee profile", "profile_burst", "profile_per_minute"],
   ["Joining: people on one network", "network_size", "join_per_minute"],
 ];
