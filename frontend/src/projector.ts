@@ -19,6 +19,7 @@ async function loadAll(): Promise<void> {
   const state = await api<DisplayBootstrap>(`/api/sessions/${CODE}/display-bootstrap`);
   if (seq !== latestLoadSeq) return;
   const { session: s, queries: qs, quiz_runs: runs } = state;
+  document.title = `${s.title} · Projector — Prashna`;
   $("#title").textContent = s.title;
   const base = publicBase(s);
   const url = `${base}/s/${s.code}`;

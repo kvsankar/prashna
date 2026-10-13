@@ -275,7 +275,7 @@ public can't be claimed by its first visitor.
 - On `/` (authed), `#session-rows` lists each owned session with title, status badge, query count, and quiz-run count.
 - Most-recently-created session appears at the top.
 - In a browser whose time zone is `Asia/Kolkata`, a session's Created cell shows its creation time in that zone (UTC + 5 h 30 min), within a minute of when it was created (`test_uc_a_04_created_time_uses_the_viewer_time_zone`).
-- Authenticated admin chrome shows `#admin-page-nav` with an Admin breadcrumb and links to Sessions and Quiz library.
+- Authenticated admin chrome shows `#admin-page-nav`. Its breadcrumb is one item, Sessions, marked as the current page and not a link; its section links go to Sessions and Quiz library. The tab title reads "Sessions — Prashna"; signed out, it reads "Prashna" (`test_admin_breadcrumbs_link_sessions_and_quiz_library`).
 - Clicking a row in `#session-rows` opens the session page `/m/<code>` (UC-A-08). Each row's title is a link to the same URL. The Actions column has, in order, the links Participant (`/s/<code>`) and Projector (`/p/<code>`, a new tab), then the extra-small buttons **Start** (while the session is not started) and Delete. The views are plain links and the actions are buttons (UX.md §10) (`test_uc_a_04_row_actions_and_title_link`).
 - Clicking **Start** on a not-started row starts the session (`POST /api/sessions/{code}/start`, UC-M-01) without leaving the list; the row then shows the Live badge and no Start button. Start is guarded against repeat clicks (`test_uc_a_04_start_from_the_list`).
 - Opening `/?session=<owned-code>` as an authenticated admin redirects to `/m/<code>` (older bookmarks keep working).
@@ -497,7 +497,7 @@ checkbox reads "Poll (no correct answer)", and the question type reads
 results stay as they were."
 
 **Tests (UI)**
-- On `/quizzes`, clicking a row in `#quiz-rows` opens `#editor-card`, populates `#editor-title`, and `#editor-body` lists each question with its answers and a correctness marker per answer.
+- On `/quizzes`, clicking a row in `#quiz-rows` opens `#editor-card`, sets `#editor-title` to "Quiz: <title>" (`test_uc_a_11_open_quiz_for_editing`), and `#editor-body` lists each question with its answers and a correctness marker per answer.
 - `#editor-card` immediately follows `#quiz-library-card` in the page and is in the viewport after opening, at desktop and phone widths.
 - The first question's text box is reachable by role as "Question 1 text", its first answer as "Answer 1 text", and that answer's checkbox as "Answer 1 is correct".
 - Each answer row of a graded question shows the visible word "Correct" beside its checkbox; the Poll toggle reads "Poll (no correct answer)"; the type select offers "Single choice" and "Multiple choice"; the hint doesn't mention "Launch" (`test_uc_a_11_editor_controls_have_visible_words`).
@@ -903,7 +903,7 @@ Used by question and answer editors to set `image_url`.
 **Tests (UI)**
 - On `/quizzes`, `#qs-rows` shows one row per QuizRun across owned sessions, with quiz title, version, session code, status badge, progress, and respondents. The column headers are spelled out ("Version", "Responses"), and the view summary uses plain words (no "playthrough" or "immutable") (`test_uc_a_23_run_report_uses_plain_words`).
 - `#run-view-switcher` exposes four `aria-pressed` buttons. Selecting By quiz groups on `quiz_id`; By version groups on `(quiz_id, version_no)`; By session groups on `session_code`; selecting Flat restores `#qs-rows`.
-- The quiz-library breadcrumb links back to Admin, and its section links target the quiz library and quiz-run report cards.
+- The quiz-library breadcrumb reads Sessions → Quiz library: Sessions links to `/` and Quiz library is the current page. The header has no separate home link, and the tab title reads "Quiz library — Prashna". The section links target the quiz library and quiz-run report cards (`test_quiz_library_breadcrumbs_link_admin_and_report_sections`).
 
 ### UC-A-24: View one quiz-run's results
 
@@ -922,7 +922,7 @@ Used by question and answer editors to set `image_url`.
 
 **Tests (UI)**
 - On `/quizzes`, clicking a row in `#qs-rows` opens `#results-card`; `#results-body` shows per-question answer counts with correctness markers.
-- `#results-title` names the thing: "Quiz run: <quiz title> · <session title>". The header line shows "Version <n>". Answers are drawn by `answerOption()` (UC-X-14): the correct one shows "✓ Correct" as text, and every count reads "<n> (<p>%)" (`test_uc_a_24_results_use_the_shared_answer_rows`).
+- `#results-title` names the thing: "Quiz run: <quiz title> · <session title>". The header line shows "Version <n>" and the link "Open session page →", which opens `/m/<code>` in a new tab (`test_uc_a_24_results_card_opens_and_closes`). Answers are drawn by `answerOption()` (UC-X-14): the correct one shows "✓ Correct" as text, and every count reads "<n> (<p>%)" (`test_uc_a_24_results_use_the_shared_answer_rows`).
 - `#results-card` is in the viewport after opening.
 - Opening `/quizzes?run=<run_id>` opens that run's `#results-card` directly (the session page's "View results →" link, UC-M-06).
 - `#results-close` closes the pane.
@@ -1163,8 +1163,8 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - Opening `/m/<code>` with a wrong stored key renders `#modkey-card` with toast "Couldn't load session — re-enter the moderator key."
 - With `#modkey-card` showing, `#title` reads "Session <code>", `header.top .meta` and the Sessions breadcrumb are hidden, and the card's text does not mention `#k=` (`test_uc_m_01_key_gate_shows_no_session_chrome`).
 - With `#modkey-card` showing, going to `/m/<code>#k=<mod_key>` in the same tab boots the moderator surface (`test_uc_m_01_moderator_link_pasted_into_an_open_tab`).
-- `#moderator-breadcrumbs` shows Sessions → session title. The Sessions link targets `/`; the session title is the current page. The adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
-- The header links to the session's other views: `#participant-link` (`/s/<code>`, same tab) and `#projector-link` (`/p/<code>`, a new tab, so the session page stays open while the projector goes on the room screen; the session list's Projector link does the same). A delegate moderator does not see the Sessions breadcrumb, which only an admin can use (`test_uc_m_views_links_for_a_delegate`).
+- `#moderator-breadcrumbs` shows Sessions → session title. The Sessions link targets `/`; the session title is the current page. The tab title reads "<session title> — Prashna" (`test_uc_m_01_breadcrumbs_jump_within_page_and_back_to_session`). The adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
+- The header links to the session's other views: `#participant-link` "Participant view" (`/s/<code>`, same tab) and `#projector-link` "Projector" (`/p/<code>`, a new tab, so the session page stays open while the projector goes on the room screen; the session list's Projector link does the same). A delegate moderator does not see the Sessions breadcrumb, which only an admin can use (`test_uc_m_views_links_for_a_delegate`).
 
 ### UC-M-02: Session lifecycle: Start → End
 
@@ -1621,8 +1621,8 @@ by default while the session is `planning`.
 **Tests (UI)**
 - On `/`, typing a valid code into `#join-code` and clicking `#join-btn` (or pressing Enter) navigates to `/s/<CODE>`.
 - `/s/<CODE>` shows `#title`, `#code`, `#my-name`, `#ask-card`, `#questions-card`, `#invite-card`.
-- `#participant-breadcrumbs` shows Prashna → session title → Participant, with section links for the long participant page.
-- `#view-links` links the session's other views for those who may open them, and is hidden for everyone else: the admin who owns the session (`viewer_is_owner: true` in `GET /api/sessions/{code}/participant-bootstrap`) sees Sessions (`/`), Moderate (`/m/<code>`) and Projector (`/p/<code>`); a delegate moderator (this browser holds the session's moderator key) sees Moderate and Projector; a participant sees none (`test_uc_p_view_links_follow_the_viewer`).
+- `#participant-breadcrumbs` shows Prashna → session title → Participant view, with section links for the long participant page. The root is Prashna, not Sessions, because participants cannot open the session list. The tab title reads "<session title> · Participant view — Prashna" (`test_participant_breadcrumbs_show_context_and_section_links`).
+- `#view-links` links the session's other views for those who may open them, and is hidden for everyone else: the admin who owns the session (`viewer_is_owner: true` in `GET /api/sessions/{code}/participant-bootstrap`) sees Sessions (`/`), Session page (`/m/<code>`) and Projector (`/p/<code>`); a delegate moderator (this browser holds the session's moderator key) sees Session page and Projector; a participant sees none (`test_uc_p_view_links_follow_the_viewer`).
 - Typing an unknown code redirects to `/?bad_code=XXX`; `#bad-code-msg` shows "Session 'XXX' does not exist." in red.
 
 ### UC-P-02: Anonymous identity per session
@@ -2067,7 +2067,7 @@ session.
   Participant row or issuing a `voter_token` cookie.
 
 **Tests (UI)**
-- On `/p/<CODE>`, `#title` shows session title, `#code` shows the join code in large type, `#origin` shows the participant URL host, `#join-qr` renders the full participant URL.
+- On `/p/<CODE>`, `#title` shows session title, `#code` shows the join code in large type, `#origin` shows the participant URL host, `#join-qr` renders the full participant URL. The tab title reads "<session title> · Projector — Prashna" (`test_uc_d_01_projector_renders_basic_elements`).
 - `#queries` shows up to ~8 unanswered queries sorted by vote desc.
 - Live or closed quiz question appears in `#quiz-section` (`#quiz-body`).
 - The page has no `#ask-card`, no `#login-card`, no `#sessions-card` (no chrome).

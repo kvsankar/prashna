@@ -36,6 +36,7 @@ def test_uc_d_01_projector_renders_basic_elements(base_url, admin_setup, page):
     try:
         page.goto(f"{base_url}/p/{s['code']}")
         expect(page.locator("#title")).to_contain_text(s["title"], timeout=5000)
+        expect(page).to_have_title(f"{s['title']} · Projector — Prashna")
         expect(page.locator("#code")).to_have_text(s["code"])
         expect(page.locator("#origin")).to_be_visible()
         expect(page.locator("#join-qr svg")).to_be_visible(timeout=10000)

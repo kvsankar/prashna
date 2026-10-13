@@ -55,6 +55,7 @@ def test_uc_m_01_breadcrumbs_jump_within_page_and_back_to_session(
         page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
         crumbs = page.locator("#moderator-breadcrumbs")
         expect(crumbs.locator('[aria-current="page"]')).to_have_text(s["title"])
+        expect(page).to_have_title(f"{s['title']} — Prashna")
 
         page.locator(".section-links a", has_text="Set up").click()
         expect(page.locator("#setup-section")).to_have_attribute("open", "")

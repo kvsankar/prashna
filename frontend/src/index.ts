@@ -62,6 +62,7 @@ async function refresh(): Promise<void> {
   const s = await api<AdminStatus>("/api/admin/status");
   $<HTMLElement>("main").classList.toggle("wide", s.authenticated);
   setVisible($("#admin-page-nav"), s.authenticated);
+  document.title = s.authenticated ? "Sessions — Prashna" : "Prashna";
   if (!s.initialized) {
     setHeaderMeta(el("span", { class: "muted small" }, "Initial setup"));
     // Without the link, explain where it is instead of showing a form the

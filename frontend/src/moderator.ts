@@ -99,7 +99,7 @@ async function loadSession(): Promise<void> {
 
 function applySession(loaded: Session, seq = latestSessionSeq): void {
   sessionState = loaded;
-  document.title = `Mod — ${sessionState.title}`;
+  document.title = `${sessionState.title} — Prashna`;
   $("#title").textContent = sessionState.title;
   $("#code").textContent = "Code " + CODE;
   $("#session-crumb").textContent = sessionState.title;

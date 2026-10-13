@@ -398,7 +398,7 @@ async function openQuizDetail(id: number): Promise<boolean> {
     editing = await api<QuizEditor>(`/api/quizzes/${id}?include_correct=true`);
     if (opening) { problemCursor = -1; problemCursorKey = null; }
     editingId = id;
-    showEditor(`Editing quiz: ${editing.title}`);
+    showEditor(`Quiz: ${editing.title}`);
     renderEditor();
     // Re-renders after each edit keep the scroll position.
     if (opening) revealCard($("#editor-card"));
@@ -431,7 +431,7 @@ function renderEditor(): void {
       if (r && r.status) quiz.status = r.status;
       void loadQuizzes();
       renderEditor();
-      $("#editor-title").textContent = `Editing quiz: ${quiz.title}`;
+      $("#editor-title").textContent = `Quiz: ${quiz.title}`;
     } catch (e) {
       // Refused (for example an empty title): show the saved title again.
       titleInp.value = quiz.title;
@@ -844,7 +844,7 @@ function renderResults(r: QuizRunResults): void {
     el("span", { class: "muted small" }, `Version ${r.version_no} · ${r.session_title} · `,
       el("code", { class: "small" }, r.session_code)),
     el("div", { class: "spacer" }),
-    el("a", { href: `/m/${r.session_code}`, target: "_blank", class: "small" }, "Open moderator →")));
+    el("a", { href: `/m/${r.session_code}`, target: "_blank", class: "small" }, "Open session page →")));
 
   if (!r.questions.length) {
     body.appendChild(el("div", { class: "muted small mt-3" }, "Quiz has no questions."));

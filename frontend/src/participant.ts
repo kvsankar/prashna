@@ -24,7 +24,7 @@ async function loadSession(): Promise<void> {
 }
 
 function applySession(s: Session, refreshFeedback = true): void {
-  document.title = `Prashna — ${s.title}`;
+  document.title = `${s.title} · Participant view — Prashna`;
   $("#title").textContent = s.title;
   $("#code").textContent = "Code " + CODE;
   $("#participant-breadcrumb-session").textContent = s.title;
@@ -608,7 +608,7 @@ function scheduleQuizRefresh(): void {
 function renderViewLinks(isOwner: boolean): void {
   const links: [string, string][] = [];
   if (isOwner) links.push(["Sessions", "/"]);
-  if (isOwner || modKey()) links.push(["Moderate", `/m/${CODE}`], ["Projector", `/p/${CODE}`]);
+  if (isOwner || modKey()) links.push(["Session page", `/m/${CODE}`], ["Projector", `/p/${CODE}`]);
   const box = $("#view-links");
   box.replaceChildren(...links.flatMap(([label, href]) => [" · ", el("a", { href }, label)]));
   setVisible(box, links.length > 0);

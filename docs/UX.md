@@ -120,6 +120,19 @@ the read density.
 - The participant surface uses the same pattern with read-appropriate
   section links. The projector remains the exception: as a public
   presentation surface it has no interactive chrome.
+- Admin pages start the breadcrumb at **Sessions** (`/`). On the session
+  list itself, Sessions is the only item and is the current page, not a
+  link. The quiz library reads **Sessions → Quiz library**. The
+  participant page starts at **Prashna**, because participants cannot
+  open the session list. The breadcrumb is the way up, so the header has
+  no separate home link.
+- Each page has one name, used in its links, breadcrumb and tab title:
+  **Sessions** (`/`), **Quiz library** (`/quizzes`), **Session page**
+  (`/m/<code>`), **Participant view** (`/s/<code>`) and **Projector**
+  (`/p/<code>`). Tab titles end in "— Prashna": "Sessions — Prashna",
+  "Quiz library — Prashna", "<session title> — Prashna" for the session
+  page, and "<session title> · Participant view — Prashna" and
+  "<session title> · Projector — Prashna" for the other session views.
 
 ---
 
@@ -572,7 +585,7 @@ a link as a button or use a button only to navigate.
   summary's "Add details") copies the default size and weight.
 - On touch devices every size grows to at least 32 px tall (§16a).
 
-- Verb-first labels: "Publish", "Delete", "Open moderator →".
+- Verb-first labels: "Publish", "Delete", "Open session page →".
 - One primary button per card. Two primaries on one surface is a smell.
 - Cancel / dismiss is a `.ghost`, never colored.
 - **Mutating buttons are guarded against double-submit.** Any button whose

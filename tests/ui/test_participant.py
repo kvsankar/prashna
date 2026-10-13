@@ -45,9 +45,10 @@ def test_participant_breadcrumbs_show_context_and_section_links(
     s = api_make_session(c, f"UI-P-nav {secrets.token_hex(3)}")
     try:
         page.goto(f"{base_url}/s/{s['code']}")
-        crumbs = page.locator("#participant-breadcrumbs")
-        expect(crumbs).to_contain_text(s["title"], timeout=5000)
-        expect(crumbs).to_contain_text("Participant")
+        crumbs = page.locator("#participant-breadcrumbs li")
+        expect(crumbs).to_have_text(["Prashna", s["title"], "Participant view"], timeout=5000)
+        expect(crumbs.first.locator("a")).to_have_attribute("href", "/")
+        expect(page).to_have_title(f"{s['title']} · Participant view — Prashna")
         page.locator(".section-links a", has_text="Questions").click()
         assert page.evaluate("location.hash") == "#questions-card"
     finally:
@@ -863,7 +864,7 @@ def test_uc_p_view_links_follow_the_viewer(base_url, admin_setup, page, browser)
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/s/{code}")
         links = page.locator("#view-links a")
-        expect(links).to_have_text(["Sessions", "Moderate", "Projector"], timeout=5000)
+        expect(links).to_have_text(["Sessions", "Session page", "Projector"], timeout=5000)
         expect(links.nth(1)).to_have_attribute("href", f"/m/{code}")
         expect(links.nth(2)).to_have_attribute("href", f"/p/{code}")
 
@@ -871,7 +872,7 @@ def test_uc_p_view_links_follow_the_viewer(base_url, admin_setup, page, browser)
         dpage = delegate.new_page()
         dpage.add_init_script(f"localStorage.setItem('mod_key:{code}', '{s['mod_key']}')")
         dpage.goto(f"{base_url}/s/{code}")
-        expect(dpage.locator("#view-links a")).to_have_text(["Moderate", "Projector"], timeout=5000)
+        expect(dpage.locator("#view-links a")).to_have_text(["Session page", "Projector"], timeout=5000)
         delegate.close()
     finally:
         c.close()

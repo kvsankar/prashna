@@ -55,7 +55,7 @@ def test_uc_a_09_create_quiz_opens_editor(base_url, admin_setup, page):
     page.click("#create-quiz")
     expect(page.locator("#quiz-rows tr").filter(has_text=title)).to_be_visible()
     expect(page.locator("#editor-card")).to_be_visible()
-    expect(page.locator("#editor-title")).to_contain_text(title)
+    expect(page.locator("#editor-title")).to_have_text(f"Quiz: {title}")
 
 
 def test_uc_a_09_create_quiz_enter_submits(base_url, admin_setup, page):
@@ -121,6 +121,7 @@ def test_uc_a_11_open_quiz_for_editing(base_url, admin_setup, page):
         row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
         row.click()
         expect(page.locator("#editor-card")).to_be_visible()
+        expect(page.locator("#editor-title")).to_have_text(f"Quiz: {quiz['title']}")
         # Question text is rendered into a textarea (text content).
         expect(page.locator("#editor-body textarea")).to_have_value("Sky color?")
         # Answer texts live in input values, not visible text.
@@ -910,12 +911,16 @@ def test_uc_a_29_menu_shows_sessions_already_holding_the_quiz(base_url, admin_se
 def test_quiz_library_breadcrumbs_link_admin_and_report_sections(
     base_url, admin_setup, page
 ):
-    """Quiz authoring remains visibly nested under the admin role."""
+    """UC-A-23: the quiz library sits under Sessions in the breadcrumb, which is
+    the only way up: the header has no separate home link."""
     _goto_quizzes(page, base_url)
     crumbs = page.locator(".breadcrumbs")
-    expect(crumbs).to_contain_text("Admin")
-    expect(crumbs).to_contain_text("Quiz library")
-    expect(crumbs.locator("a", has_text="Admin")).to_have_attribute("href", "/")
+    expect(crumbs.locator("li")).to_have_text(["Sessions", "Quiz library"])
+    expect(crumbs.locator("a", has_text="Sessions")).to_have_attribute("href", "/")
+    expect(crumbs.locator('[aria-current="page"]')).to_have_text("Quiz library")
+    expect(page.locator("header.top a")).to_have_count(0)
+    expect(page.locator("header.top")).not_to_contain_text("home")
+    expect(page).to_have_title("Quiz library — Prashna")
     expect(page.locator(".section-links a", has_text="Quiz runs")).to_have_attribute(
         "href", "#quiz-runs-card"
     )
@@ -1033,6 +1038,9 @@ def test_uc_a_24_results_card_opens_and_closes(base_url, admin_setup, page):
         row.click()
         expect(page.locator("#results-card")).to_be_visible()
         expect(page.locator("#results-body")).to_contain_text("2+2?")
+        link = page.locator("#results-body a", has_text="Open session page →")
+        expect(link).to_have_attribute("href", f"/m/{s['code']}")
+        expect(link).to_have_attribute("target", "_blank")
         page.click("#results-close")
         expect(page.locator("#results-card")).to_be_hidden()
     finally:

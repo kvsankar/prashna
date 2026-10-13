@@ -25,11 +25,18 @@ from ._helpers import (
 def test_admin_breadcrumbs_link_sessions_and_quiz_library(
     base_url, admin_setup, page
 ):
-    """Authenticated admin chrome exposes the current role and its child areas."""
+    """UC-A-04: the session list's breadcrumb is Sessions, the current page, and
+    its tab is named Sessions once the admin signs in."""
+    page.goto(base_url + "/")
+    expect(page).to_have_title("Prashna")
     admin_login_via_ui(page, base_url)
     nav = page.locator("#admin-page-nav")
     expect(nav).to_be_visible()
-    expect(nav.locator(".breadcrumbs")).to_contain_text("Admin")
+    crumbs = nav.locator(".breadcrumbs li")
+    expect(crumbs).to_have_text(["Sessions"])
+    expect(crumbs.locator('[aria-current="page"]')).to_have_text("Sessions")
+    expect(nav.locator(".breadcrumbs a")).to_have_count(0)
+    expect(page).to_have_title("Sessions — Prashna")
     expect(nav.locator(".section-links a", has_text="Sessions")).to_have_attribute(
         "href", "#sessions-card"
     )
@@ -401,6 +408,8 @@ def test_uc_m_views_links_for_a_delegate(base_url, admin_setup, page):
         page.wait_for_selector("#lifecycle-card:visible", timeout=5000)
         expect(page.locator("#participant-link")).to_have_attribute("href", f"/s/{s['code']}")
         expect(page.locator("#projector-link")).to_have_attribute("href", f"/p/{s['code']}")
+        expect(page.locator("#participant-link")).to_have_text("Participant view")
+        expect(page.locator("#projector-link")).to_have_text("Projector")
         # The projector opens in a new tab so the session page stays open.
         expect(page.locator("#projector-link")).to_have_attribute("target", "_blank")
         expect(page.locator("#participant-link")).not_to_have_attribute("target", "_blank")
