@@ -268,7 +268,7 @@ sequenceDiagram
   Library->>API: Save template state
   API->>Data: Persist editable quiz
   Moderator->>Cockpit: Queue quiz in session
-  Cockpit->>API: Launch ready quiz
+  Cockpit->>API: Add ready quiz to session
   API->>Data: Capture or reuse quiz version
   API->>Data: Create quiz run
   Participant->>API: Submit answer

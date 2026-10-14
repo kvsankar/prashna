@@ -69,8 +69,8 @@ textarea { min-height: 70px; resize: vertical; }
    recipe: a size sets the font size and --ctl-h /
    --ctl-px / --radius-control, a variant sets the colours. The padding derives from the height,
    so a size keeps its height whatever its font size.
-   Sizes: default 34 px (a card's own actions), .small 26 px (card tools,
-   menus), .xsmall 20 px (table row actions).
+   Sizes: default 40 px (a card's own actions), .small 32 px (card tools,
+   menus, editor rows), .xsmall 24 px (table row actions).
    Variants: secondary (default), .primary, .ghost, .danger. */
 button, details.menu > summary, .profile-cta {
   --ctl-h: var(--control-h); --ctl-px: var(--control-px); --radius-control: var(--radius-lg);
