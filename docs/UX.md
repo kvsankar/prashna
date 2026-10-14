@@ -477,6 +477,12 @@ Ready quiz that an edit broke (UC-A-10).
   centre of the screen (smoothly, unless the person prefers reduced
   motion), focuses its field, wraps at the ends and shows the position
   ("2 of 3"). The count is a polite live region.
+- The detail card's header row (title, navigator, Close) is pinned with
+  `position: sticky` just below the sticky page navigation
+  (`top: var(--page-nav-h)`, which `common.ts` keeps equal to the
+  navigation's height), so the navigator stays in reach while the author
+  moves through a long list. On phones the page navigation doesn't stick,
+  so the header pins to the top of the screen.
 - Once shown, the marks update after every edit and go away as each
   problem is fixed; the navigator goes with the last one. Don't show
   them before the author asks for the transition: a draft being written

@@ -82,6 +82,9 @@
   --gap-section: var(--space-5);  /* between cards and sections */
   --pad-page: var(--space-5);     /* the page gutter */
   --pad-projector: var(--space-6) var(--space-7);
+  /* Height of the sticky page navigation; common.ts keeps it current, so a
+     pinned card header can sit just below it (UX.md §7 Inline problems). */
+  --page-nav-h: 0px;
 
   /* Control heights on the 8 px grid (UX.md §10, UC-X-13). The smallest
      meets WCAG 2.2's 24 x 24 px minimum target; touch screens raise every

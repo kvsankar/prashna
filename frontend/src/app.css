@@ -51,6 +51,12 @@ section.card { background: var(--panel); border: 1px solid var(--border); border
 /* Keep cards clear of the sticky page-nav when scrolled to (section links,
    detail cards opened from a list). */
 section.card, details.card, details.setup { scroll-margin-top: 64px; }
+/* The quiz editor's header (title, problem navigator, Close) stays pinned
+   below the sticky page navigation while the editor scrolls (UC-A-21). */
+#editor-card > .card-head {
+  position: sticky; top: var(--page-nav-h); z-index: 10;
+  background: var(--panel); padding: var(--gap-related) 0; border-bottom: 1px solid var(--border);
+}
 h2 { margin-top: 0; font-size: var(--text-body); color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 input, textarea, select {
   width: 100%; border-radius: var(--radius-lg); border: 1px solid var(--border);
@@ -454,6 +460,8 @@ dialog.confirm-dialog::backdrop { background: var(--backdrop); }
   .ctable.stack td.actions > :first-child { margin-left: 0; }
   header.top { align-items: flex-start; gap: var(--gap-related); }
   .page-nav { position: static; align-items: flex-start; flex-direction: column; }
+  /* The page navigation doesn't stick on phones, so pin to the top. */
+  #editor-card > .card-head { top: 0; }
   .section-links { justify-content: flex-start; }
   .card-head { align-items: flex-start; }
   .card-head .card-tools { margin-left: 0; }

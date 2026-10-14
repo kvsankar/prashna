@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import secrets
 
+import pytest
 from playwright.sync_api import expect
 
 from ._helpers import (
@@ -718,6 +719,37 @@ def _three_problem_quiz(c, title: str) -> dict:
         {"text": "Third", "qtype": "single",
          "answers": [{"text": "e", "is_correct": True}, {"text": ""}]},
     ])
+
+
+NAV_IN_REACH_JS = """() => {
+  const btn = document.querySelector('#editor-problem-next').getBoundingClientRect();
+  const nav = document.querySelector('.page-nav');
+  const navBottom = nav && getComputedStyle(nav).position === 'sticky' ? nav.getBoundingClientRect().bottom : 0;
+  return { top: btn.top, bottom: btn.bottom, navBottom, vh: window.innerHeight };
+}"""
+
+
+@pytest.mark.parametrize("width", [1280, 390])
+def test_uc_a_21_navigator_stays_in_reach_on_a_long_quiz(base_url, admin_setup, page, width):
+    """UC-A-21: the editor header stays pinned, so Next problem is still on screen
+    after it moves to a problem far down a long quiz."""
+    c = api_login(base_url)
+    ok = {"qtype": "single", "answers": [{"text": "a", "is_correct": True}, {"text": "b"}]}
+    questions = [{"text": "", **ok}] + [{"text": f"Q{i}", **ok} for i in range(2, 12)] + [{"text": "", **ok}]
+    quiz = api_make_quiz(c, f"UI-Q21long {secrets.token_hex(3)}", questions=questions)
+    try:
+        page.set_viewport_size({"width": width, "height": 700})
+        _goto_quizzes(page, base_url)
+        page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).locator("button", has_text="Publish").click()
+        expect(page.locator("#editor-problem-count")).to_have_text("2 to fix", timeout=5000)
+        page.locator("#editor-problem-next").click()
+        page.locator("#editor-problem-next").click()  # to the last question, far down
+        expect(page.locator("#editor-problem-pos")).to_have_text("2 of 2")
+        page.wait_for_timeout(600)  # let the smooth scroll settle
+        box = page.evaluate(NAV_IN_REACH_JS)
+        assert box["top"] >= box["navBottom"] - 1 and box["bottom"] <= box["vh"], box
+    finally:
+        c.close()
 
 
 def test_uc_a_21_failed_publish_marks_every_problem_inline(base_url, admin_setup, page):

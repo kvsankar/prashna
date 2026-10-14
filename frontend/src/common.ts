@@ -37,6 +37,16 @@ export function publicBase(s: { participant_base_url: string | null; default_bas
   return (s.participant_base_url || s.default_base_url || location.origin).replace(/\/$/, "");
 }
 
+// Publish the sticky page navigation's height as --page-nav-h, so headers
+// pinned below it (the quiz editor's) never hide under it when its text
+// wraps or the reader enlarges the font (UX.md §7 Inline problems).
+const pageNav = document.querySelector<HTMLElement>(".page-nav");
+if (pageNav && "ResizeObserver" in window) {
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty("--page-nav-h", `${pageNav.offsetHeight}px`);
+  }).observe(pageNav);
+}
+
 /** Show or hide an element with the `hidden` attribute. app.css makes
  *  `[hidden]` win over any display rule. Use this instead of setting
  *  `style.display` (UX.md §1, enforced by test_frontend_contracts). */

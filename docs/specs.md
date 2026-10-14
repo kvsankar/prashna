@@ -808,7 +808,9 @@ Used by question and answer editors to set `image_url`.
   navigator in the editor header reads "N to fix"; its **↑** and **↓**
   buttons ("Previous problem", "Next problem") scroll to each problem in
   turn, focus its field, wrap at the ends and show the position ("2 of
-  3"). Each note is the field's accessible description
+  3"). The editor header (title, navigator, Close) stays pinned below the
+  page navigation while the editor scrolls, so the navigator stays in
+  reach on a long quiz. Each note is the field's accessible description
 - **And** once shown for a quiz, the notes update after every edit and
   disappear as each problem is fixed; the navigator disappears with the
   last one. A Ready quiz that an edit broke shows its notes and the
@@ -831,6 +833,7 @@ Used by question and answer editors to set `image_url`.
 **Tests (UI)**
 - In `#quiz-rows`, clicking a valid draft quiz's Publish button flips its status badge to `.badge-ready`.
 - Clicking a draft's Publish in `#quiz-rows` while its editor is closed, when three questions break rules, opens `#editor-card`; the three questions carry `.has-problem` and one `.problem-note` each, `#editor-problem-count` reads "3 to fix", and the toast says "Not published: fix the marked problems" (no error toast). **Next problem** focuses each problem's field in turn and wraps to the first; **Previous problem** goes back; `#editor-problem-pos` shows the position. Fixing one problem updates the count; fixing all hides the notes and the navigator, and Publish then flips the badge to `.badge-ready` (`test_uc_a_21_failed_publish_marks_every_problem_inline`).
+- On a 12-question quiz with problems in the first and last questions, after **Next problem** moves to the last question, the **Next problem** button is still inside the viewport and below the page navigation, at desktop width and at 390 px (`test_uc_a_21_navigator_stays_in_reach_on_a_long_quiz`).
 - Publishing an empty quiz from its row keeps it `draft` and shows "Add at least one question" beside **Add the first question**, with the navigator reading "1 to fix" (`test_uc_a_21_publish_empty_quiz_marks_where_questions_are_added`).
 - A draft with problems that hasn't failed a Publish shows no `.problem-note`, no `.has-problem` and no navigator, also after an edit (`test_uc_a_21_draft_shows_no_problems_before_publish`).
 
