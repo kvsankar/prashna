@@ -1,5 +1,9 @@
 # Prashna
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kvsankar/prashna/main/docs/images/prashna-hero.jpg" alt="A teacher under a banyan tree, with students raising their hands and question marks rising to an oil lamp" width="50%" />
+</p>
+
 ![How prashna brings an admin, moderators, participants and a projector into one live session for Q&A and quizzes, and what it produces afterwards](https://raw.githubusercontent.com/kvsankar/prashna/main/docs/images/prashna-infographic.png)
 
 *How prashna runs a session with an audience: an admin sets it up, a moderator runs the room, participants join on their phones and the projector shows the room the same state. Questions are asked and upvoted, versioned quizzes are run question by question, and the session ends with ranked questions, quiz results, run reports, attendee profiles and feedback. The [infographic source](https://github.com/kvsankar/prashna/blob/main/docs/images/prashna-infographic.html) is kept with the image.*
