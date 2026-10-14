@@ -1,9 +1,10 @@
 # Narration for the demo video: one line per scene, "<scene id><TAB><text>".
 # compose.py burns the text of every app scene in as that scene's caption, so
-# the captions are the spoken words. Card scenes (01, 02, 20) are spoken only.
+# the captions are the spoken words. The opening (01, 02) and the end (20) are
+# animations from cards.html and are spoken only.
 # voice.py speaks each line; compose.py fits each scene to its line.
-01-title	Prashna. Live questions and quizzes for any session with an audience.
-02-why	Many people will not ask a question out loud. A presenter cannot easily see who is following. Prashna gives anonymous questions with upvotes, short quizzes, and one shared screen.
+01-title	Prashna: live questions and quizzes.
+02-why	Many people won't ask out loud. Presenters can't see who's following. Prashna adds anonymous questions, upvotes, quick quizzes, and one shared screen.
 03-install	One command installs Prashna. Then start it.
 04-setup	First run: create the admin account.
 05-session	Create a session for the workshop.
@@ -21,4 +22,4 @@
 17-counts	The projector shows live counts without the answer text.
 18-answered	Phones show only how many have answered so far.
 19-reveal	Reveal results: the correct answer is shown.
-20-end	Install it with one command. Prashna is open source under the MIT licence.
+20-end	Try Prashna today. One command installs it. It's free and open source.

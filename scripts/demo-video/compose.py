@@ -1,25 +1,30 @@
 #!/usr/bin/env python3
 """Compose the demo video from recordings/, cards/, timeline.json and voice/.
 
-Every scene becomes one segment in segments/ (1920x1080, 30 fps, H.264). An
-app scene carries its narration line from narration.txt as a burned-in caption
-(ffmpeg drawtext); the card scenes are spoken only. Composite scenes place the
-projector recording and the phone recording side by side, cut from the same
-wall-clock span so they stay in sync.
+Every scene becomes a segment in segments/ (1920x1080, 30 fps, H.264), in two
+versions: a clean one, and one with the scene's narration line from
+narration.txt burned in as a caption (ffmpeg drawtext). The opening (01, 02)
+and the end card (20) are the animated clips from shoot_cards.py and carry no
+caption. Composite scenes place the projector recording and the phone
+recording side by side, cut from the same wall-clock span so they stay in sync.
 
 Each scene lasts at least LEAD + its voice line + TAIL seconds. Where the
 picture is shorter, its last frame is held (tpad=stop_mode=clone). The voice
 line starts LEAD seconds into its scene, so no line runs into the next scene.
 
 Outputs:
-  prashna-demo-silent.mp4  video only, captions burned in
-  prashna-demo.mp4         the same video with the narration track: two-pass
-                           loudnorm to -14 LUFS integrated, -1 dBTP, AAC-LC
-                           48 kHz 192 kbit/s (the mono voice on both
+  prashna-demo.mp4         the clean segments with the narration track: no
+                           captions in the picture and no subtitle stream;
+                           two-pass loudnorm to -14 LUFS integrated, -1 dBTP,
+                           AAC-LC 48 kHz 192 kbit/s (the mono voice on both
                            channels), +faststart
-  prashna-demo.srt         the narration lines with their spoken times
+  prashna-demo-silent.mp4  the captioned segments, video only
+  prashna-demo.srt         the narration lines with their spoken times, as a
+                           separate file (an optional caption track)
   scene-list.txt           start, length and voice timing of every scene
   audio/loudness.json      loudnorm measurements of both passes
+  opening-preview.png, ending-preview.png
+                           one frame each of the opening and the end card
 
 Run:  python3 -I compose.py
 """
@@ -38,6 +43,7 @@ FONT = "/usr/share/fonts/opentype/inter/Inter-Medium.otf"
 FPS = 30
 ENC = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-r", str(FPS), "-an"]
 SILENT = W / "prashna-demo-silent.mp4"
+CLEAN = SEG / "clean.mp4"  # the narrated video's picture, before the audio is added
 OUT = W / "prashna-demo.mp4"
 SRT = W / "prashna-demo.srt"
 LEAD = 0.2   # seconds of silence before each voice line
@@ -55,7 +61,8 @@ for _line in (W / "narration.txt").read_text(encoding="utf-8").splitlines():
         NARRATION[_scene.strip()] = _text.strip()
 VOICE: dict[str, float] = json.loads((W / "voice" / "durations.json").read_text())
 caption_no = 0
-scenes: list[tuple[str, Path, bool]] = []  # (scene id, segment, has caption)
+# (scene id, clean segment, captioned segment, has caption)
+scenes: list[tuple[str, Path, Path, bool]] = []
 
 
 def off(video: str, wall: float) -> float:
@@ -106,27 +113,35 @@ def caption_filter(name: str) -> str:
     )
 
 
-def card(name: str, png: str, base: float) -> None:
-    out = SEG / f"{name}.mp4"
-    dur = max(base, need(name))
-    run(["ffmpeg", "-y", "-loop", "1", "-framerate", str(FPS), "-i", str(W / "cards" / png), "-t", f"{dur:.3f}",
-         "-vf", "format=yuv420p", *ENC, str(out)])
-    scenes.append((name, out, False))
+def encode_both(name: str, inputs: list[str], picture: str) -> None:
+    """Encode the filter graph `picture` (ending in a frame stream) twice: as it
+    is into segments/, and with the scene's caption into segments/captioned/.
+    Both come from one decode, so they have the same frames."""
+    clean, captioned = SEG / f"{name}.mp4", SEG / "captioned" / f"{name}.mp4"
+    graph = f"{picture},split[clean][c];[c]{caption_filter(name)}[captioned]"
+    run(["ffmpeg", "-y", *inputs, "-filter_complex", graph,
+         "-map", "[clean]", *ENC, str(clean), "-map", "[captioned]", *ENC, str(captioned)])
+    scenes.append((name, clean, captioned, True))
+
+
+def card(name: str) -> None:
+    """An animated clip from shoot_cards.py; it must already fit the voice line."""
+    src = W / "cards" / f"{name}.mp4"
+    if frames(src) < round(need(name) * FPS):
+        raise SystemExit(f"{src.name} is shorter than its narration needs; run shoot_cards.py again")
+    scenes.append((name, src, src, False))
 
 
 def clip(name: str, video: str, t_in: float, t_out: float, speed: float = 1.0) -> None:
     """Cut `video` between offsets t_in..t_out (video seconds), played at `speed`."""
-    out = SEG / f"{name}.mp4"
     picture = (t_out - t_in) / speed
-    filters = [f"setpts=PTS/{speed}", f"fps={FPS}", "scale=1920:1080", hold(picture, name), caption_filter(name)]
-    run(["ffmpeg", "-y", "-ss", f"{t_in:.3f}", "-t", f"{t_out - t_in:.3f}", "-i", V[video]["path"],
-         "-vf", ",".join(f for f in filters if f), *ENC, str(out)])
-    scenes.append((name, out, True))
+    filters = [f"setpts=PTS/{speed}", f"fps={FPS}", "scale=1920:1080", hold(picture, name)]
+    encode_both(name, ["-ss", f"{t_in:.3f}", "-t", f"{t_out - t_in:.3f}", "-i", V[video]["path"]],
+                "[0:v]" + ",".join(f for f in filters if f))
 
 
 def composite(name: str, w_in: float, w_out: float, speed: float = 1.0) -> None:
     """Projector (left) and phone (right) from the same wall-clock span, played at `speed`."""
-    out = SEG / f"{name}.mp4"
     dur = w_out - w_in
     pad = hold(dur / speed, name)
     graph = (
@@ -134,21 +149,20 @@ def composite(name: str, w_in: float, w_out: float, speed: float = 1.0) -> None:
         f"[0:v]setpts=PTS/{speed},fps={FPS},scale=1376:774[p];"
         f"[1:v]setpts=PTS/{speed},fps={FPS},scale=416:900,pad=428:912:6:6:0x2b3036[m];"
         f"[bg][p]overlay=32:90:shortest=1[a];[a][m]overlay=1456:36[b];"
-        f"[b]{pad + ',' if pad else ''}{caption_filter(name)}[v]"
+        f"[b]{pad if pad else 'null'}"
     )
-    run(["ffmpeg", "-y",
-         "-ss", f"{off('projector', w_in):.3f}", "-t", f"{dur:.3f}", "-i", V["projector"]["path"],
-         "-ss", f"{off('phone', w_in):.3f}", "-t", f"{dur:.3f}", "-i", V["phone"]["path"],
-         "-filter_complex", graph, "-map", "[v]", *ENC, str(out)])
-    scenes.append((name, out, True))
+    encode_both(name, [
+        "-ss", f"{off('projector', w_in):.3f}", "-t", f"{dur:.3f}", "-i", V["projector"]["path"],
+        "-ss", f"{off('phone', w_in):.3f}", "-t", f"{dur:.3f}", "-i", V["phone"]["path"],
+    ], graph)
 
 
 def build_scenes() -> None:
     A = "admin"
     a = lambda mark: off(A, M[mark])  # noqa: E731
 
-    card("01-title", "title.png", 4.0)
-    card("02-why", "why.png", 8.0)
+    card("01-title")
+    card("02-why")
     t_dur = duration(Path(V["terminal"]["path"]))
     clip("03-install", "terminal", 1.4, min(13.8, t_dur - 0.2), speed=2.0)
     clip("04-setup", A, 0.0, a("setup_done") + 0.9, speed=1.4)
@@ -169,8 +183,8 @@ def build_scenes() -> None:
     composite("17-counts", M["counts_on"] + 0.9, M["others_half"] - 0.5)
     composite("18-answered", M["others_half"] - 0.5, M["others_answered"] + 0.8)
     composite("19-reveal", M["revealed"] - 0.3, M["end"] - 0.2)
-    card("20-end", "end.png", 5.0)
-    missing = set(NARRATION) ^ {s for s, _, _ in scenes}
+    card("20-end")
+    missing = set(NARRATION) ^ {s for s, _, _, _ in scenes}
     assert not missing, f"narration.txt and the scene list differ: {missing}"
 
 
@@ -208,7 +222,7 @@ def build_audio(lengths: list[float]) -> dict[str, dict[str, str]]:
     shutil.rmtree(AUD, ignore_errors=True)
     AUD.mkdir()
     parts = []
-    for (name, _, _), length in zip(scenes, lengths):
+    for (name, _, _, _), length in zip(scenes, lengths):
         part = AUD / f"{name}.wav"
         samples = round(length * VOICE_RATE)
         run(["ffmpeg", "-y", "-i", str(W / "voice" / f"{name}.wav"),
@@ -245,27 +259,43 @@ def build_audio(lengths: list[float]) -> dict[str, dict[str, str]]:
     return result
 
 
+def concat(segments: list[Path], out: Path) -> None:
+    lst = SEG / f"{out.stem}.txt"
+    lst.write_text("".join(f"file '{p}'\n" for p in segments))
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS),
+         "-movflags", "+faststart", "-an", "-sn", "-dn", "-map_metadata", "-1", str(out)])
+
+
+def still(t: float, out: Path) -> None:
+    run(["ffmpeg", "-y", "-ss", f"{t:.3f}", "-i", str(OUT), "-frames:v", "1", "-update", "1", str(out)])
+
+
 def main() -> None:
     shutil.rmtree(SEG, ignore_errors=True)
     (SEG / "captions").mkdir(parents=True)
+    (SEG / "captioned").mkdir()
     build_scenes()
 
-    lst = SEG / "list.txt"
-    lst.write_text("".join(f"file '{p}'\n" for _, p, _ in scenes))
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS),
-         "-movflags", "+faststart", "-an", str(SILENT)])
-    lengths = [frames(p) / FPS for _, p, _ in scenes]
+    lengths = [frames(clean) / FPS for _, clean, _, _ in scenes]
+    for (name, clean, captioned, _), length in zip(scenes, lengths):
+        assert frames(captioned) == round(length * FPS), f"{name}: the two versions differ in length"
+    # Narrated: clean pictures (no captions); the SRT is a separate file.
+    concat([clean for _, clean, _, _ in scenes], CLEAN)
+    # Silent: the same pictures with each app scene's line burned in.
+    concat([captioned for _, _, captioned, _ in scenes], SILENT)
 
     loud = build_audio(lengths)
-    run(["ffmpeg", "-y", "-i", str(SILENT), "-i", str(AUD / "narration.wav"), "-map", "0:v", "-map", "1:a",
+    run(["ffmpeg", "-y", "-i", str(CLEAN), "-i", str(AUD / "narration.wav"), "-map", "0:v", "-map", "1:a",
          "-c:v", "copy", "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "192k", "-ar", "48000", "-ac", "2",
-         "-movflags", "+faststart", str(OUT)])
+         "-map_metadata", "-1", "-movflags", "+faststart", str(OUT)])
 
     t = 0.0
     lines: list[str] = []
     cues: list[tuple[float, float, str]] = []
-    for i, ((name, _, has_caption), length) in enumerate(zip(scenes, lengths)):
+    starts: dict[str, tuple[float, float]] = {}
+    for i, ((name, _, _, has_caption), length) in enumerate(zip(scenes, lengths)):
+        starts[name] = (t, length)
         v_start, v_end = t + LEAD, t + LEAD + VOICE[name]
         assert v_end <= t + length - TAIL + 0.01, f"{name}: voice runs past its scene"
         nxt = t + length + LEAD if i + 1 < len(scenes) else None
@@ -289,8 +319,13 @@ def main() -> None:
     SRT.write_text("\n".join(f"{n}\n{srt_time(a)} --> {srt_time(b)}\n{wrap(text)}\n"
                               for n, (a, b, text) in enumerate(cues, start=1)), encoding="utf-8")
     (W / "scene-list.txt").write_text("\n".join(lines) + "\n")
+    # One frame each of the finished opening and end card, for review.
+    start, length = starts["02-why"]
+    still(start + length - 0.4, W / "opening-preview.png")
+    start, length = starts["20-end"]
+    still(start + length - 0.5, W / "ending-preview.png")
     print("\n".join(lines))
-    print("wrote", SILENT, OUT, SRT)
+    print("wrote", OUT, SILENT, SRT)
 
 
 if __name__ == "__main__":

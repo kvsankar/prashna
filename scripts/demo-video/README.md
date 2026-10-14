@@ -1,15 +1,22 @@
 # Prashna demo video build
 
-Builds the Prashna demo video (about 92 s, 1920x1080, 30 fps, H.264) from real
-headless screen recordings of Prashna 0.6.0, with a spoken narration and the
-same words burned in as captions. Outputs:
+Builds the Prashna demo video (about 91 s, 1920x1080, 30 fps, H.264) from real
+headless screen recordings of Prashna 0.6.0, with a spoken narration. It opens
+with a short animation and ends on a call to action. Outputs:
 
 - `prashna-demo.mp4`: video with narration (AAC-LC, 48 kHz, 192 kbit/s,
-  -14 LUFS integrated, true peak at most -1 dBTP), `+faststart`.
-- `prashna-demo-silent.mp4`: the same video without sound.
-- `prashna-demo.srt`: the narration as subtitles, timed to the voice.
+  -14 LUFS integrated, true peak at most -1 dBTP), `+faststart`. It has one
+  video and one audio stream: no captions in the picture and no subtitle
+  stream.
+- `prashna-demo-silent.mp4`: the same video without sound, with the narration
+  burned in as captions on the app scenes, because it has no voice.
+- `prashna-demo.srt`: the narration as subtitles, timed to the voice. Upload
+  it beside `prashna-demo.mp4` where a platform offers an optional caption
+  track.
 - `contact-sheet.png` and `frames/`: one frame every 6 s, for review.
-- `voice-samples/`: the why-card passage in the chosen voice and two others.
+- `opening-preview.png` and `ending-preview.png`: one frame each of the
+  opening and the end card.
+- `voice-samples/`: the why passage in the chosen voice and two others.
 
 ## Steps
 
@@ -41,29 +48,60 @@ same words burned in as captions. Outputs:
    `recordings/*.webm`, `timeline.json` (wall-clock marks and each
    recording's start), `shots/*.png` (checkpoints), `server-output.raw.txt`,
    and `terminal-text.txt` via `sanitize_terminal.py`.
-5. `uv run --project tooling python shoot_cards.py` screenshots the title,
-   why and end cards from `cards.html` into `cards/`.
+5. `uv run --project tooling python shoot_cards.py` renders the opening and
+   the end card from `cards.html` (see Opening and end card below): it calls
+   the page's `renderAt(t)` for every frame at 30 fps, screenshots it at
+   1920x1080 in headless Chromium, and encodes the frames into
+   `cards/01-title.mp4`, `cards/02-why.mp4` and `cards/20-end.mp4`. Each clip
+   is as long as its narration line needs, so this step reads
+   `voice/durations.json`.
 6. `python3 -I compose.py` cuts each scene from the recordings using the
-   timeline marks, burns each app scene's narration line in as its caption
-   with ffmpeg `drawtext` (Inter), puts projector and phone side by side for
-   the live scenes, and concatenates the segments into
-   `prashna-demo-silent.mp4`. It then builds the narration track and muxes
-   it into `prashna-demo.mp4`, and writes `prashna-demo.srt`,
-   `scene-list.txt` (start, length and voice timing of every scene) and
-   `audio/loudness.json`.
-7. ffmpeg extracts one frame every 6 s into `frames/`, tiles them into
-   `contact-sheet.png`, and prints the final file's loudness and true peak
-   (`ebur128`).
+   timeline marks and puts projector and phone side by side for the live
+   scenes. Each app scene is encoded twice from one decode: clean, and with
+   its narration line burned in as a caption with ffmpeg `drawtext` (Inter).
+   The clean segments and the card clips are concatenated and muxed with the
+   narration track into `prashna-demo.mp4`; the captioned ones become
+   `prashna-demo-silent.mp4`. It also writes `prashna-demo.srt`,
+   `scene-list.txt` (start, length and voice timing of every scene),
+   `audio/loudness.json`, `opening-preview.png` and `ending-preview.png`.
+7. ffmpeg extracts one frame every 6 s of `prashna-demo.mp4` into
+   `frames/`, tiles them into `contact-sheet.png`, and prints the final
+   file's duration, streams, loudness and true peak (`ebur128`).
 8. `./check_text.sh` greps every text that reaches the screen or the
-   narration (terminal text, cards, captions, `narration.txt`, the SRT and
-   the scene list) for paths, tokens, emails, non-loopback IPs and the local
-   user name.
+   narration (terminal text, `cards.html`, captions, `narration.txt`, the SRT
+   and the scene list) for paths, tokens, emails, non-loopback IPs and the
+   local user name. The cards and the narration may name only the installer
+   and the repository addresses.
+
+## Opening and end card
+
+`cards.html` draws both as a pure function of time, with no CSS transitions
+or animations, so every run gives the same frames. Colours are copied from
+`frontend/src/tokens.css`; fonts are the local Inter and DejaVu Sans Mono; no
+file is fetched from the network.
+
+- Opening (`?scene=opening`, scenes 01 and 02, about 12.6 s): the wordmark
+  and the tagline "Questions and quizzes for any room", then a room drawn in
+  shapes: a projector screen with empty question slots and four phones with
+  dashed question bubbles over them. The bubbles turn indigo and fly to the
+  screen as anonymous questions, upvotes fly up and the counts rise, the rows
+  re-sort, a quiz panel slides in with growing vote bars while the phones
+  tap answers, and the screen and phones light up as one shared screen. The
+  event times in scene 02 follow the pauses in its narration line; if that
+  line changes, check them against `voice/02-why.wav`.
+- End card (`?scene=end`, scene 20, 8 s): the wordmark, "Try it in one
+  command", the install command in a terminal box, a QR code for
+  `https://github.com/kvsankar/prashna` with the address under it, "Free and
+  open source · MIT", and "The narration is a synthetic voice." in small
+  type. The QR code is drawn by the generator Prashna already vendors,
+  `frontend/public/vendor/qrcode.js` (MIT, Kazuhiko Arase), error correction
+  level M.
 
 ## Narration
 
 - `narration.txt` holds one line per scene. For every app scene the line is
-  also the burned-in caption, so the captions are an exact transcript. The
-  title, why and end cards are spoken only.
+  also the caption burned into the silent version, so those captions are an
+  exact transcript. The opening and the end card are spoken only.
 - `voice.py` runs Kokoro-82M v1.0 (Apache-2.0) locally on the CPU through
   ONNX Runtime, using the ONNX export at
   `https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX`, pinned to
@@ -79,7 +117,9 @@ same words burned in as captions. Outputs:
   `narration.txt`.
 - `compose.py` makes every scene at least 0.2 s + its voice line + 0.4 s
   long, holding the last frame (`tpad=stop_mode=clone`) where the picture is
-  shorter, and starts each line 0.2 s into its scene, so no line runs into
+  shorter (`shoot_cards.py` sizes the card clips the same way, and
+  `compose.py` stops if a clip is too short), and starts each line 0.2 s into
+  its scene, so no line runs into
   the next scene. The track is limited to 12 dB above its loudness (at
   192 kHz, to catch peaks between samples), then normalised with two-pass
   `loudnorm` (linear) to -14 LUFS and -1 dBTP. There is no music.

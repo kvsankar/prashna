@@ -2,58 +2,465 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Cards</title>
+<title>Prashna demo cards</title>
+<!--
+  The two animated cards of the demo video: the opening (?scene=opening) and
+  the end card (?scene=end). shoot_cards.py calls renderAt(t) once per frame;
+  every element's state is a pure function of t, so the frames are
+  deterministic. Nothing animates on its own (no CSS transitions or
+  animations). Fonts are local (Inter, DejaVu Sans Mono); the QR code is drawn
+  with the generator Prashna vendors (frontend/public/vendor/qrcode.js, MIT).
+
+  Opening query parameters: t1 = length of scene 01-title in seconds; event
+  times in scene 02-why are seconds after t1, matched to its narration line.
+-->
 <style>
-  html, body { margin: 0; width: 1920px; height: 1080px; background: #ffffff; color: #1f2328;
-               font-family: Inter, system-ui, sans-serif; }
-  .card { display: none; position: absolute; inset: 0; padding: 0 200px; box-sizing: border-box;
-          flex-direction: column; justify-content: center; }
-  body[data-card="title"] #title, body[data-card="why"] #why, body[data-card="end"] #end { display: flex; }
-  .brand { font-size: 128px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
-  .tag { font-size: 44px; font-weight: 400; color: #444c56; margin: 24px 0 0; }
-  h2 { font-size: 56px; font-weight: 600; margin: 0 0 36px; }
-  p, li { font-size: 40px; line-height: 1.4; margin: 0; }
-  .block { margin-bottom: 56px; }
-  .label { font-size: 30px; color: #6b7480; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 14px; }
-  ul { margin: 0; padding-left: 48px; }
-  code { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size: 36px; background: #f1f3f5; padding: 10px 18px; border-radius: 8px; }
-  .small { font-size: 32px; color: #6b7480; margin-top: 48px; }
+  /* Values copied from frontend/src/tokens.css. */
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #273449;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #5f63f0;
+    --accent-2: #818cf8;
+    --good: #22c55e;
+    --bad: #fa8080;
+    --warn: #f59e0b;
+    --border: #334155;
+    --proj-bg: #000;
+    --qr-bg: #fff;
+    --on-accent: #fff;
+    --accent-bg: rgba(99, 102, 241, 0.16);
+  }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg);
+               color: var(--text); font-family: Inter, system-ui, sans-serif; }
+  .stage { position: absolute; inset: 0; display: none; overflow: hidden;
+           background: radial-gradient(1300px 820px at 50% 42%, #17223b 0%, var(--bg) 72%); }
+  body[data-scene="opening"] #opening, body[data-scene="end"] #end { display: block; }
+  .abs { position: absolute; left: 0; top: 0; }
+  .drift { position: absolute; inset: 0; }
+  .drift svg { position: absolute; left: 0; top: 0; overflow: visible; }
+
+  /* Wordmark: bubble mark + "prashna". */
+  .brand { display: flex; align-items: center; gap: 0.2em; font-weight: 700; letter-spacing: -0.03em;
+           line-height: 1; white-space: nowrap; transform-origin: 0 0; color: #fff; }
+  .brand svg { height: 0.86em; width: auto; overflow: visible; }
+  #o-brand { font-size: 168px; }
+  #o-tag { font-size: 50px; font-weight: 500; color: var(--muted); white-space: nowrap; letter-spacing: -0.01em; }
+
+  /* Opening: the room. */
+  #o-housing { left: 338px; top: 100px; width: 1244px; height: 16px; border-radius: 8px; background: var(--border); }
+  #o-screen { left: 360px; top: 120px; width: 1200px; height: 490px; box-sizing: border-box; border-radius: 14px;
+              background: var(--proj-bg); border: 2px solid var(--border); overflow: hidden; }
+  .ghost { position: absolute; left: 36px; height: 92px; box-sizing: border-box; border-radius: 8px;
+           border: 2px dashed var(--border); }
+  .qrow { position: absolute; left: 36px; height: 92px; border-radius: 8px; background: var(--panel); overflow: hidden; }
+  .qrow .flash { position: absolute; inset: 0; background: var(--accent); }
+  .votebox { position: absolute; left: 12px; top: 10px; width: 72px; height: 72px; border-radius: 6px;
+             background: var(--panel-2); display: flex; flex-direction: column; align-items: center;
+             justify-content: center; gap: 4px; }
+  .votebox svg { width: 22px; height: 12px; }
+  .votebox .num { font-size: 30px; font-weight: 700; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
+  .bar { position: absolute; height: 14px; border-radius: 7px; background: var(--muted); }
+  #o-quiz { left: 664px; top: 36px; width: 500px; height: 418px; border-radius: 8px; background: var(--panel); }
+  .opt { position: absolute; left: 28px; width: 444px; height: 84px; border-radius: 6px; background: var(--panel-2); overflow: hidden; }
+  .opt .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: 0.55; }
+  .opt .count { position: absolute; right: 22px; top: 0; bottom: 0; display: flex; align-items: center;
+                font-size: 32px; font-weight: 700; color: #c7cdfb; font-variant-numeric: tabular-nums; }
+  .phone { position: absolute; top: 760px; width: 150px; height: 300px; box-sizing: border-box; border-radius: 26px;
+           background: var(--panel-2); border: 2px solid var(--border); }
+  .phone .scr { position: absolute; inset: 9px; border-radius: 18px; background: var(--bg); overflow: hidden; }
+  .phone .notch { position: absolute; left: 50%; top: 8px; width: 44px; height: 8px; margin-left: -22px;
+                  border-radius: 4px; background: var(--border); }
+  .phone .layer { position: absolute; inset: 0; }
+  .pbox { position: absolute; left: 12px; right: 12px; border-radius: 8px; background: var(--panel-2); }
+  .pbtn { position: absolute; right: 12px; top: 138px; width: 64px; height: 30px; border-radius: 8px; background: var(--accent); }
+  .popt { position: absolute; left: 12px; right: 12px; height: 40px; box-sizing: border-box; border-radius: 8px;
+          background: var(--panel-2); border: 2px solid transparent; }
+  .qb, .tok { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; }
+  .qb { width: 84px; height: 71px; }
+  .qb svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .tok { width: 40px; height: 40px; border-radius: 50%; background: var(--accent);
+         display: flex; align-items: center; justify-content: center; }
+  .tok svg { width: 20px; height: 12px; }
+  #o-beams { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+  /* End card. */
+  #e-brand { left: 120px; top: 150px; font-size: 76px; }
+  #e-head { left: 116px; top: 282px; font-size: 108px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05;
+            color: #fff; white-space: nowrap; }
+  #e-sub { left: 120px; top: 440px; font-size: 42px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  #e-sub .dot { color: var(--accent-2); padding: 0 0.3em; }
+  #e-term { left: 120px; top: 656px; width: 1680px; box-sizing: border-box; border-radius: 14px; overflow: hidden;
+            border: 2px solid var(--border); background: var(--proj-bg);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(95, 99, 240, 0.15); }
+  #e-term .tbar { height: 44px; background: var(--panel); display: flex;
+                 align-items: center; gap: 12px; padding: 0 20px; }
+  #e-term .tbar i { width: 16px; height: 16px; border-radius: 50%; display: block; }
+  #e-term pre { margin: 0; padding: 46px 56px 50px; font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+                font-size: 40px; line-height: 1.2; color: var(--text); white-space: pre; }
+  #e-term .ps { color: var(--accent-2); }
+  #e-caret { display: inline-block; width: 0.6em; height: 1.1em; vertical-align: -0.2em; background: var(--accent-2); }
+  #e-qr { left: 1420px; top: 142px; width: 380px; height: 380px; border-radius: 22px; background: var(--qr-bg);
+          display: flex; align-items: center; justify-content: center; transform-origin: 50% 50%;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45); }
+  #e-qr svg { display: block; shape-rendering: crispEdges; }
+  #e-url { left: 1370px; top: 542px; width: 480px; text-align: center; font-size: 30px; font-weight: 600; color: var(--text); }
+  #e-note { left: 0; top: 1020px; width: 1920px; text-align: center; font-size: 20px; color: var(--muted); opacity: 0.8; }
 </style>
+<script src="../../frontend/public/vendor/qrcode.js"></script>
 </head>
-<body data-card="title">
-  <section class="card" id="title">
-    <h1 class="brand">prashna</h1>
-    <p class="tag">Live Q&amp;A and quizzes for any session with an audience</p>
+<body data-scene="opening">
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <path id="bubble" d="M20 2 H80 A18 18 0 0 1 98 20 V48 A18 18 0 0 1 80 66 H46 L24 83 L29 66 H20 A18 18 0 0 1 2 48 V20 A18 18 0 0 1 20 2 Z"/>
+      <polyline id="chev" points="2,11 11,2 20,11" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </defs>
+  </svg>
+
+  <section class="stage" id="opening">
+    <div class="drift" id="o-drift"></div>
+    <svg id="o-beams"></svg>
+    <div class="abs" id="o-room">
+      <div class="abs" id="o-housing"></div>
+      <div class="abs" id="o-screen">
+        <div class="abs" id="o-quiz"></div>
+      </div>
+    </div>
+    <div class="abs" id="o-fly"></div>
+    <div class="abs brand" id="o-brand"></div>
+    <div class="abs" id="o-tag">Questions and quizzes for any room</div>
   </section>
 
-  <section class="card" id="why">
-    <h2>For trainers, teachers, workshop and meetup hosts</h2>
-    <div class="block">
-      <div class="label">The problem</div>
-      <p>Many people will not ask a question out loud.</p>
-      <p>A presenter cannot easily see who is following.</p>
+  <section class="stage" id="end">
+    <div class="drift" id="e-drift"></div>
+    <div class="abs brand" id="e-brand"></div>
+    <div class="abs" id="e-head">Try it in one command</div>
+    <div class="abs" id="e-sub">Free and open source<span class="dot">&middot;</span>MIT</div>
+    <div class="abs" id="e-qr"></div>
+    <div class="abs" id="e-url">github.com/kvsankar/prashna</div>
+    <div class="abs" id="e-term">
+      <div class="tbar"><i style="background:var(--bad)"></i><i style="background:var(--warn)"></i><i style="background:var(--good)"></i></div>
+      <pre><span class="ps">$ </span><span id="e-cmd"></span><span id="e-caret"></span></pre>
     </div>
-    <div class="block">
-      <div class="label">What Prashna gives</div>
-      <ul>
-        <li>Anonymous questions with upvotes</li>
-        <li>Short quizzes</li>
-        <li>One shared screen</li>
-      </ul>
-    </div>
+    <div class="abs" id="e-note">The narration is a synthetic voice.</div>
   </section>
 
-  <section class="card" id="end">
-    <h2>Try it</h2>
-    <div class="block">
-      <div class="label">Install</div>
-      <p><code>curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh</code></p>
-    </div>
-    <div class="block">
-      <div class="label">Source</div>
-      <p>github.com/kvsankar/prashna &middot; MIT licence</p>
-    </div>
-    <p class="small">The narration is a synthetic voice.</p>
-  </section>
+<script>
+"use strict";
+const INSTALL = "curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh";
+const REPO_URL = "https://github.com/kvsankar/prashna";
+const NS = "http://www.w3.org/2000/svg";
+const P = new URLSearchParams(location.search);
+const SCENE = P.get("scene") || "opening";
+document.body.dataset.scene = SCENE;
+const T1 = parseFloat(P.get("t1") || "2.8");
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, x) => a + (b - a) * x;
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eBack = (x) => { const c = 1.70158; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const pulse = (t, at, width) => Math.max(0, 1 - Math.abs(t - at) / width);
+const el = (tag, cls, parent, style) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (style) Object.assign(e.style, style);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+const svgEl = (tag, attrs, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+const chevron = (color) => `<svg viewBox="0 0 22 13"><use href="#chev" stroke="${color}"/></svg>`;
+function brandInto(node) {
+  node.innerHTML = `<svg viewBox="0 0 100 84"><use href="#bubble" fill="var(--accent)"/>` +
+    `<text x="50" y="52" text-anchor="middle" font-family="Inter" font-weight="700" ` +
+    `font-size="50" fill="#fff">?</text></svg><span>prashna</span>`;
+}
+const place = (node, x, y, s = 1, o = 1) => {
+  node.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${s.toFixed(4)})`;
+  node.style.opacity = o.toFixed(3);
+};
+
+// Faint question bubbles drifting up behind everything (seeded, so repeatable).
+function makeDrift(container, seed) {
+  let s = seed;
+  const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
+  const items = [];
+  for (let i = 0; i < 18; i++) {
+    const size = 26 + rnd() * 46;
+    const svg = svgEl("svg", { viewBox: "0 0 100 84", width: size, height: size * 0.84 }, container);
+    svgEl("use", { href: "#bubble", fill: "none", stroke: "#818cf8", "stroke-width": 4 }, svg);
+    items.push({ svg, x: rnd() * 1920, y: rnd() * 1200, v: 16 + rnd() * 26, a: 0.35 + rnd() * 0.65, ph: rnd() * 6.28 });
+  }
+  return (t, level) => {
+    for (const it of items) {
+      const y = ((it.y - it.v * t) % 1200 + 1200) % 1200 - 80;
+      const x = it.x + 14 * Math.sin(it.ph + t * 0.6);
+      it.svg.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      it.svg.style.opacity = (level * it.a).toFixed(3);
+    }
+  };
+}
+
+/* ------------------------------------------------------------ opening */
+const SX = 360, SY = 120;                 // screen position
+const PX = [540, 813, 1087, 1360];        // phone centres
+const PY = 760;                           // phone top
+const slotY = (k) => 36 + k * 106;        // row top inside the screen
+const voteCentre = (k) => [SX + 36 + 12 + 36, SY + slotY(k) + 46];
+// Questions, in the order they reach the screen: [phone, launch time].
+const ASK = [[1, 4.35], [3, 4.6], [0, 4.85], [2, 5.1]];
+const FLY = 0.9;
+// Upvotes: [question, time]; with a phone they fly up from it, otherwise they
+// come from people off screen. Final counts: Q2 6, Q0 4, Q3 2, Q1 1.
+const VOTES = [
+  [2, 6.1, 0], [0, 6.2, 2], [2, 6.3, 3], [3, 6.4, 1], [0, 6.5, 0], [2, 6.58, 2],
+  [2, 6.95], [0, 7.0], [1, 6.98], [2, 7.05], [3, 7.08], [0, 7.1], [2, 7.12],
+];
+const TOK = 0.55;
+const RANK_AT = [7.15, 7.55];             // rows move to vote order
+const QUIZ_IN = [7.3, 7.75];
+const CHOICE = [0, 1, 0, 2];              // option tapped on each phone
+const BARS = [12, 5, 3];
+const SHARE = [8.3, 9.0];                 // glow and links: one shared screen
+const LINES = [[0.62, 0.42], [0.5, 0.34], [0.72, 0.4], [0.44, 0.3]];
+
+let O = null;
+function buildOpening() {
+  const screen = document.getElementById("o-screen");
+  const fly = document.getElementById("o-fly");
+  const brand = document.getElementById("o-brand");
+  brandInto(brand);
+  const ghosts = [0, 1, 2, 3].map((k) => el("div", "ghost", screen, { top: slotY(k) + "px", width: "1128px" }));
+  const rows = LINES.map(([w1, w2]) => {
+    const r = el("div", "qrow", screen);
+    const flash = el("div", "flash", r);
+    const vb = el("div", "votebox", r);
+    vb.innerHTML = chevron("#818cf8") + `<span class="num">0</span>`;
+    const b1 = el("div", "bar", r, { left: "108px", top: "28px", opacity: 0.55 });
+    const b2 = el("div", "bar", r, { left: "108px", top: "54px", opacity: 0.3 });
+    return { r, flash, vb, num: vb.querySelector(".num"), b1, b2, w1, w2 };
+  });
+  const quiz = document.getElementById("o-quiz");
+  el("div", "bar", quiz, { left: "28px", top: "30px", width: "300px", height: "18px", borderRadius: "9px", opacity: 0.6 });
+  const opts = BARS.map((_, j) => {
+    const o = el("div", "opt", quiz, { top: 80 + j * 104 + "px" });
+    const fill = el("div", "fill", o);
+    el("div", "bar", o, { left: "22px", top: "35px", width: 110 + j * 30 + "px", background: "var(--text)", opacity: 0.55 });
+    const count = el("div", "count", o);
+    return { fill, count };
+  });
+  const room = document.getElementById("o-room");
+  const phones = PX.map((cx) => {
+    const p = el("div", "phone", room, { left: cx - 75 + "px" });
+    const scr = el("div", "scr", p);
+    const ask = el("div", "layer", scr);
+    el("div", "bar", ask, { left: "14px", top: "30px", width: "70px", height: "10px", opacity: 0.5 });
+    const input = el("div", "pbox", ask, { top: "82px", height: "46px" });
+    const typed = el("div", "bar", input, { left: "10px", top: "16px", height: "12px", opacity: 0.7, background: "var(--text)" });
+    const btn = el("div", "pbtn", ask);
+    el("div", "pbox", ask, { top: "190px", height: "32px", background: "var(--panel)" });
+    el("div", "pbox", ask, { top: "230px", height: "32px", background: "var(--panel)" });
+    const quizL = el("div", "layer", scr);
+    el("div", "bar", quizL, { left: "14px", top: "30px", width: "90px", height: "10px", opacity: 0.5 });
+    const popts = [0, 1, 2].map((j) => el("div", "popt", quizL, { top: 66 + j * 50 + "px" }));
+    el("div", "notch", p);
+    return { p, ask, quizL, typed, btn, popts };
+  });
+  // Question bubbles: a dashed outline (not asked yet), then solid indigo when sent.
+  const bubbles = ASK.map(() => {
+    const b = el("div", "qb", fly);
+    b.innerHTML = `<svg viewBox="0 0 100 84">
+      <use class="dash" href="#bubble" fill="none" stroke="#94a3b8" stroke-width="3.5" stroke-dasharray="9 7"/>
+      <use class="solid" href="#bubble" fill="var(--accent)"/>
+      <text class="q1" x="50" y="50" text-anchor="middle" font-family="Inter" font-weight="700" font-size="44" fill="#94a3b8">?</text>
+      <text class="q2" x="50" y="50" text-anchor="middle" font-family="Inter" font-weight="700" font-size="44" fill="#fff">?</text></svg>`;
+    return { b, dash: b.querySelector(".dash"), solid: b.querySelector(".solid"), q1: b.querySelector(".q1"), q2: b.querySelector(".q2") };
+  });
+  const tokens = VOTES.filter((v) => v.length === 3).map((v) => {
+    const t = el("div", "tok", fly);
+    t.innerHTML = chevron("#fff");
+    return { node: t, q: v[0], at: v[1], phone: v[2] };
+  });
+  const beams = document.getElementById("o-beams");
+  const lines = PX.map((cx) => svgEl("line", { x1: cx, y1: PY - 6, x2: lerp(960, cx, 1.15), y2: SY + 492,
+    stroke: "#818cf8", "stroke-width": 3, "stroke-dasharray": "10 12", "stroke-linecap": "round" }, beams));
+  const r = brand.getBoundingClientRect();
+  O = { screen, brand, bw: r.width, bh: r.height, tag: document.getElementById("o-tag"), ghosts, rows, quiz, opts,
+        phones, bubbles, tokens, lines, drift: makeDrift(document.getElementById("o-drift"), 7),
+        housing: document.getElementById("o-housing"), tw: document.getElementById("o-tag").getBoundingClientRect().width };
+}
+
+// Point on a quadratic curve that rises from (x0, y0) and bends towards (x1, y1).
+function arc(x0, y0, x1, y1, x) {
+  const cx = x0, cy = y1 + 40;
+  const a = (1 - x) * (1 - x), b = 2 * (1 - x) * x, c = x * x;
+  return [a * x0 + b * cx + c * x1, a * y0 + b * cy + c * y1];
+}
+
+function renderOpening(t) {
+  const u = t - T1;                         // seconds into scene 02-why
+  // Act 1: the wordmark and tagline in the middle, then the wordmark moves to the corner.
+  const move = eInOut(prog(t, T1 - 0.35, T1 + 0.45));
+  const x0 = 960 - O.bw / 2, y0 = 400;
+  const pop = eBack(prog(t, 0.05, 0.75));
+  place(O.brand, lerp(x0, 60, move) + (1 - pop) * O.bw * 0.1, lerp(y0, 44, move),
+        lerp(0.8 + 0.2 * pop, 0.3, move), prog(t, 0.05, 0.4));
+  const tagIn = eOut(prog(t, 0.6, 1.3));
+  place(O.tag, 960 - O.tw / 2, 640 + 24 * (1 - tagIn), 1, tagIn * (1 - prog(t, T1 - 0.5, T1 - 0.1)));
+  O.drift(t, lerp(0.16, 0.07, move));
+
+  // The room comes in.
+  const roomIn = eOut(prog(u, -0.25, 0.75));
+  place(O.screen, 0, 30 * (1 - roomIn), 1, roomIn);
+  place(O.housing, 0, 30 * (1 - roomIn), 1, roomIn);
+  const share = eInOut(prog(u, SHARE[0], SHARE[1]));
+  const g = 0.25 + 0.75 * share;
+  O.screen.style.boxShadow = `0 0 ${(40 + 110 * g).toFixed(1)}px ${(6 + 18 * g).toFixed(1)}px rgba(95,99,240,${(0.12 + 0.3 * g).toFixed(3)})`;
+  O.screen.style.borderColor = share > 0 ? `rgba(129,140,248,${(0.25 + 0.6 * share).toFixed(3)})` : "";
+
+  // List width: full until the quiz arrives, then the left half.
+  const qin = eInOut(prog(u, QUIZ_IN[0], QUIZ_IN[1]));
+  const listW = lerp(1128, 604, qin);
+  place(O.quiz, 40 * (1 - qin), 0, 1, qin);
+
+  // Votes counted so far, and the last time each row got one.
+  const count = [0, 0, 0, 0], bump = [0, 0, 0, 0];
+  for (const v of VOTES) {
+    const arrive = v.length === 3 ? v[1] + TOK : v[1];
+    if (u >= arrive) { count[v[0]]++; bump[v[0]] = Math.max(bump[v[0]], 1 - (u - arrive) / 0.3); }
+  }
+  // Rank by final votes after RANK_AT, by arrival before.
+  const finalRank = [1, 3, 0, 2];
+  const rk = eInOut(prog(u, RANK_AT[0], RANK_AT[1]));
+  O.rows.forEach((row, q) => {
+    const arrive = ASK[q][1] + FLY - 0.08;
+    const vis = eOut(prog(u, arrive - 0.05, arrive + 0.3));
+    const slot = lerp(q, finalRank[q], rk);
+    row.r.style.top = slotY(slot).toFixed(2) + "px";
+    row.r.style.width = listW.toFixed(1) + "px";
+    row.r.style.zIndex = q === 2 ? 2 : 1;
+    const lift = q === 2 ? Math.sin(Math.PI * rk) : 0;
+    row.r.style.boxShadow = lift ? `0 ${(14 * lift).toFixed(1)}px ${(36 * lift).toFixed(1)}px rgba(0,0,0,${(0.6 * lift).toFixed(3)})` : "";
+    place(row.r, -24 * (1 - vis), 0, 1 + 0.03 * lift, vis);
+    row.flash.style.opacity = (0.45 * (1 - prog(u, arrive, arrive + 0.9)) * (u >= arrive ? 1 : 0)).toFixed(3);
+    row.num.textContent = String(count[q]);
+    row.vb.style.transform = `scale(${(1 + 0.22 * Math.max(0, bump[q])).toFixed(3)})`;
+    const inner = listW - 140;
+    row.b1.style.width = (inner * row.w1).toFixed(1) + "px";
+    row.b2.style.width = (inner * row.w2).toFixed(1) + "px";
+    O.ghosts[q].style.opacity = (roomIn * (1 - prog(u, arrive - 0.05, arrive + 0.2))).toFixed(3);
+    O.ghosts[q].style.width = listW.toFixed(1) + "px";
+  });
+
+  // Quiz bars fill as answers come in.
+  const total = BARS.reduce((a, b) => a + b, 0);
+  O.opts.forEach((o, j) => {
+    const p = eOut(prog(u, QUIZ_IN[1] + 0.05 * j, QUIZ_IN[1] + 1.0));
+    o.fill.style.width = (100 * (BARS[j] / total) * p).toFixed(2) + "%";
+    o.count.textContent = String(Math.round(BARS[j] * p));
+  });
+
+  // Phones: rise in, type, send; then switch to the quiz and tap an answer.
+  const toQuiz = prog(u, QUIZ_IN[0], QUIZ_IN[0] + 0.3);
+  O.phones.forEach((ph, k) => {
+    const rise = eOut(prog(u, 0.0 + 0.12 * k, 0.75 + 0.12 * k));
+    place(ph.p, 0, 120 * (1 - rise), 1, rise);
+    const launch = ASK.find((a) => a[0] === k)[1];
+    const typing = prog(u, launch - 1.2, launch - 0.35) * (u < launch ? 1 : 0);
+    ph.typed.style.width = (96 * typing).toFixed(1) + "px";
+    ph.btn.style.filter = `brightness(${(1 + 0.7 * pulse(u, launch, 0.3)).toFixed(3)})`;
+    ph.ask.style.opacity = (1 - prog(toQuiz, 0, 0.5)).toFixed(3);
+    ph.quizL.style.opacity = prog(toQuiz, 0.5, 1).toFixed(3);
+    const tap = QUIZ_IN[1] + 0.12 + 0.13 * k;
+    ph.popts.forEach((o, j) => {
+      const on = j === CHOICE[k] ? eOut(prog(u, tap, tap + 0.18)) : 0;
+      o.style.borderColor = on ? `rgba(95,99,240,${on.toFixed(3)})` : "transparent";
+      o.style.background = on ? `rgba(95,99,240,${(0.35 * on).toFixed(3)})` : "";
+    });
+    ph.p.style.borderColor = share > 0 ? `rgba(129,140,248,${(0.7 * share).toFixed(3)})` : "";
+  });
+
+  // Question bubbles: appear over the phones (not asked yet), turn solid, fly up.
+  O.bubbles.forEach((b, i) => {
+    const [k, launch] = ASK[i];
+    const appear = eBack(prog(u, 0.5 + 0.25 * k, 0.95 + 0.25 * k));
+    const solid = prog(u, launch - 0.3, launch);
+    const f = eInOut(prog(u, launch, launch + FLY));
+    const restY = 688 + 6 * Math.sin(2 * Math.PI * (u * 0.45 + k * 0.27));
+    const [tx, ty] = voteCentre(i);
+    const [x, y] = f > 0 ? arc(PX[k], restY, tx, ty, f) : [PX[k], restY];
+    const s = appear * lerp(1, 0.5, f);
+    const o = Math.min(1, appear) * (1 - prog(f, 0.82, 1)) * (u < 0.4 ? 0 : 1);
+    place(b.b, x - 42, y - 35.5, Math.max(0.05, s), o);
+    b.dash.style.opacity = b.q1.style.opacity = (1 - solid).toFixed(3);
+    b.solid.style.opacity = b.q2.style.opacity = solid.toFixed(3);
+  });
+
+  // Upvotes from the phones.
+  O.tokens.forEach((tk) => {
+    const f = eInOut(prog(u, tk.at, tk.at + TOK));
+    const [tx, ty] = voteCentre(tk.q);
+    const [x, y] = arc(PX[tk.phone], PY - 10, tx, ty, f);
+    const o = u < tk.at ? 0 : 1 - prog(f, 0.8, 1);
+    place(tk.node, x - 20, y - 20, lerp(1, 0.7, f), o);
+  });
+
+  // One shared screen: every phone linked to it.
+  O.lines.forEach((ln) => {
+    ln.setAttribute("stroke-opacity", (0.55 * eOut(prog(u, SHARE[0], SHARE[1]))).toFixed(3));
+    ln.setAttribute("stroke-dashoffset", (u * 40).toFixed(1));
+  });
+}
+
+/* ------------------------------------------------------------ end card */
+let E = null;
+function buildEnd() {
+  brandInto(document.getElementById("e-brand"));
+  const qr = qrcode(0, "M");
+  qr.addData(REPO_URL);
+  qr.make();
+  const n = qr.getModuleCount(), cell = Math.floor(330 / (n + 4)), size = cell * (n + 4);
+  const svg = svgEl("svg", { width: size, height: size, viewBox: `0 0 ${n + 4} ${n + 4}` }, document.getElementById("e-qr"));
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + 2} ${r + 2}h1v1h-1z`;
+  svgEl("path", { d, fill: "#000" }, svg);
+  E = { ids: ["e-brand", "e-head", "e-sub", "e-term", "e-qr", "e-url", "e-note"].map((i) => document.getElementById(i)),
+        cmd: document.getElementById("e-cmd"), caret: document.getElementById("e-caret"),
+        drift: makeDrift(document.getElementById("e-drift"), 11) };
+}
+
+function renderEnd(t) {
+  const [brand, head, sub, term, qr, url, note] = E.ids;
+  const rise = (node, a, b, dy) => { const p = eOut(prog(t, a, b)); place(node, 0, dy * (1 - p), 1, p); };
+  rise(brand, 0.0, 0.5, 20);
+  rise(head, 0.12, 0.72, 34);
+  rise(sub, 0.3, 0.9, 24);
+  rise(term, 0.42, 1.02, 40);
+  rise(url, 0.85, 1.35, 16);
+  const q = eBack(prog(t, 0.6, 1.2));
+  qr.style.transform = `scale(${(0.9 + 0.1 * q).toFixed(4)})`;
+  qr.style.opacity = prog(t, 0.6, 0.95).toFixed(3);
+  note.style.opacity = (0.8 * prog(t, 1.0, 1.5)).toFixed(3);
+  const typed = Math.round(INSTALL.length * prog(t, 0.7, 1.55));
+  E.cmd.textContent = INSTALL.slice(0, typed);
+  E.caret.style.opacity = t < 1.55 || Math.floor((t - 1.55) / 0.55) % 2 === 1 ? "1" : "0";
+  E.drift(t, 0.06);
+}
+
+window.renderAt = (t) => (SCENE === "end" ? renderEnd(t) : renderOpening(t));
+window.ready = document.fonts.ready.then(() => {
+  if (SCENE === "end") buildEnd(); else buildOpening();
+  window.renderAt(0);
+  return true;
+});
+</script>
 </body>
 </html>

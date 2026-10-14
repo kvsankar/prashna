@@ -1,5 +1,6 @@
 #!/bin/sh
-# Rebuild prashna-demo.mp4 (narrated) and prashna-demo-silent.mp4 from scratch.
+# Rebuild prashna-demo.mp4 (narrated, no captions), prashna-demo-silent.mp4
+# (captions burned in) and prashna-demo.srt from scratch.
 # See README.md for what each step does. Steps 1-3 need network access the
 # first time (installer, PyPI, Hugging Face); later steps do not.
 set -eu
@@ -23,11 +24,13 @@ uv run --project tooling python voice.py --samples
 #    (also writes server-output.raw.txt and terminal-text.txt via sanitize_terminal.py)
 uv run --project tooling python record_app.py
 
-# 5. Title / why / end cards -> cards/*.png
+# 5. Animated opening and end card from cards.html, one frame at a time, sized
+#    to the narration -> cards/01-title.mp4, cards/02-why.mp4, cards/20-end.mp4
 uv run --project tooling python shoot_cards.py
 
 # 6. Cut, caption, fit scenes to the voice, mix and normalise the narration
-#    -> prashna-demo.mp4, prashna-demo-silent.mp4, prashna-demo.srt, scene-list.txt
+#    -> prashna-demo.mp4 (no captions), prashna-demo-silent.mp4 (captions),
+#    prashna-demo.srt, scene-list.txt, opening-preview.png, ending-preview.png
 python3 -I compose.py
 
 # 7. Review material: one frame every 6 s -> frames/, and contact-sheet.png;
@@ -38,6 +41,7 @@ ffmpeg -y -v error -i prashna-demo.mp4 \
   -vf "fps=1/6,scale=480:-1,tile=4x4:padding=6:margin=6:color=white" \
   -frames:v 1 -update 1 contact-sheet.png
 ffprobe -v error -show_entries format=duration,size -of default=nw=1 prashna-demo.mp4
+ffprobe -v error -show_entries stream=index,codec_type,codec_name -of csv=p=0 prashna-demo.mp4
 ffmpeg -hide_banner -nostats -i prashna-demo.mp4 -map 0:a -af ebur128=peak=true -f null - 2>&1 \
   | sed -n '/Summary:/,$p'
 

@@ -1,7 +1,9 @@
 #!/bin/sh
 # Fails if any text that ends up on screen or in the narration (terminal text,
-# cards, captions, narration, subtitles, scene list) contains a path, a token, an email, a public IP, or the local
-# user name. 127.0.0.1 is allowed (it is what the app prints).
+# the opening and end card in cards.html, captions, narration, subtitles, scene
+# list) contains a path, a token, an email, a public IP, or the local user
+# name. 127.0.0.1 is allowed (it is what the app prints). The cards and the
+# narration may name only two addresses: the installer and the repository.
 set -u
 W="$(cd "$(dirname "$0")" && pwd)"
 files="$W/terminal-text.txt $W/cards.html $W/scene-list.txt $W/segments/captions/*.txt $W/narration.txt $W/prashna-demo.srt"
@@ -16,5 +18,10 @@ fi
 # shellcheck disable=SC2086
 if grep -nE '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b' $files | grep -v '127\.0\.0\.1'; then
   echo "check_text: non-loopback IP found"; exit 1
+fi
+# web addresses on the cards and in the narration (the SVG namespace is not shown)
+if grep -noE 'https?://[^ "<>`)]+' "$W/cards.html" "$W/narration.txt" \
+  | grep -vE ':(https://kvsankar\.github\.io/prashna/install\.sh|https://github\.com/kvsankar/prashna|http://www\.w3\.org/2000/svg)$'; then
+  echo "check_text: unexpected address found"; exit 1
 fi
 echo "check_text: ok"
