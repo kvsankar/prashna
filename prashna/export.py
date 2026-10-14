@@ -314,7 +314,7 @@ SESSION_COLUMNS: list[Column] = [
     ("Created at", _key("created_at")),
     ("Started at", _key("started_at")),
     ("Ended at", _key("ended_at")),
-    ("Rating open", lambda r: _yes_no(r["feedback_enabled"])),
+    ("Feedback open", lambda r: _yes_no(r["feedback_enabled"])),
     ("Participant base URL", _key("participant_base_url")),
     ("Participants", _key("participant_count")),
     ("Questions", _key("question_count")),

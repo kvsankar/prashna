@@ -17,7 +17,7 @@ BOB = "voter-bob-0a1b2c3d4e5f6071"  # pragma: allowlist secret
 
 SESSION_HEADERS = [
     "Session code", "Title", "Status", "Created at", "Started at", "Ended at",
-    "Rating open", "Participant base URL", "Participants", "Questions",
+    "Feedback open", "Participant base URL", "Participants", "Questions",
     "Quiz runs", "Feedback responses", "Average rating",
 ]
 PARTICIPANT_HEADERS = [
@@ -257,7 +257,7 @@ def test_uc_a_30_session_xlsx(admin_client, populated):
     assert session["Participants"] == 2 and session["Questions"] == 2
     assert session["Quiz runs"] == 1 and session["Feedback responses"] == 2
     assert session["Average rating"] == 4
-    assert session["Rating open"] == "Yes"
+    assert session["Feedback open"] == "Yes"
     question = next(q for q in _records(sheets["Questions"]) if q["Question ID"] == populated["query_id"])
     assert question["Votes"] == 1 and question["Responded"] == "Yes"
     assert question["Status"] == "Responded" and question["Asked by"] is None

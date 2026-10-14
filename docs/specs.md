@@ -1006,7 +1006,8 @@ scope narrows with `part`.
   session's `questions` (and `question_count`) are its Q&A entries, while
   a quiz's or a run's `questions` are quiz questions.
 - **Excel** is one workbook with one sheet per table and one header row
-  per sheet in plain words ("Asked at", "Votes", "Responded"). The first
+  per sheet in plain words ("Asked at", "Votes", "Responded", "Feedback
+  open"). The first
   sheet, **About**, lists what was exported (scope and identifiers), when
   (UTC), the Prashna version, and, when the file holds participants'
   names or contact details, a note that it contains personal data.
