@@ -1236,7 +1236,7 @@ def test_uc_a_11_editor_controls_have_visible_words(base_url, admin_setup, page)
         body = page.locator("#editor-body")
         expect(body).not_to_contain_text("Launch")
         expect(body).to_contain_text(
-            "Changes apply the next time you add this quiz to a session; past results stay as they were.")
+            "Changes reach quizzes already added to a session when they start; past results stay as they were.")
     finally:
         c.close()
 

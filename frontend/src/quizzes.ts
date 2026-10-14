@@ -431,7 +431,7 @@ function renderEditor(): void {
     el("span", { id: "editor-needs-fixing", class: "badge badge-needs-fixing", hidden: true }, "Needs fixing")));
 
   body.appendChild(el("div", { class: "small muted mb-2" },
-    "Changes apply the next time you add this quiz to a session; past results stay as they were."));
+    "Changes reach quizzes already added to a session when they start; past results stay as they were."));
 
   const titleInp = el("input", { value: quiz.title, class: "inline", "aria-label": "Quiz title" }) as HTMLInputElement;
   titleInp.addEventListener("change", async () => {

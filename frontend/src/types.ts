@@ -62,6 +62,13 @@ export interface QuizRun {
   results: QuizResults | null;
 }
 
+/** Start of a queued run (UC-M-04): `note` says when it kept its queued version. */
+export interface QuizRunStart {
+  ok: boolean;
+  version_no: number;
+  note: string | null;
+}
+
 export interface Feedback {
   rating: number;
   went_well: string | null;

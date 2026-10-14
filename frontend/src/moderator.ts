@@ -6,6 +6,7 @@ import type {
   ParticipantProfileSummary,
   Query,
   QuizRun,
+  QuizRunStart,
   QuizSummary,
   Session,
   SessionRow,
@@ -408,7 +409,7 @@ function renderQuizRun(r: QuizRun): HTMLElement {
       head.querySelector(".spacer"));
   }
   if (r.status === "queued" && !sessionEnded) {
-    head.appendChild(actBtn("primary", "Start", () => act(r.id, "start")));
+    head.appendChild(actBtn("primary", "Start", () => startRun(r.id)));
   }
   if (r.status === "live" && !sessionEnded) {
     const phase = r.reveal_current ? "results" : "answering";
@@ -483,6 +484,15 @@ function actBtn(cls: string, label: string, handler: () => unknown): HTMLButtonE
 async function act(id: number, verb: string): Promise<void> {
   try {
     await api(`/api/sessions/${CODE}/quiz_runs/${id}/${verb}`, { method: "POST", headers: modHeaders() });
+    await loadQuizRuns();
+    await loadSession();
+  } catch (e) { errorToast((e as Error).message); }
+}
+async function startRun(id: number): Promise<void> {
+  try {
+    const r = await api<QuizRunStart>(`/api/sessions/${CODE}/quiz_runs/${id}/start`, { method: "POST", headers: modHeaders() });
+    // Start kept the version from when the quiz was added (UC-M-04).
+    if (r.note) toast(r.note, { duration: 6000 });
     await loadQuizRuns();
     await loadSession();
   } catch (e) { errorToast((e as Error).message); }

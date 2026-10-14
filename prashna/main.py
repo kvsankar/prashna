@@ -926,6 +926,38 @@ def _ensure_current_version(db: DbSession, quiz: m.Quiz) -> m.QuizVersion:
     return version
 
 
+KEPT_VERSION_NEEDS_FIXING = (
+    "Started with the version from when it was added: the quiz in the library needs fixing."
+)
+KEPT_VERSION_DRAFT = (
+    "Started with the version from when it was added: the quiz in the library is a draft."
+)
+
+
+def _version_for_start(db: DbSession, run: m.QuizRun) -> tuple[m.QuizVersion, str | None]:
+    """The version a queued run plays at Start, and a note when it is kept (UC-M-04).
+
+    Start plays the library quiz as it is now: it captures or reuses the
+    latest version. It keeps the version captured at queue time when the
+    library copy differs but can't be played (a draft, or a publish
+    problem), and returns the note the moderator sees. A quiz with runs
+    can't be deleted (UC-A-13), so the run's quiz always exists.
+    """
+    queued = run.quiz_version
+    quiz = queued.quiz
+    latest = _latest_version(db, quiz)
+    current = latest if latest and latest.created_at >= quiz.last_edited_at else None
+    if current is not None and current.id == queued.id:
+        return queued, None
+    if quiz.status != "ready":
+        return queued, KEPT_VERSION_DRAFT
+    if current is not None:
+        return current, None
+    if _publish_problems(quiz):
+        return queued, KEPT_VERSION_NEEDS_FIXING
+    return _ensure_current_version(db, quiz), None
+
+
 # ---------- broadcast ----------
 
 async def broadcast_session(session: m.Session, kind: str = "update") -> None:
@@ -2653,10 +2685,13 @@ async def start_quiz_run(
         raise HTTPException(400, f"Cannot start from status: {run.status}")
     if s.status == "ended":
         raise HTTPException(400, "Session has ended")
+    # Pick the version before changing anything: capturing one commits.
+    version, note = _version_for_start(db, run)
     session_started = s.status == "planning"
     if session_started:
         s.status = "live"
         s.started_at = datetime.utcnow()
+    run.quiz_version = version
     run.status = "live"
     run.current_question_idx = 0
     run.reveal_current = False
@@ -2695,7 +2730,7 @@ async def start_quiz_run(
         session_code=s.code,
         run_id=run.id,
     )
-    return {"ok": True}
+    return {"ok": True, "version_no": version.version_no, "note": note}
 
 
 def _revealed(run: m.QuizRun) -> set[int]:

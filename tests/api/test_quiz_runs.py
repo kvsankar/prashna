@@ -410,7 +410,7 @@ def test_uc_m_04_start_queued(admin_client, make_quiz, make_session):
     s, q, run = _queue_run(admin_client, make_quiz, make_session)
     r = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    assert r.json() == {"ok": True, "version_no": run["version_no"], "note": None}
     # session is now live
     s2 = admin_client.get(f"/api/sessions/{s['code']}").json()
     assert s2["status"] == "live"
@@ -503,6 +503,132 @@ def test_uc_m_04_no_auth_403(client, admin_client, make_quiz, make_session):
     admin_client.cookies.clear()
     r = client.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start")
     assert r.status_code == 403
+
+
+def _start(admin_client, code, run_id) -> dict:
+    r = admin_client.post(f"/api/sessions/{code}/quiz_runs/{run_id}/start")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _run_view(admin_client, code, run_id) -> dict:
+    r = admin_client.get(f"/api/sessions/{code}/quiz_runs/{run_id}")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _edit_question(admin_client, question_id, text) -> None:
+    # Version capture compares timestamps; keep the edit strictly later.
+    time.sleep(0.01)
+    r = admin_client.patch(f"/api/quiz_questions/{question_id}", json={"text": text})
+    assert r.status_code == 200, r.text
+
+
+def _version_count(app_module, quiz_id) -> int:
+    from sqlalchemy import func, select
+    with app_module.SessionLocal() as db:
+        return db.scalar(
+            select(func.count()).select_from(app_module.m.QuizVersion)
+            .where(app_module.m.QuizVersion.quiz_id == quiz_id)
+        )
+
+
+def test_uc_m_04_start_plays_the_edited_quiz(admin_client, make_quiz, make_session):
+    """UC-M-04: a library edit made after queueing reaches the run at Start."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    _edit_question(admin_client, q["question_id"], "What is 2 + 2?")
+    body = _start(admin_client, s["code"], run["id"])
+    assert body["version_no"] == run["version_no"] + 1
+    assert body["note"] is None
+    view = _run_view(admin_client, s["code"], run["id"])
+    assert view["version_no"] == run["version_no"] + 1
+    assert view["current_question"]["text"] == "What is 2 + 2?"
+
+
+def test_uc_m_04_start_leaves_closed_runs_alone(admin_client, make_quiz, make_session):
+    """UC-M-04: a closed run keeps its version after a later run starts edited."""
+    s, q, first = _queue_run(admin_client, make_quiz, make_session)
+    _start(admin_client, s["code"], first["id"])
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{first['id']}/close").raise_for_status()
+    second = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                               json={"quiz_id": q["id"]}).json()
+    _edit_question(admin_client, q["question_id"], "What is 2 + 2?")
+    assert _start(admin_client, s["code"], second["id"])["version_no"] == 2
+    closed = _run_view(admin_client, s["code"], first["id"])
+    assert closed["status"] == "closed"
+    assert closed["version_no"] == 1
+    assert closed["current_question"]["text"] == "2+2?"
+
+
+def test_uc_m_04_start_without_edits_keeps_the_version(
+    admin_client, make_quiz, make_session, app_module
+):
+    """UC-M-04: Start with no edits since queueing captures nothing new."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    assert _version_count(app_module, q["id"]) == 1
+    body = _start(admin_client, s["code"], run["id"])
+    assert body == {"ok": True, "version_no": run["version_no"], "note": None}
+    assert _version_count(app_module, q["id"]) == 1
+
+
+def test_uc_m_04_start_reuses_the_latest_version(
+    admin_client, make_quiz, make_session, app_module
+):
+    """UC-M-04: two queued runs edited after both were added share one new version."""
+    s, q, first = _queue_run(admin_client, make_quiz, make_session)
+    second = admin_client.post(f"/api/sessions/{s['code']}/quiz_runs",
+                               json={"quiz_id": q["id"]}).json()
+    _edit_question(admin_client, q["question_id"], "What is 2 + 2?")
+    assert _start(admin_client, s["code"], first["id"])["version_no"] == 2
+    admin_client.post(f"/api/sessions/{s['code']}/quiz_runs/{first['id']}/close").raise_for_status()
+    assert _start(admin_client, s["code"], second["id"])["version_no"] == 2
+    assert _version_count(app_module, q["id"]) == 2
+
+
+def test_uc_m_04_start_keeps_the_queued_version_when_the_quiz_needs_fixing(
+    admin_client, make_quiz, make_session, app_module
+):
+    """UC-M-04: a library quiz with a publish problem starts with the queued version."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    _edit_question(admin_client, q["question_id"], "What is 2 + 2?")
+    _edit_question(admin_client, q["question_id"], "")
+    body = _start(admin_client, s["code"], run["id"])
+    assert body["version_no"] == run["version_no"]
+    assert body["note"] == (
+        "Started with the version from when it was added: "
+        "the quiz in the library needs fixing."
+    )
+    view = _run_view(admin_client, s["code"], run["id"])
+    assert view["status"] == "live"
+    assert view["current_question"]["text"] == "2+2?"
+    assert _version_count(app_module, q["id"]) == 1
+
+
+def test_uc_m_04_start_keeps_the_queued_version_of_a_draft(
+    admin_client, make_quiz, make_session
+):
+    """UC-M-04: an unpublished library quiz starts with the queued version."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    _edit_question(admin_client, q["question_id"], "What is 2 + 2?")
+    admin_client.post(f"/api/quizzes/{q['id']}/unpublish").raise_for_status()
+    body = _start(admin_client, s["code"], run["id"])
+    assert body["version_no"] == run["version_no"]
+    assert body["note"] == (
+        "Started with the version from when it was added: "
+        "the quiz in the library is a draft."
+    )
+    view = _run_view(admin_client, s["code"], run["id"])
+    assert view["current_question"]["text"] == "2+2?"
+
+
+def test_uc_m_04_live_run_ignores_later_edits(admin_client, make_quiz, make_session):
+    """UC-M-04: editing the library quiz doesn't change a live run."""
+    s, q, run = _queue_run(admin_client, make_quiz, make_session)
+    _start(admin_client, s["code"], run["id"])
+    _edit_question(admin_client, q["question_id"], "What is 2 + 2?")
+    view = _run_view(admin_client, s["code"], run["id"])
+    assert view["version_no"] == run["version_no"]
+    assert view["current_question"]["text"] == "2+2?"
 
 
 # ---------- UC-M-05: Walk through questions ----------

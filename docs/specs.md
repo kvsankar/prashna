@@ -494,8 +494,8 @@ Controls whose meaning matters on a touch screen carry visible words,
 not only a tooltip: each answer's checkbox reads "Correct", the Poll
 checkbox reads "Poll (no correct answer)", and the question type reads
 "Single choice" or "Multiple choice". The hint under the badge says
-"Changes apply the next time you add this quiz to a session; past
-results stay as they were."
+"Changes reach quizzes already added to a session when they start;
+past results stay as they were."
 
 **Tests (UI)**
 - On `/quizzes`, clicking a row in `#quiz-rows` opens `#editor-card`, sets `#editor-title` to "Quiz: <title>" (`test_uc_a_11_open_quiz_for_editing`), and `#editor-body` lists each question with its answers and a correctness marker per answer.
@@ -727,7 +727,8 @@ results stay as they were."
 - **And** the editor labels questions by position (`Q1`, `Q2`, …), so
   numbering has no gaps after deletes
 - **And** reordering is an ordinary edit: past runs keep their frozen
-  QuizVersion; the next Launch captures the new order
+  QuizVersion; the next add to a session, or the Start of a queued
+  run, captures the new order (UC-M-04)
 - **And** drag uses pointer events, so it works with a mouse and on
   touch screens; Move up / Move down cover keyboard use
 
@@ -844,6 +845,9 @@ Used by question and answer editors to set `image_url`.
 - **Then** status → `draft`
 - **And** quiz versions already captured for prior runs are NOT
   affected (history preserved)
+- **And** a run of this quiz that is already queued in a session can
+  still be started; it plays the version captured when it was added
+  (UC-M-04)
 
 **Tests (API)**
 - `POST /api/quizzes/{id}/unpublish` on a `ready` quiz → `200 {status: "draft"}`. Auth: admin cookie.
@@ -1224,6 +1228,8 @@ an integer returns `400 "<name> must be a whole number from 1 to
   points to it
 - **And** when the Quiz has not changed since the latest version, the
   new QuizRun reuses that version
+- **And** the version captured here is the one the queued row shows;
+  Start brings it up to date with the library (UC-M-04)
 - **And** the picker lists Ready quizzes to everyone; the admin owner
   also sees Draft quizzes, labelled as drafts. A Ready quiz with a
   `problem` (UC-A-10) is listed but disabled and labelled "needs fixing
@@ -1288,9 +1294,34 @@ it in `#quiz-runs`.
 - **And** a `planning` session becomes `live` (with `started_at` set)
   when one of its runs starts; that start also broadcasts `session_state`
   and logs the session start, so every open page shows the session Live
+- **And** Start plays the quiz as it is in the library now. If the
+  quiz was edited after the run was added, Start captures a new
+  QuizVersion (or reuses the latest one, if it already matches the
+  library) and points the run at it before it goes live. Without such
+  edits the run keeps its version and no new version is captured
+- **And** Start keeps the version captured when the run was added, and
+  says so in `note`, when the library copy differs from it but can't be
+  played:
+  - the quiz has a publish problem (UC-A-10, UC-A-21) →
+    "Started with the version from when it was added: the quiz in the
+    library needs fixing."
+  - the quiz was unpublished (UC-A-22) → "Started with the version from
+    when it was added: the quiz in the library is a draft."
+- **And** a quiz with a run can't be deleted (UC-A-13), so a queued
+  run always has its library quiz
+- **And** only a queued run changes version; live and closed runs keep
+  theirs, so editing never changes a run that has started
+- **And** the session page shows `note`, when present, as a toast
 
 **Tests (API)**
-- `POST /api/sessions/{code}/quiz_runs/{id}/start` on a `queued` run → `200 {ok: true}`; sets `status: "live"`, `current_question_idx: 0`, `reveal_current: false`, `started_at`. Auth: mod-key OR admin cookie.
+- `POST /api/sessions/{code}/quiz_runs/{id}/start` on a `queued` run → `200 {ok: true, version_no, note: null}`; sets `status: "live"`, `current_question_idx: 0`, `reveal_current: false`, `started_at`. Auth: mod-key OR admin cookie.
+- Queue a quiz, edit a question's text in the library, then Start → the response's `version_no` is one more than at queue time, `note` is null, and the run's `current_question` shows the edited text (`test_uc_m_04_start_plays_the_edited_quiz`).
+- A closed run of the same quiz keeps its version number and its question text after a later queued run starts with the edited quiz (`test_uc_m_04_start_leaves_closed_runs_alone`).
+- Start without edits since queueing keeps the run's version and adds no QuizVersion row (`test_uc_m_04_start_without_edits_keeps_the_version`).
+- Two queued runs of a quiz edited after both were added: starting the first captures the new version, and starting the second reuses it (`test_uc_m_04_start_reuses_the_latest_version`).
+- Queue a quiz, edit it, then clear a question's text → Start succeeds with the queued version and text, and `note` says the library quiz needs fixing (`test_uc_m_04_start_keeps_the_queued_version_when_the_quiz_needs_fixing`).
+- Queue a quiz, edit it, then unpublish it → Start succeeds with the queued version and text, and `note` says the library quiz is a draft (`test_uc_m_04_start_keeps_the_queued_version_of_a_draft`).
+- Editing a quiz while its run is live doesn't change the run's version or question text (`test_uc_m_04_live_run_ignores_later_edits`).
 - Starting on a `planning` Session auto-advances it to `live` and sets `started_at`.
 - Starting a run while another run on the same Session is already `live` → `409 "Another quiz is already live — close it first."`.
 - Starting a run that's not `queued` (e.g., `live`, `closed`) → `400 "Cannot start from status: <status>"`.
@@ -1303,6 +1334,8 @@ it in `#quiz-runs`.
 **Tests (UI)**
 - With `/m/<code>` open on a `planning` session, starting a queued run from another tab flips `#session-status` to Live (`test_uc_m_04_run_start_shows_session_live_in_other_tabs`).
 - In `#quiz-runs` on `/m/<code>`, clicking Start on a `.badge-queued` row flips the row to `.badge-live` and reveals the Next/Reveal control.
+- A queued quiz whose question was corrected in the library after it was added shows the corrected text on the session page and the participant page after Start (`test_uc_m_04_start_shows_the_corrected_quiz`).
+- Starting a queued quiz whose library copy needs fixing toasts "Started with the version from when it was added: the quiz in the library needs fixing." and shows the text from when it was added (`test_uc_m_04_start_toasts_when_the_quiz_needs_fixing`).
 - With one run already live, clicking Start on a second queued row toasts the 409 error.
 - `#quiz-runs` lists the live run first, then queued runs in play order (oldest first), then closed runs (newest first).
 - A queued row shows the quiz title, version, and question count with its controls, but no answer options (`.option`), so the correct answer stays hidden until the run starts.
@@ -2428,6 +2461,8 @@ Two tiers, applied by one middleware:
   QuizRun reuses v2
 - **And** when an edit happens between v2 and the next queue → a v3
   is captured at queue time and the new run points to v3
+- **And** when an edit happens after a run was queued, its Start
+  captures (or reuses) the latest version in the same way (UC-M-04)
 - **And** when two requests race and both try to create version N+1,
   the UNIQUE constraint causes one to lose; the loser catches
   `IntegrityError`, re-reads the latest, and returns it

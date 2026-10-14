@@ -1088,6 +1088,61 @@ def test_uc_m_04_run_start_shows_session_live_in_other_tabs(base_url, admin_setu
         c.close()
 
 
+def _first_question_id(client: httpx.Client, quiz_id: int) -> int:
+    r = client.get(f"/api/quizzes/{quiz_id}?include_correct=true")
+    r.raise_for_status()
+    return r.json()["questions"][0]["id"]
+
+
+def test_uc_m_04_start_shows_the_corrected_quiz(base_url, admin_setup, page, browser):
+    """UC-M-04: a question corrected in the library after the quiz was added
+    shows its corrected text on the session and participant pages after Start."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M04fix {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M04fixs {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz["id"])
+    time.sleep(0.01)
+    c.patch(f"/api/quiz_questions/{_first_question_id(c, quiz['id'])}",
+            json={"text": "What is 2 + 2?"}).raise_for_status()
+    audience = browser.new_context(ignore_https_errors=True)
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.locator("#quiz-runs button", has_text="Start").first.click()
+        live = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-live"))
+        expect(live).to_contain_text("What is 2 + 2?", timeout=5000)
+        expect(page.locator(".toast")).to_have_count(0)
+        p = audience.new_page()
+        p.goto(f"{base_url}/s/{s['code']}")
+        expect(p.locator("#quiz-body")).to_contain_text("What is 2 + 2?", timeout=5000)
+    finally:
+        audience.close()
+        c.close()
+
+
+def test_uc_m_04_start_toasts_when_the_quiz_needs_fixing(base_url, admin_setup, page):
+    """UC-M-04: a queued quiz whose library copy needs fixing starts with the
+    version from when it was added, and the session page says so."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M04keep {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M04keeps {secrets.token_hex(3)}")
+    api_queue_quiz_run(c, s["code"], quiz["id"])
+    time.sleep(0.01)
+    c.patch(f"/api/quiz_questions/{_first_question_id(c, quiz['id'])}",
+            json={"text": ""}).raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.locator("#quiz-runs button", has_text="Start").first.click()
+        expect(page.locator(".toast")).to_have_text(
+            "Started with the version from when it was added: "
+            "the quiz in the library needs fixing.", timeout=5000)
+        live = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-live"))
+        expect(live).to_contain_text("2+2?")
+    finally:
+        c.close()
+
+
 # ---------- review batch 5: session page wording and states ----------
 
 

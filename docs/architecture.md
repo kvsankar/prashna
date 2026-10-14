@@ -330,7 +330,7 @@ erDiagram
 | `Query` and `QueryVote` | A Q&A entry with text, an optional response, a soft-removal time, its participant, and the name the asker chose to show (`author_name`, usually empty); one vote row per participant. |
 | `SessionFeedback` and `SessionFeedbackVersion` | A participant's current rating and comments, plus an immutable row for every submission. |
 | `Quiz`, `Question`, `Answer` | The editable quiz template tree: owner, status, last-edited time, prompt text, optional image URLs, single or multi choice, graded flag, answer correctness, and order. Quiz lifecycle: `draft → ready`. Editing a `ready` quiz keeps it `ready`; if the edit breaks a publish rule, the quiz lists report it as `problem` ("Needs fixing") and it can't be added to a session until fixed. |
-| `QuizVersion`, `QuizVersionQuestion`, `QuizVersionAnswer` | Immutable, denormalized snapshots of a quiz. A launch captures a new version only when the quiz changed since the latest version. |
+| `QuizVersion`, `QuizVersionQuestion`, `QuizVersionAnswer` | Immutable, denormalized snapshots of a quiz. Adding a quiz to a session captures a new version only when the quiz changed since the latest version. Starting a queued run does the same, so the run plays the library copy as it is at Start; it keeps its queued version when that copy is a draft or has a publish problem. |
 | `QuizRun` | One playthrough of a `QuizVersion` inside a `Session`: status, current question index, reveal and live-count flags, and timestamps. Lifecycle: `queued → live → closed`. At most one run per session is `live`, enforced by the partial unique index `uq_session_live_run`. |
 | `QuizSubmission` | A participant's selected answer for a question in a run. |
 | `Setting` | An instance-wide value the admin can change, stored as JSON text by key. The `limits` row holds the adjustable rate limits (UC-A-31); the server loads it at start and keeps it in memory. |
@@ -491,8 +491,9 @@ them in SQLite. Log retention for production is in
 - Alternatives: link runs to the editable template; copy report fields only
   when a run closes.
 - Rationale: past reports never change.
-- Consequence: launch-time version capture depends on the quiz's
-  last-edited time being updated by every template edit.
+- Consequence: version capture at add and at Start depends on the quiz's
+  last-edited time being updated by every template edit. Only a queued run
+  changes version, at Start; a live or closed run never does.
 - Revisit when: quiz authoring gains collaborative editing, imports, or media
   that change snapshot semantics.
 
