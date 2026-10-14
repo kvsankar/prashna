@@ -1410,13 +1410,14 @@ recognizes which phase the current question is in.
 ### UC-M-07: Remove a quiz run (only when queued / live)
 
 - **Given** a queued or live QuizRun
-- **When** the moderator opens the run's ⋯ overflow menu, clicks
-  **Remove from session** for a queued run or **Delete run (discard
-  results)** for a live run, and confirms in the confirmation dialog
-  ("Remove this quiz from the session?" with **Remove quiz**, or
-  "Delete this quiz run?" with **Delete run**)
+- **When** the moderator opens the run's ⋯ overflow menu and clicks
+  **Remove from session** for a queued run, or clicks **Delete run
+  (discard results)** for a live run and confirms in the confirmation
+  dialog ("Delete this quiz run?" with **Delete run**)
 - **Then** `DELETE /api/sessions/{code}/quiz_runs/{id}` deletes the
   run and its responses
+- **And** removing a queued run asks nothing first: it has no responses,
+  and adding the quiz again undoes it (UX.md §14)
 - **And** a closed run returns `400 Closed quiz runs are historical
   and cannot be deleted`
 
@@ -1429,7 +1430,8 @@ recognizes which phase the current question is in.
 - With no auth → `403`.
 
 **Tests (UI)**
-- In `#quiz-runs`, opening the ⋯ menu on a queued row and clicking "Remove from session", then **Remove quiz** in the confirmation dialog, removes the row. Its control has `aria-label="Remove this queued quiz from the session"`; live rows retain "Delete run (discard results)" with `aria-label="Delete this quiz run"`.
+- In `#quiz-runs`, opening the ⋯ menu on a queued row and clicking "Remove from session" removes the row without opening the confirmation dialog. Its control has `aria-label="Remove this queued quiz from the session"`; live rows retain "Delete run (discard results)" with `aria-label="Delete this quiz run"`.
+- On a live row, "Delete run (discard results)" opens the confirmation dialog "Delete this quiz run?"; **Cancel** keeps the row, and **Delete run** removes it.
 - On an ended Session, a legacy queued row does not offer Start or vote-count controls; it offers only **Remove from session**. The backend also rejects a direct Start request.
 - No ⋯ menu (and thus no Delete control) is rendered on `.badge-closed` rows.
 

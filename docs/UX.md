@@ -667,11 +667,11 @@ replaces the browser's `confirm()` pop-up, which Prashna never uses
 
 **Confirm only when the loss is hard to redo.**
 
-- Confirm: end the session; delete a quiz run or remove a queued quiz;
-  delete a quiz question or a quiz; delete an empty session; clear your
-  feedback.
+- Confirm: end the session; delete a quiz run; delete a quiz question
+  or a quiz; delete an empty session; clear your feedback.
 - Don't confirm: delete an answer in the quiz editor (add it again);
-  remove a Q&A question (**Restore** brings it back); any toggle.
+  remove a queued quiz from a session (add it again); remove a Q&A
+  question (**Restore** brings it back); any toggle.
 - A **heads-up** before an action that is allowed but usually a mistake
   (adding a quiz to a session that already has it) uses the same dialog
   with a plain action, not a red one.

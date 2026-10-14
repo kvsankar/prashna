@@ -696,7 +696,8 @@ def test_uc_m_06_delegate_sees_no_results_link(base_url, admin_setup, page):
 
 
 def test_uc_m_07_delete_queued_run_removes_row(base_url, admin_setup, page):
-    """UC-M-07: Remove from session on a queued row removes the row."""
+    """UC-M-07: Remove from session on a queued row removes the row without
+    asking first (UX.md §14: adding the quiz again undoes it)."""
     c = api_login(base_url)
     quiz = api_make_quiz(c, f"UI-M07 {secrets.token_hex(3)}", publish=True)
     s = api_make_session(c, f"UI-M07s {secrets.token_hex(3)}")
@@ -712,8 +713,41 @@ def test_uc_m_07_delete_queued_run_removes_row(base_url, admin_setup, page):
         remove = queued_row.locator("button", has_text="Remove from session")
         expect(remove).to_have_attribute("aria-label", "Remove this queued quiz from the session")
         remove.click()
-        accept_confirm(page, "Remove this quiz from the session?", "Remove quiz")
         expect(page.locator("#quiz-runs .badge-queued")).to_have_count(0, timeout=5000)
+        expect(page.locator(CONFIRM_DIALOG)).to_be_hidden()
+        assert native == []
+    finally:
+        c.close()
+
+
+def test_uc_m_07_delete_live_run_asks_first(base_url, admin_setup, page):
+    """UC-M-07: Delete run on a live row asks first; Cancel keeps the row and
+    Delete run removes it."""
+    c = api_login(base_url)
+    quiz = api_make_quiz(c, f"UI-M07L {secrets.token_hex(3)}", publish=True)
+    s = api_make_session(c, f"UI-M07Ls {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    run = api_queue_quiz_run(c, s["code"], quiz["id"])
+    c.post(f"/api/sessions/{s['code']}/quiz_runs/{run['id']}/start").raise_for_status()
+    try:
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#quiz-runs .badge-live")
+        native = watch_native_dialogs(page)
+        live_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-live"))
+
+        def click_delete() -> None:
+            live_row.locator("details.menu > summary").click()
+            delete = live_row.locator("button", has_text="Delete run (discard results)")
+            expect(delete).to_have_attribute("aria-label", "Delete this quiz run")
+            delete.click()
+
+        click_delete()
+        dismiss_confirm(page, "Delete this quiz run?")
+        expect(page.locator("#quiz-runs .badge-live")).to_have_count(1)
+        click_delete()
+        accept_confirm(page, "Delete this quiz run?", "Delete run")
+        expect(page.locator("#quiz-runs .badge-live")).to_have_count(0, timeout=5000)
         assert native == []
     finally:
         c.close()

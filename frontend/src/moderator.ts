@@ -512,15 +512,14 @@ async function toggleLiveCounts(id: number, show: boolean): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 async function del(id: number, status: string): Promise<void> {
-  const ok = await askConfirm(status === "queued"
-    ? { title: "Remove this quiz from the session?", confirmLabel: "Remove quiz", danger: true }
-    : {
-      title: "Delete this quiz run?",
-      detail: "Its responses are discarded and it leaves the session.",
-      confirmLabel: "Delete run",
-      danger: true,
-    });
-  if (!ok) return;
+  // A queued run has no responses and adding the quiz again undoes its
+  // removal, so only deleting a live run asks first (UX.md §14).
+  if (status !== "queued" && !await askConfirm({
+    title: "Delete this quiz run?",
+    detail: "Its responses are discarded and it leaves the session.",
+    confirmLabel: "Delete run",
+    danger: true,
+  })) return;
   try {
     await api(`/api/sessions/${CODE}/quiz_runs/${id}`, { method: "DELETE", headers: modHeaders() });
     await loadQuizRuns();
