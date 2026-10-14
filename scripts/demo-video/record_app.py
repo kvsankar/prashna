@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record the Prashna demo scenes against a fresh Prashna 0.4.0.
+"""Record the Prashna demo scenes against a fresh Prashna 0.6.0.
 
 Starts the `prashna` installed by run_install.sh (clean HOME) on 127.0.0.1:8000
 with an empty data folder, then drives the real pages headless with Playwright:
@@ -9,9 +9,10 @@ with an empty data folder, then drives the real pages headless with Playwright:
   phone.webm      390x844    participant on a phone (is_mobile, has_touch)
   terminal.webm   1920x1080  the install scene (terminal.html typing the real output)
 
-Other participants are simulated with httpx clients (own voter cookie each).
-Every key moment is written to timeline.json as a wall-clock mark together with
-each recording's start time, so compose.sh can cut the recordings in sync.
+Four other participants are simulated with httpx clients (own voter cookie
+each); they ask anonymously, while the phone ticks "Show my name". Every key
+moment is written to timeline.json as a wall-clock mark together with each
+recording's start time, so compose.py can cut the recordings in sync.
 
 Run:  uv run --project tooling python record_app.py
 """
@@ -43,11 +44,12 @@ QUESTIONS = [
 ]
 PHONE_NAME = "Diego"
 PHONE_QUESTION = "Can we get the slides after the session?"
-OTHERS = [
-    ("Asha", "Is there a recording of this session?"),
-    ("Ben", "Which tool do we use for time sheets?"),
-    ("Chen", "How do I get access to the staging server?"),
-    ("Mira", "Is the handbook available offline?"),
+# Asked anonymously by four simulated participants (Asha, Ben, Chen, Mira).
+OTHER_QUESTIONS = [
+    "Is there a recording of this session?",
+    "Which tool do we use for time sheets?",
+    "How do I get access to the staging server?",
+    "Is the handbook available offline?",
 ]
 TYPE_DELAY = 55  # ms per character for visible typing
 
@@ -174,7 +176,7 @@ def main() -> int:
             code = next(s["code"] for s in sessions if s["title"] == SESSION_TITLE)
             print("session code", code)
 
-            # c. quiz library
+            # c. quiz library: write question 1 in the editor
             a.goto(f"{BASE}/quizzes")
             a.wait_for_selector("#quiz-rows")
             mark("library_page")
@@ -184,11 +186,12 @@ def main() -> int:
             a.click("#create-quiz")
             a.wait_for_selector("#editor-card:visible")
             pause(0.8)
-            a.locator("#editor-body button", has_text="+ Add question").click()
-            a.wait_for_selector("#editor-body .editor-q")
+            # An empty quiz shows one insertion point, "Add the first question".
+            a.click("#editor-insert-end")
+            a.wait_for_selector("#editor-questions .editor-q")
             pause(0.5)
             q_text, answers, correct_idx = QUESTIONS[0]
-            qbox = a.locator("#editor-body .editor-q").first
+            qbox = a.locator("#editor-questions .editor-q").first
             ta = qbox.locator("textarea").first
             ta.click()
             ta.fill("")
@@ -196,8 +199,8 @@ def main() -> int:
             ta.press("Tab")
             pause(0.5)
             while qbox.locator(".editor-opt").count() < len(answers):
-                qbox.locator("button", has_text="+ Answer").click()
-                pause(0.4)
+                qbox.locator("button.add-answer").click()
+                pause(0.5)
             for i, text in enumerate(answers):
                 inp = qbox.locator(".editor-opt").nth(i).locator("input[type='text']")
                 inp.click()
@@ -209,25 +212,38 @@ def main() -> int:
             pause(0.6)
             mark("q1_done")
             a.screenshot(path=str(shots / "c-q1.png"))
-            # Questions 2 and 3 through the API (same admin), then reopen the editor.
+            # Questions 2 and 3 through the API (same admin). Question 3 is left
+            # without a correct answer, so the first Publish marks a problem.
             quiz = next(q for q in admin_api.get("/api/quizzes").json() if q["title"] == QUIZ_TITLE)
-            for q_text, answers, correct_idx in QUESTIONS[1:]:
+            for n, (q_text, answers, correct_idx) in enumerate(QUESTIONS[1:], start=2):
                 qq = admin_api.post(f"/api/quizzes/{quiz['id']}/questions", json={"text": q_text, "qtype": "single"}).json()
                 for i, text in enumerate(answers):
                     ans = admin_api.post(f"/api/quiz_questions/{qq['id']}/answers", json={"text": text}).json()
-                    if i == correct_idx:
+                    if i == correct_idx and n != len(QUESTIONS):
                         admin_api.patch(f"/api/quiz_answers/{ans['id']}", json={"is_correct": True}).raise_for_status()
             a.reload()
-            a.wait_for_selector("#quiz-rows tr:has-text('Onboarding check')")
+            a.wait_for_selector(f"#quiz-rows tr:has-text('{QUIZ_TITLE}')")
             a.locator("#quiz-rows tr", has_text=QUIZ_TITLE).locator("td").first.click()
-            a.wait_for_selector("#editor-body .editor-q >> nth=2")
+            a.wait_for_selector("#editor-questions .editor-q >> nth=2")
             mark("q3_shown")
-            pause(1.5)
-            a.screenshot(path=str(shots / "c-q3.png"))
+            pause(1.0)
+            # d. Publish: the editor marks the missing correct answer in place.
             row = a.locator("#quiz-rows tr", has_text=QUIZ_TITLE)
-            row.scroll_into_view_if_needed()
             row.locator("button", has_text="Publish").click()
-            a.wait_for_selector("#quiz-rows tr:has-text('Onboarding check') >> text=/Ready|ready/")
+            a.wait_for_selector("#editor-problem-nav:visible")
+            mark("publish_problem")
+            pause(1.0)
+            a.click("#editor-problem-next")
+            pause(1.6)
+            a.screenshot(path=str(shots / "d-problem.png"))
+            mark("problem_shown")
+            q3 = a.locator("#editor-questions .editor-q").nth(2)
+            q3.locator(".editor-opt").nth(QUESTIONS[2][2]).locator("input[type='checkbox']").check()
+            a.wait_for_selector("#editor-problem-nav", state="hidden")
+            pause(0.8)
+            row = a.locator("#quiz-rows tr", has_text=QUIZ_TITLE)
+            row.locator("button", has_text="Publish").click()
+            a.wait_for_selector(f"#quiz-rows tr:has-text('{QUIZ_TITLE}') .badge-ready")
             mark("quiz_published")
             pause(1.0)
             row = a.locator("#quiz-rows tr", has_text=QUIZ_TITLE)
@@ -235,21 +251,25 @@ def main() -> int:
             row.locator(".session-picker button", has_text=SESSION_TITLE).wait_for()
             pause(0.8)
             row.locator(".session-picker button", has_text=SESSION_TITLE).click()
-            a.wait_for_selector(".toast, [class*=toast]", timeout=5000)
+            a.wait_for_selector(".toast:has-text('Added to')", timeout=5000)
             mark("quiz_added")
             pause(1.5)
-            a.screenshot(path=str(shots / "c-added.png"))
+            a.screenshot(path=str(shots / "d-added.png"))
 
-            # d. session page: start the session
-            a.goto(f"{BASE}/m/{code}")
+            # e. session page (from the Sessions list): start the session
+            mark("to_sessions")
+            a.locator(".breadcrumbs a", has_text="Sessions").click()
+            a.wait_for_selector(f"#session-rows a:has-text('{SESSION_TITLE}')")
+            pause(1.0)
+            a.locator("#session-rows a", has_text=SESSION_TITLE).click()
             a.wait_for_selector("#lifecycle-card:visible")
             mark("mod_page")
             pause(1.0)
             a.locator("#lifecycle-actions button", has_text="Start session").click()
-            a.wait_for_selector("#session-status:has-text('ive')")
+            a.wait_for_selector("#session-status.badge-live")
             mark("session_started")
-            pause(1.0)
-            a.screenshot(path=str(shots / "d-started.png"))
+            pause(1.2)
+            a.screenshot(path=str(shots / "e-started.png"))
 
             # projector + phone contexts
             pctx = browser.new_context(**desktop)
@@ -279,38 +299,36 @@ def main() -> int:
             mark("phone_joined")
             pause(0.5)
             ph.screenshot(path=str(shots / "d-phone.png"))
-            # Optional display name so the question carries a first name. Set
-            # through the API with the phone's own voter cookie, so the profile
-            # form (whose placeholders include an example email) stays closed.
-            voter = next(c["value"] for c in phctx.cookies() if c["name"] == "voter_token")
-            client().patch(f"/api/sessions/{code}/me", json={"name": PHONE_NAME},
-                           cookies={"voter_token": voter}).raise_for_status()
-            pause(0.3)
+            pause(0.6)
 
-            # e. Q&A
+            # f. Q&A: the phone shows its name on this one question.
             ph.locator("#ask-card").scroll_into_view_if_needed()
             mark("phone_ask_start")
             type_into(ph, "#query-text", PHONE_QUESTION)
             pause(0.4)
+            ph.tap("#ask-show-name")
+            ph.wait_for_selector("#ask-name:visible")
+            pause(0.3)
+            type_into(ph, "#ask-name", PHONE_NAME)
+            pause(0.5)
             ph.tap("#ask-btn")
             ph.wait_for_selector(f"#queries .question:has-text('{PHONE_QUESTION[:20]}')")
             mark("phone_asked")
             pause(1.0)
-            others: list[tuple[str, httpx.Client]] = []
+            others: list[httpx.Client] = []
             qids: list[int] = []
-            for name, text in OTHERS:
+            for text in OTHER_QUESTIONS:
                 c = client()
-                c.patch(f"/api/sessions/{code}/me", json={"name": name})
                 r = c.post(f"/api/sessions/{code}/queries", json={"text": text})
                 r.raise_for_status()
                 qids.append(r.json()["id"])
-                others.append((name, c))
+                others.append(c)
                 pause(0.7)
             mark("others_asked")
             queries = admin_api.get(f"/api/sessions/{code}/queries").json()
             phone_qid = next(q["id"] for q in queries if q["text"] == PHONE_QUESTION)
             # Everyone upvotes the phone's question; some upvote the first other question.
-            for i, (_, c) in enumerate(others):
+            for i, c in enumerate(others):
                 c.post(f"/api/sessions/{code}/queries/{phone_qid}/vote")
                 pause(0.6)
                 if i < 2:
@@ -338,13 +356,14 @@ def main() -> int:
             ph.screenshot(path=str(shots / "e-phone-responded.png"))
             pr.screenshot(path=str(shots / "e-projector-responded.png"))
 
-            # f. quiz run
+            # g. quiz run
             a.locator("#quizzes-card").scroll_into_view_if_needed()
             mark("mod_quiz_card")
             pause(0.8)
             a.locator("#quiz-runs button", has_text="Start").first.click()
             a.wait_for_selector("#quiz-runs button:has-text('Reveal results')")
             mark("quiz_started")
+            pause(0.6)
             runs = admin_api.get(f"/api/sessions/{code}/quiz_runs").json()
             run = next(r for r in runs if r["status"] == "live")
             run_id = run["id"]
@@ -362,19 +381,24 @@ def main() -> int:
             ph.wait_for_selector("#quiz-card :text('Your answer is recorded')")
             mark("phone_answered")
             pause(0.6)
-            # Moderator turns on live counts (answers masked on the projector).
+            # Moderator turns on live counts: the projector shows them as
+            # "Option A/B/C" and phones show how many have answered.
             a.locator("#quiz-runs details.menu summary").first.click()
             pause(0.5)
             a.locator("#quiz-runs button", has_text="Show vote counts to audience").click()
             a.wait_for_selector("#quiz-runs button:has-text('Hide vote counts')", state="attached")
             a.keyboard.press("Escape")
             mark("counts_on")
+            pr.wait_for_selector("#quiz-body .option:has-text('Option A')")
             # Others answer, spread out so the projector bars move.
             picks = [1, 1, 0, 2]
-            for (_, c), pick in zip(others, picks):
+            for i, (c, pick) in enumerate(zip(others, picks)):
                 c.post(f"/api/sessions/{code}/quiz_runs/{run_id}/submit",
                        json={"question_id": qid1, "answer_ids": [ans[pick]["id"]]}).raise_for_status()
-                pause(0.9)
+                pause(1.5)
+                if i == 1:
+                    mark("others_half")
+            ph.wait_for_selector("#quiz-answered")
             mark("others_answered")
             pause(1.5)
             pr.screenshot(path=str(shots / "f-projector-counts.png"))
@@ -383,7 +407,7 @@ def main() -> int:
             a.locator("#quiz-runs button", has_text="Reveal results").click()
             a.wait_for_selector("#quiz-runs :text('voting closed')")
             mark("revealed")
-            pause(3.0)
+            pause(3.5)
             pr.screenshot(path=str(shots / "f-projector-reveal.png"))
             ph.screenshot(path=str(shots / "f-phone-reveal.png"))
             a.screenshot(path=str(shots / "f-mod-reveal.png"))

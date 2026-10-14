@@ -1,35 +1,45 @@
 #!/bin/sh
-# Rebuild prashna-demo.mp4 from scratch. See README.md for what each step does.
-# Steps 1 and 2 need network access (installer, PyPI); steps 3-6 do not.
+# Rebuild prashna-demo.mp4 (narrated) and prashna-demo-silent.mp4 from scratch.
+# See README.md for what each step does. Steps 1-3 need network access the
+# first time (installer, PyPI, Hugging Face); later steps do not.
 set -eu
 W="$(cd "$(dirname "$0")" && pwd)"
 cd "$W"
-export UV_CACHE_DIR="$W/uv-cache"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$W/uv-cache}"
 
 # 1. Real installer run in a clean HOME -> install-output.raw.txt, clean-home/.local/bin/prashna
 [ -x clean-home/.local/bin/prashna ] || ./run_install.sh
 
-# 2. Tooling environment (Playwright 1.59 + httpx) for the recording scripts
+# 2. Tooling environment (Playwright 1.59, httpx, kokoro-onnx) for the scripts below
 [ -d tooling/.venv ] || (cd tooling && uv sync -q)
 
-# 3. Start Prashna 0.4.0 from the clean HOME, drive the real pages headless,
+# 3. Narration: Kokoro-82M speaks narration.txt -> voice/*.wav, durations.json,
+#    provenance.json; voice-samples/ holds the same passage in two other voices.
+#    Downloads and hash-checks the model into models/ on first run.
+uv run --project tooling python voice.py --samples
+
+# 4. Start Prashna 0.6.0 from the clean HOME, drive the real pages headless,
 #    record admin/projector/phone/terminal videos -> recordings/, timeline.json
 #    (also writes server-output.raw.txt and terminal-text.txt via sanitize_terminal.py)
 uv run --project tooling python record_app.py
 
-# 4. Title / why / end cards -> cards/*.png
+# 5. Title / why / end cards -> cards/*.png
 uv run --project tooling python shoot_cards.py
 
-# 5. Cut, caption and concatenate -> prashna-demo.mp4, scene-list.txt
+# 6. Cut, caption, fit scenes to the voice, mix and normalise the narration
+#    -> prashna-demo.mp4, prashna-demo-silent.mp4, prashna-demo.srt, scene-list.txt
 python3 -I compose.py
 
-# 6. Review material: one frame every 6 s -> frames/, and contact-sheet.png
+# 7. Review material: one frame every 6 s -> frames/, and contact-sheet.png;
+#    loudness and true peak of the final file
 rm -rf frames && mkdir frames
 ffmpeg -v error -i prashna-demo.mp4 -vf fps=1/6 frames/frame-%03d.png
 ffmpeg -y -v error -i prashna-demo.mp4 \
   -vf "fps=1/6,scale=480:-1,tile=4x4:padding=6:margin=6:color=white" \
   -frames:v 1 -update 1 contact-sheet.png
 ffprobe -v error -show_entries format=duration,size -of default=nw=1 prashna-demo.mp4
+ffmpeg -hide_banner -nostats -i prashna-demo.mp4 -map 0:a -af ebur128=peak=true -f null - 2>&1 \
+  | sed -n '/Summary:/,$p'
 
-# 7. Text-level check that nothing machine-specific reached the video inputs
+# 8. Text-level check that nothing machine-specific reached the screen or the narration
 ./check_text.sh

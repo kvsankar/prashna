@@ -15,3 +15,9 @@ timeline.json
 scene-list.txt
 contact-sheet.png
 prashna-demo.mp4
+models/
+voice/
+voice-samples/
+audio/
+prashna-demo-silent.mp4
+prashna-demo.srt

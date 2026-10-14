@@ -1,0 +1,24 @@
+# Narration for the demo video: one line per scene, "<scene id><TAB><text>".
+# compose.py burns the text of every app scene in as that scene's caption, so
+# the captions are the spoken words. Card scenes (01, 02, 20) are spoken only.
+# voice.py speaks each line; compose.py fits each scene to its line.
+01-title	Prashna. Live questions and quizzes for any session with an audience.
+02-why	Many people will not ask a question out loud. A presenter cannot easily see who is following. Prashna gives anonymous questions with upvotes, short quizzes, and one shared screen.
+03-install	One command installs Prashna. Then start it.
+04-setup	First run: create the admin account.
+05-session	Create a session for the workshop.
+06-quiz-write	Write a short quiz in the library.
+07-quiz-check	Publish checks the quiz and marks what to fix.
+08-quiz-add	Fix it, publish, and add the quiz to the session.
+09-start	Open the session page and start the session.
+10-join	The projector shows the join code. Phones join with it.
+11-ask	A participant asks a question and chooses to show their name.
+12-others	Others ask anonymously and upvote. The projector lists the top questions.
+13-respond	The moderator marks a question as responded.
+14-quiz-start	The moderator starts the quiz.
+15-answer	Phones show the question. A participant answers.
+16-counts-on	The moderator turns on live vote counts.
+17-counts	The projector shows live counts without the answer text.
+18-answered	Phones show only how many have answered so far.
+19-reveal	Reveal results: the correct answer is shown.
+20-end	Install it with one command. Prashna is open source under the MIT licence.

@@ -1,10 +1,10 @@
 #!/bin/sh
-# Fails if any text that ends up on screen (terminal text, cards, captions,
-# scene list) contains a path, a token, an email, a public IP, or the local
+# Fails if any text that ends up on screen or in the narration (terminal text,
+# cards, captions, narration, subtitles, scene list) contains a path, a token, an email, a public IP, or the local
 # user name. 127.0.0.1 is allowed (it is what the app prints).
 set -u
 W="$(cd "$(dirname "$0")" && pwd)"
-files="$W/terminal-text.txt $W/cards.html $W/scene-list.txt $W/segments/captions/*.txt"
+files="$W/terminal-text.txt $W/cards.html $W/scene-list.txt $W/segments/captions/*.txt $W/narration.txt $W/prashna-demo.srt"
 pattern='/home/|/tmp/|/Users/|clean-home|demo-setup-token|setup=[A-Za-z0-9-]{8,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
 # The local account's name must not appear on screen either.
 pattern="$pattern|$(id -un)"

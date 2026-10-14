@@ -8,7 +8,8 @@ Inputs (written by run_install.sh and record_app.py):
 Rules applied (and nothing else):
   * any absolute path inside the work folder becomes `~` / `~/.local/share/prashna`
   * the setup token becomes `prashna_st_…`
-  * the long `+ package==version` list is shortened with one `…` line
+  * the long `+ package==version` list is shortened to its first lines and
+    the `+ prashna==<version>` line, with `…` lines for the rest
   * the trailing `exit=0` marker line is dropped
 """
 from __future__ import annotations
@@ -40,7 +41,13 @@ def shorten_packages(lines: list[str], keep: int = 3) -> list[str]:
         if run:
             if len(run) > keep + 1:
                 out.extend(run[:keep])
-                out.append(" …")
+                # Keep the installed Prashna version on screen.
+                own = [i for i, x in enumerate(run) if x.startswith(" + prashna==") and i >= keep]
+                for i in own:
+                    out.append(" …")
+                    out.append(run[i])
+                if not own or own[-1] < len(run) - 1:
+                    out.append(" …")
             else:
                 out.extend(run)
             run = []
