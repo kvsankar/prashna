@@ -7,8 +7,10 @@
     prashna --tunnel cloudflare  also reach it from the internet (or: --tunnel ngrok)
 
 Data lives in the per-user app-data folder unless --data-dir or
-PRASHNA_DATA_DIR says otherwise. On the first run the browser opens the
-one-time setup page, so creating the admin needs no copy-and-paste.
+PRASHNA_DATA_DIR says otherwise. An explicit --data-dir wins over
+PRASHNA_DB_PATH and PRASHNA_UPLOADS_DIR. On the first run the browser
+opens the one-time setup page, so creating the admin needs no
+copy-and-paste.
 """
 from __future__ import annotations
 
@@ -40,7 +42,8 @@ def _parser() -> argparse.ArgumentParser:
                         help="address to listen on (default 127.0.0.1; 0.0.0.0 to allow other devices)")
     parser.add_argument("--port", type=int, default=8000, help="port to listen on (default 8000)")
     parser.add_argument("--data-dir", help="folder for the database and uploads "
-                        "(default: PRASHNA_DATA_DIR or your app-data folder)")
+                        "(default: PRASHNA_DATA_DIR or your app-data folder); "
+                        "when given, PRASHNA_DB_PATH and PRASHNA_UPLOADS_DIR are ignored")
     parser.add_argument("--no-browser", action="store_true", help="don't open the browser")
     parser.add_argument("--tunnel", choices=["cloudflare", "ngrok"],
                         help="also make Prashna reachable from the internet: a Cloudflare quick "
@@ -126,14 +129,12 @@ def _read_new_password() -> tuple[str, str]:
     return lines[0], lines[1]
 
 
-def _reset_password(data_dir: Path) -> int:
+def _reset_password(db_path: Path) -> int:
     """`prashna reset-password`: set a new admin password from the machine
     that holds the data folder (UC-X-15). Existing sign-ins stay valid."""
-    db_path = Path(os.environ.get("PRASHNA_DB_PATH") or data_dir / "prashna.db")
     if not db_path.is_file() or db_path.stat().st_size == 0:
         print(f"No Prashna database in {db_path.parent}.", file=sys.stderr)
         return 1
-    os.environ["PRASHNA_DB_PATH"] = str(db_path)
     from sqlalchemy import select
 
     from . import auth, db
@@ -169,12 +170,16 @@ def _reset_password(data_dir: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     data_dir = _data_dir(args.data_dir)
-    if args.command == "reset-password":
-        return _reset_password(data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
     # Set before the server modules are imported; they read these at import.
-    os.environ.setdefault("PRASHNA_DB_PATH", str(data_dir / "prashna.db"))
-    os.environ.setdefault("PRASHNA_UPLOADS_DIR", str(data_dir / "uploads"))
+    # An explicit --data-dir wins for every file; otherwise PRASHNA_DB_PATH and
+    # PRASHNA_UPLOADS_DIR, when set, win over the data folder (UC-X-15).
+    for name, path in (("PRASHNA_DB_PATH", data_dir / "prashna.db"),
+                       ("PRASHNA_UPLOADS_DIR", data_dir / "uploads")):
+        if args.data_dir or not os.environ.get(name):
+            os.environ[name] = str(path)
+    if args.command == "reset-password":
+        return _reset_password(Path(os.environ["PRASHNA_DB_PATH"]))
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     if args.command == "backup":
         from .backup import main as backup_main

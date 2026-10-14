@@ -178,6 +178,112 @@ def test_uc_x_15_backup_and_version(tmp_path):
     assert version.stdout.startswith("prashna ")
 
 
+def _seed_db(folder: Path, marker: str) -> None:
+    """A minimal Prashna-shaped database whose one admin is named `marker`,
+    plus one upload, so an archive shows which folder it came from."""
+    import sqlite3
+    from contextlib import closing
+
+    folder.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(folder / "prashna.db")) as con:
+        con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)")
+        con.execute("CREATE TABLE sessions (id INTEGER PRIMARY KEY)")
+        con.execute("INSERT INTO users (username) VALUES (?)", (marker,))
+        con.commit()
+    (folder / "uploads").mkdir(exist_ok=True)
+    (folder / "uploads" / f"{marker}.png").write_bytes(marker.encode())
+
+
+def _archived_admin(archive: Path, tmp_path: Path) -> tuple[str, list[str]]:
+    """The admin name in an archive's database, and its upload names."""
+    import sqlite3
+    from contextlib import closing
+
+    out = tmp_path / "unpacked"
+    with tarfile.open(archive) as tar:
+        names = tar.getnames()
+        tar.extract("prashna.db", out, filter="data")
+    with closing(sqlite3.connect(out / "prashna.db")) as con:
+        (name,) = con.execute("SELECT username FROM users").fetchone()
+    return name, sorted(n for n in names if n.startswith("uploads/"))
+
+
+def test_uc_x_15_explicit_data_dir_wins_over_environment_paths(tmp_path):
+    """UC-X-15: an explicit --data-dir wins over PRASHNA_DB_PATH and
+    PRASHNA_UPLOADS_DIR for the server, backup, and reset-password."""
+    folder_a, folder_b = tmp_path / "a", tmp_path / "b"
+    env_a = _cli_env(PRASHNA_DB_PATH=str(folder_a / "prashna.db"),
+                     PRASHNA_UPLOADS_DIR=str(folder_a / "uploads"))
+
+    # The server: the database, signing key and setup token go to B.
+    port = _free_port()
+    proc = _start_cli(["--data-dir", str(folder_b), "--port", str(port), "--no-browser"], env_a)
+    try:
+        _wait_up(port)
+    finally:
+        out = _stop(proc)
+    assert f"Created a new database: {folder_b / 'prashna.db'}" in out
+    assert (folder_b / "prashna.db").is_file()
+    assert (folder_b / "secret-key").is_file()
+    assert (folder_b / "setup-token").is_file()
+    assert not folder_a.exists()
+
+    # Backup: B's database and uploads, not A's.
+    _seed_db(folder_a, "alice")
+    (folder_b / "prashna.db").unlink()
+    _seed_db(folder_b, "bob")
+    archive = tmp_path / "b.tar.gz"
+    result = subprocess.run(
+        [sys.executable, "-m", "prashna.cli", "--data-dir", str(folder_b), "backup", "create", str(archive)],
+        cwd=ROOT, env=env_a, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _archived_admin(archive, tmp_path) == ("bob", ["uploads/bob.png"])
+
+    # reset-password: B's database. A has a valid-looking admin row too, but
+    # no password, so the command would stop with "No admin yet" there.
+    (folder_b / "prashna.db").unlink()
+    port = _free_port()
+    proc = _start_cli(["--data-dir", str(folder_b), "--port", str(port), "--no-browser"],
+                      _cli_env(PRASHNA_SETUP_TOKEN="t"))
+    try:
+        _wait_up(port)
+        httpx.post(f"http://127.0.0.1:{port}/api/admin/setup",
+                   json={"username": "me", "password": "oldpassword", "setup_token": "t"}).raise_for_status()  # pragma: allowlist secret
+    finally:
+        _stop(proc)
+    reset = subprocess.run(
+        [sys.executable, "-m", "prashna.cli", "reset-password", "--data-dir", str(folder_b)],
+        cwd=ROOT, env=env_a, input="newpassword\nnewpassword\n", capture_output=True, text=True, timeout=60)
+    assert reset.returncode == 0, reset.stdout + reset.stderr
+    assert "Password changed for me." in reset.stdout
+
+
+def test_uc_x_15_environment_paths_apply_without_data_dir(tmp_path):
+    """UC-X-15: without --data-dir, PRASHNA_DB_PATH and PRASHNA_UPLOADS_DIR
+    still choose the database and uploads."""
+    folder_a, data = tmp_path / "a", tmp_path / "data"
+    env = _cli_env(PRASHNA_DATA_DIR=str(data),
+                   PRASHNA_DB_PATH=str(folder_a / "prashna.db"),
+                   PRASHNA_UPLOADS_DIR=str(folder_a / "uploads"))
+    port = _free_port()
+    proc = _start_cli(["--port", str(port), "--no-browser"], env)
+    try:
+        _wait_up(port)
+    finally:
+        out = _stop(proc)
+    assert f"Created a new database: {folder_a / 'prashna.db'}" in out
+    assert (folder_a / "secret-key").is_file()
+    assert not (data / "prashna.db").exists()
+
+    (folder_a / "prashna.db").unlink()
+    _seed_db(folder_a, "alice")
+    archive = tmp_path / "a.tar.gz"
+    result = subprocess.run([sys.executable, "-m", "prashna.cli", "backup", "create", str(archive)],
+                            cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _archived_admin(archive, tmp_path) == ("alice", ["uploads/alice.png"])
+
+
 def test_uc_x_15_data_dir_defaults(monkeypatch, tmp_path):
     """UC-X-15: the per-user folder, also from a source checkout; never inside the repository."""
     from prashna import db

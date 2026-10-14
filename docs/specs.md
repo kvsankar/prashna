@@ -2624,6 +2624,10 @@ have a participant cookie are limited **per person**, not per address.
 - **And** tagged bundles pin the image tag to the matching release rather than
   silently following `latest`
 - **And** published images cover `linux/amd64` and `linux/arm64`
+- **And** `prashna backup …` works on the database and uploads chosen as in
+  UC-X-15: an explicit `--data-dir` wins over `PRASHNA_DB_PATH` and
+  `PRASHNA_UPLOADS_DIR`. The container form `python -m prashna.backup …`
+  reads those two variables
 - **And** backup creates a consistent SQLite snapshot plus uploads without
   storing secrets; restore validates the archive and database, requires an
   explicit confirmation flag, and creates a pre-restore recovery archive
@@ -2805,9 +2809,10 @@ one command, on macOS, Linux, or Windows.
   (as a full URL with `--no-browser`), and how to stop; the server's
   diagnostic records go to `prashna.log` in the data folder instead of the
   terminal. Warnings and errors still reach the terminal
-- **And** the terminal says which data it uses. A database that did not
-  exist yet is reported as `Created a new database: <path>`. An existing
-  one is reported as `Using existing data: <path>` with a summary of what
+- **And** the terminal says which data it uses. `<path>` is the database
+  file in use, chosen by the order below. A database that did not exist
+  yet is reported as `Created a new database: <path>`. An existing one is
+  reported as `Using existing data: <path>` with a summary of what
   it holds (admins by name, number of sessions and quizzes, or "no admin
   yet"), so a presenter knows when an earlier or seeded data folder is in
   use
@@ -2817,6 +2822,22 @@ one command, on macOS, Linux, or Windows.
 - **And** `--port`, `--host`, `--data-dir` (or `PRASHNA_DATA_DIR`), and
   `--no-browser` change those defaults; a port already in use exits with
   status 1 and suggests `--port`
+- **And** the files Prashna uses are chosen in one order: the command line,
+  then the environment, then the default. This holds for `prashna`,
+  `prashna backup …` and `prashna reset-password` alike:
+
+  | Given | Database | Uploads | `prashna.log` |
+  | --- | --- | --- | --- |
+  | `--data-dir D` | `D/prashna.db` | `D/uploads` | `D` |
+  | No `--data-dir`; `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` set | That file | That folder | The data folder |
+  | Neither | `prashna.db` in the data folder | `uploads` in the data folder | The data folder |
+
+  The data folder is `--data-dir`, else `PRASHNA_DATA_DIR`, else the
+  per-user app-data folder. An explicit `--data-dir` therefore ignores
+  `PRASHNA_DB_PATH` and `PRASHNA_UPLOADS_DIR`. `secret-key` and
+  `setup-token` always sit beside the database in use. The container form
+  `python -m prashna.backup …` takes no `--data-dir` and reads the two
+  variables (`/data/prashna.db` and `/app/uploads` when unset)
 - **And** `prashna --tunnel cloudflare` or `prashna --tunnel ngrok` makes
   the server reachable from the internet with nothing else to set: it
   starts a Cloudflare quick tunnel (`cloudflared tunnel --url …`, no
@@ -2846,8 +2867,8 @@ one command, on macOS, Linux, or Windows.
   `X-Forwarded-*` from `127.0.0.1` by default, so sign-in cookies are
   marked `Secure` when visitors use HTTPS; no extra option is needed
 - **And** `prashna backup create|restore …` runs the backup tool
-  (UC-X-10) against the same data folder; `prashna --version` prints the
-  version
+  (UC-X-10) against the same database and uploads folder, chosen by the
+  order above; `prashna --version` prints the version
 - **And** each version tag publishes the two scripts and a one-page
   landing page to GitHub Pages (`https://kvsankar.github.io/prashna/`),
   built by `scripts/build_pages_site.py`, after the PyPI package of that
@@ -2894,6 +2915,8 @@ code without installing the command, it is
 - Applying the additive migration bridge to an up-to-date database logs no `db.migration` record.
 - `prashna.db.default_data_dir()` returns the per-platform folder, also inside a source checkout (`XDG_DATA_HOME` honoured on Linux, `LOCALAPPDATA` on Windows), and never a folder inside the repository.
 - The CLI resolves the data folder from `--data-dir`, then `PRASHNA_DATA_DIR`, then the default, and sets `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` inside it.
+- With `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` pointing into folder A, `prashna --data-dir B` prints `Created a new database: B/prashna.db` and creates the database and `secret-key` in B and nothing in A; `prashna --data-dir B backup create <file>` archives B's database and uploads; `prashna reset-password --data-dir B` changes B's admin (`test_uc_x_15_explicit_data_dir_wins_over_environment_paths`).
+- Without `--data-dir`, `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` still apply: `prashna` prints that database and `prashna backup create <file>` archives it (`test_uc_x_15_environment_paths_apply_without_data_dir`).
 - On a fresh data folder the CLI opens the browser at `http://127.0.0.1:<port>/#setup=<token>` with the token the server will accept; once an admin exists it opens `/`; `--no-browser` opens nothing.
 - With the port already bound, `prashna --port <it>` exits 1 and prints a message naming `--port`.
 - A request from `127.0.0.1` carrying `X-Forwarded-Proto: https` gets a `Secure` session cookie; the same request without the header doesn't.
