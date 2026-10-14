@@ -1,4 +1,4 @@
-import { $, answerOption, api, el, errorToast, guardClick, markUsable, modKey, openLiveSocket, pathCode, publicBase, renderQR, setVisible, showSessionDeleted, toast, type LiveMessage } from "./common";
+import { $, answerOption, api, askConfirm, el, errorToast, guardClick, markUsable, modKey, openLiveSocket, pathCode, publicBase, renderQR, setVisible, showSessionDeleted, toast, type LiveMessage } from "./common";
 import type { Feedback, ParticipantBootstrap, ParticipantProfile, Query, QuizRun, Session } from "./types";
 
 const CODE = pathCode();
@@ -471,7 +471,6 @@ function renderStars(): void {
   root.onmouseleave = () => paint(myRating);
   paint(myRating);
   setVisible($("#fb-clear"), myRating > 0);
-  setVisible($("#fb-clear-confirm"), false);
   renderFeedbackAction();
 }
 
@@ -531,17 +530,14 @@ async function clearFeedback(): Promise<void> {
   renderFeedbackSummary();
   toast("Feedback cleared");
 }
-$("#fb-clear").addEventListener("click", () => {
-  setVisible($("#fb-clear"), false);
-  setVisible($("#fb-clear-confirm"), true);
-});
-$("#fb-clear-no").addEventListener("click", () => {
-  setVisible($("#fb-clear-confirm"), false);
-  setVisible($("#fb-clear"), true);
-});
-$("#fb-clear-yes").addEventListener("click", () => {
-  setVisible($("#fb-clear-confirm"), false);
-  void clearFeedback();
+$("#fb-clear").addEventListener("click", async () => {
+  const ok = await askConfirm({
+    title: "Clear your feedback?",
+    detail: "Your stars and comments are removed.",
+    confirmLabel: "Clear feedback",
+    danger: true,
+  });
+  if (ok) void clearFeedback();
 });
 async function loadFeedback(): Promise<void> {
   try {

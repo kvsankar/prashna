@@ -5,6 +5,7 @@ Covers UC-M-01..11.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import time
 
@@ -12,6 +13,8 @@ import httpx
 from playwright.sync_api import expect
 
 from ._helpers import (
+    CONFIRM_DIALOG,
+    accept_confirm,
     admin_login_via_ui,
     api_end_session,
     api_login,
@@ -20,6 +23,9 @@ from ._helpers import (
     api_queue_quiz_run,
     api_start_session,
     ask_query_api,
+    confirm_dialog,
+    dismiss_confirm,
+    watch_native_dialogs,
 )
 
 PNG_BYTES = bytes.fromhex(
@@ -132,17 +138,107 @@ def test_uc_m_02_start_button_flips_status(base_url, admin_setup, page):
 
 
 def test_uc_m_02_end_button_flips_status(base_url, admin_setup, page):
-    """UC-M-02: live → End session (confirm) → #session-status flips to .badge-ended."""
+    """UC-M-02: live → End session → the in-page dialog's End session →
+    #session-status flips to .badge-ended, with no native dialog."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-M02e {secrets.token_hex(3)}")
     api_start_session(c, s["code"])
     try:
+        native = watch_native_dialogs(page)
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#lifecycle-card:visible")
-        page.on("dialog", lambda d: d.accept())
         page.locator("#lifecycle-actions button", has_text="End session").click()
+        accept_confirm(page, "End the session?", "End session")
         expect(page.locator("#session-status")).to_have_class("badge badge-ended", timeout=5000)
+        assert native == []
+    finally:
+        c.close()
+
+
+def _session_status(c, code: str) -> str:
+    return c.get(f"/api/sessions/{code}").json()["status"]
+
+
+def test_uc_m_02_end_session_asks_in_page(base_url, admin_setup, page):
+    """UC-M-02 / UX.md §14: End session opens the in-page confirmation
+    dialog: a question, a one-line detail, Cancel and End session. Focus
+    starts on Cancel and returns to End session; Cancel, Esc and a click on
+    the backdrop each leave the session live. No native dialog opens."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M02ask {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    try:
+        native = watch_native_dialogs(page)
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#lifecycle-card:visible")
+        end_btn = page.locator("#lifecycle-actions button", has_text="End session")
+
+        end_btn.click()
+        dialog = confirm_dialog(page, "End the session?")
+        expect(dialog.locator(".confirm-detail")).to_have_text(
+            "Participants can no longer ask questions.")
+        cancel = dialog.locator(".confirm-cancel")
+        ok = dialog.locator(".confirm-ok")
+        expect(cancel).to_have_text("Cancel")
+        expect(cancel).to_have_class(re.compile(r"\bghost\b"))
+        expect(ok).to_have_text("End session")
+        expect(ok).to_have_class(re.compile(r"\bdanger\b"))
+        # Cancel sits to the left of the action; both are default-size controls.
+        cancel_box, ok_box = cancel.bounding_box(), ok.bounding_box()
+        assert cancel_box["x"] < ok_box["x"]
+        assert round(ok_box["height"]) == 40 and round(cancel_box["height"]) == 40
+        # A destructive action starts on Cancel, so a stray Enter is safe.
+        expect(cancel).to_be_focused()
+        expect(dialog).to_have_attribute("aria-labelledby", re.compile(r".+"))
+
+        cancel.click()
+        expect(dialog).to_be_hidden()
+        expect(end_btn).to_be_focused()
+        assert _session_status(c, s["code"]) == "live"
+
+        end_btn.click()
+        confirm_dialog(page, "End the session?")
+        page.keyboard.press("Escape")
+        expect(dialog).to_be_hidden()
+        expect(end_btn).to_be_focused()
+
+        end_btn.click()
+        confirm_dialog(page, "End the session?")
+        page.mouse.click(5, 5)  # the backdrop, outside the dialog card
+        expect(dialog).to_be_hidden()
+        page.wait_for_timeout(300)
+        assert _session_status(c, s["code"]) == "live"
+        expect(page.locator("#session-status")).to_have_class("badge badge-live")
+
+        end_btn.click()
+        accept_confirm(page, "End the session?", "End session")
+        expect(page.locator("#session-status")).to_have_class("badge badge-ended", timeout=5000)
+        assert _session_status(c, s["code"]) == "ended"
+        expect(page.locator(CONFIRM_DIALOG)).to_be_hidden()
+        assert native == []
+    finally:
+        c.close()
+
+
+def test_uc_m_02_confirm_dialog_fits_a_phone(base_url, admin_setup, page):
+    """UX.md §14 / UC-X-12: at 390 px the dialog keeps the page gutter and
+    the page doesn't scroll sideways."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M02phone {secrets.token_hex(3)}")
+    api_start_session(c, s["code"])
+    try:
+        page.set_viewport_size({"width": 390, "height": 844})
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        page.wait_for_selector("#lifecycle-card:visible")
+        page.locator("#lifecycle-actions button", has_text="End session").click()
+        box = confirm_dialog(page, "End the session?").bounding_box()
+        assert box["x"] >= 15 and box["x"] + box["width"] <= 390 - 15, box
+        overflow = page.evaluate(
+            "document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        assert overflow <= 1
     finally:
         c.close()
 
@@ -158,8 +254,8 @@ def test_uc_m_02_end_with_queued_quiz_explains_removal(base_url, admin_setup, pa
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-queued")
-        page.on("dialog", lambda d: d.accept())
         page.locator("#lifecycle-actions button", has_text="End session").click()
+        accept_confirm(page, "End the session?", "End session")
         expect(page.locator(".toast-error")).to_contain_text(
             "Remove queued quizzes before ending the session", timeout=5000
         )
@@ -328,13 +424,25 @@ def test_uc_m_03_picker_marks_quiz_already_in_session(base_url, admin_setup, pag
         expect(option).to_contain_text("already added · Queued")
         expect(page.locator(f"#quiz-select option[value='{fresh['id']}']")).not_to_contain_text("already added")
         page.locator("#quiz-select").select_option(value=str(quiz["id"]))
-        dialogs: list[str] = []
-        page.once("dialog", lambda d: (dialogs.append(d.type), d.dismiss()))
+        native = watch_native_dialogs(page)
         page.click("#add-quiz-btn")
-        assert dialogs == ["confirm"]
+        # A heads-up, not a loss: the action is a plain primary and has focus.
+        dialog = confirm_dialog(page, "Add this quiz again?")
+        expect(dialog.locator(".confirm-detail")).to_have_text(
+            f'"{quiz["title"]}" is already in this session.')
+        ok = dialog.locator(".confirm-ok")
+        expect(ok).to_have_text("Add again")
+        expect(ok).to_have_class(re.compile(r"\bprimary\b"))
+        expect(ok).not_to_have_class(re.compile(r"\bdanger\b"))
+        expect(ok).to_be_focused()
+        dismiss_confirm(page)
         # Give a wrongly sent request time to land before checking nothing was queued.
         page.wait_for_timeout(500)
         assert len(c.get(f"/api/sessions/{s['code']}/quiz_runs").json()) == 1
+        page.click("#add-quiz-btn")
+        accept_confirm(page, "Add this quiz again?", "Add again")
+        expect(page.locator("#quiz-runs .badge-queued")).to_have_count(2, timeout=5000)
+        assert native == []
     finally:
         c.close()
 
@@ -597,14 +705,16 @@ def test_uc_m_07_delete_queued_run_removes_row(base_url, admin_setup, page):
         admin_login_via_ui(page, base_url)
         page.goto(f"{base_url}/m/{s['code']}")
         page.wait_for_selector("#quiz-runs .badge-queued")
-        page.on("dialog", lambda d: d.accept())
+        native = watch_native_dialogs(page)
         # Removal lives in the run's ⋯ overflow menu.
         queued_row = page.locator("#quiz-runs > section").filter(has=page.locator(".badge-queued"))
         queued_row.locator("details.menu > summary").click()
         remove = queued_row.locator("button", has_text="Remove from session")
         expect(remove).to_have_attribute("aria-label", "Remove this queued quiz from the session")
         remove.click()
+        accept_confirm(page, "Remove this quiz from the session?", "Remove quiz")
         expect(page.locator("#quiz-runs .badge-queued")).to_have_count(0, timeout=5000)
+        assert native == []
     finally:
         c.close()
 

@@ -345,8 +345,9 @@ public can't be claimed by its first visitor.
 - **When** the session is `live` → the action is refused with
   "End the session before deleting it" (toast)
 - **And** the session has no data (0 queries, 0 quiz runs, 0 feedback
-  and 0 attendee profiles) → a native `confirm()` followed by `DELETE`
-  deletes it
+  and 0 attendee profiles) → the confirmation dialog (UX.md §14) asks
+  "Delete the empty session?"; **Delete session** sends `DELETE`, and
+  Cancel, Esc or a click outside keeps the session
 - **And** the session has data (any of those) → a confirm card opens
   below the table warning what will be lost (each count:
   questions, quiz runs, feedback responses, attendee profiles), with a
@@ -372,14 +373,14 @@ public can't be claimed by its first visitor.
 
 **Tests (UI)**
 - On `/`, clicking Delete on a `live` row shows toast "End the session before deleting it" and no row is removed.
-- Clicking Delete on a `planning` row with no data fires a native `confirm()`; accepting removes the row from `#session-rows`.
+- Clicking Delete on a `planning` row with no data opens the confirmation dialog titled "Delete the empty session?"; Cancel keeps the row, and **Delete session** removes it from `#session-rows`. No native dialog opens (`test_uc_a_07_delete_no_data_asks_in_page`).
 - Clicking Delete on a row with data opens `#confirm-delete-card` below the table with the warning text in `#cd-warn`.
-- Clicking Delete on a row whose only data is an attendee profile and feedback opens `#confirm-delete-card` (no native `confirm()`), and `#cd-warn` names "1 feedback response" and "1 attendee profile" (`test_uc_a_07_profile_and_feedback_open_the_confirm_card`).
+- Clicking Delete on a row whose only data is an attendee profile and feedback opens `#confirm-delete-card` (no confirmation dialog and no native dialog), and `#cd-warn` names "1 feedback response" and "1 attendee profile" (`test_uc_a_07_profile_and_feedback_open_the_confirm_card`).
 - `#cd-go` is disabled until `#cd-confirm` exactly matches `session.title`.
 - Typing the exact title enables `#cd-go`; clicking it removes the row.
 - Clicking `#cd-go` twice in quick succession sends one `DELETE` and shows no error toast (`test_uc_a_07_double_click_delete_sends_once`).
 - `#cd-cancel` closes the confirm card without deleting.
-- On `/m/<code>` as the admin owner, clicking `#set-delete` on an empty `planning` session opens `/?delete=<code>`, fires the native `confirm()`, and, once accepted, the row is gone from `#session-rows`.
+- On `/m/<code>` as the admin owner, clicking `#set-delete` on an empty `planning` session opens `/?delete=<code>`, opens the confirmation dialog, and, after **Delete session**, the row is gone from `#session-rows`.
 - On `/m/<code>` of a `live` session, clicking `#set-delete` shows the toast "End the session before deleting it." in place and stays on the session page (`test_uc_a_07_delete_on_a_live_session_page_stays_put`).
 
 ### UC-A-08: The admin session page
@@ -541,8 +542,8 @@ results stay as they were."
 - `DELETE /api/quizzes/{id}` for a non-owner quiz → `404`.
 
 **Tests (UI)**
-- On `/quizzes`, opening a row's ⋯ menu (`details.menu`) in `#quiz-rows` and clicking Delete (after native confirm) removes the row.
-- Clicking Delete on a quiz that has been run shows an error toast and the row stays.
+- On `/quizzes`, opening a row's ⋯ menu (`details.menu`) in `#quiz-rows` and clicking Delete opens the confirmation dialog titled "Delete this quiz?"; Cancel keeps the row, and **Delete quiz** removes it.
+- Clicking Delete on a quiz that has been run, then **Delete quiz**, shows an error toast and the row stays.
 
 ### UC-A-27: Duplicate a quiz template
 
@@ -646,7 +647,9 @@ results stay as they were."
 
 ### UC-A-16: Delete a quiz question
 
-- **Given** the admin clicks Delete on a question (with `confirm()`)
+- **Given** the admin clicks Delete on a question and confirms with
+  **Delete question** in the confirmation dialog ("Delete this
+  question?", UX.md §14)
 - **When** `DELETE /api/quiz_questions/{id}` is called
 - **Then** the question and its answers are removed via cascade; parent
   quiz `last_edited_at` advances
@@ -656,7 +659,7 @@ results stay as they were."
 - For a question whose quiz is owned by another admin → `404`.
 
 **Tests (UI)**
-- In `#editor-body`, clicking Delete on a question (after native confirm) removes its row.
+- In `#editor-body`, clicking Delete on a question opens the confirmation dialog titled "Delete this question?" with the detail "Its answers are deleted too."; Esc cancels and leaves the editor open with the question; **Delete question** removes its row.
 
 ### UC-A-17: Add an answer to a question
 
@@ -871,16 +874,17 @@ Used by question and answer editors to set `image_url`.
   fail
 - **And** a session that already holds a run of this quiz (from the
   quiz's `sessions`, UC-A-10) says so on its menu item ("Already added ·
-  Queued", "· Live", or "· Closed", the shared status labels). Clicking it asks for confirmation
-  before adding another run (repeating a quiz is allowed but usually a
-  mistake); declining adds nothing
+  Queued", "· Live", or "· Closed", the shared status labels). Clicking it opens the confirmation dialog
+  as a heads-up ("Add this quiz again?", with a plain **Add again**
+  action) before adding another run (repeating a quiz is allowed but
+  usually a mistake); Cancel adds nothing
 
 **Tests (UI)**
 - On `/quizzes`, opening a ready quiz row's Add to session menu lists a `planning` session and a `live` session (live first) but not an `ended` one; clicking the planning session toasts its title, and `GET /api/sessions/{code}/quiz_runs` returns one queued run.
 - Doing the same for a valid draft quiz flips the row's badge to Ready and queues a run.
 - Doing the same for an invalid draft (no questions) shows an error toast; the badge stays Draft and no run is queued.
 - For a Ready quiz whose only question was deleted, the menu shows "Can't be added to a session yet: Quiz needs at least one question" and no session buttons (`test_uc_a_29_needs_fixing_quiz_cannot_be_added`).
-- For a quiz already queued in a session, that session's menu item reads "Already added · Queued"; other sessions' items don't say "Already added". Clicking it and dismissing the confirmation queues nothing; accepting it queues a second run.
+- For a quiz already queued in a session, that session's menu item reads "Already added · Queued"; other sessions' items don't say "Already added". Clicking it opens the dialog titled "Add this quiz again?"; Cancel queues nothing, and **Add again** queues a second run.
 
 ### UC-A-23: Global quiz-runs report
 
@@ -1173,9 +1177,12 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - **When** they click **Start session**
 - **Then** `POST /api/sessions/{code}/start` sets status to `live` and
   records `started_at`
-- **When** they click **End session** (the UI shows a native
-  `confirm()` first — the backend has no confirmation gate; the
-  request is fired straight if the moderator clicks OK)
+- **When** they click **End session**, the confirmation dialog (UX.md
+  §14) asks "End the session?" with the detail "Participants can no
+  longer ask questions." and the buttons Cancel and **End session**;
+  the request is sent only after **End session** (the backend has no
+  confirmation gate). Cancel, Esc and a click outside the dialog leave
+  the session live
 - **Then** `POST /api/sessions/{code}/end` sets status to `ended` and
   records `ended_at`
 - **And** starting a quiz run on a `planning` session auto-advances
@@ -1198,7 +1205,9 @@ an integer returns `400 "<name> must be a whole number from 1 to
 **Tests (UI)**
 - On `/m/<code>`, when status is `planning`, `#lifecycle-actions` contains Start session; clicking it flips `#session-status` to `.badge-live`.
 - `#lifecycle-hint` uses the same words as the status badge: "Not started yet. Start it when the audience is ready." while `planning` (`test_uc_m_02_hint_matches_the_badge`).
-- When status is `live`, `#lifecycle-actions` contains End session; clicking triggers native `confirm()`, then on OK flips `#session-status` to `.badge-ended`.
+- When status is `live`, `#lifecycle-actions` contains End session; clicking it opens the confirmation dialog, and **End session** flips `#session-status` to `.badge-ended`. No native dialog opens.
+- The dialog's title is "End the session?" with the detail "Participants can no longer ask questions."; Cancel (`.ghost`) sits left of **End session** (`.danger`), both 40 px tall. Focus starts on Cancel and returns to End session when the dialog closes. Cancel, Esc and a click on the backdrop each close it and the session stays `live` (`test_uc_m_02_end_session_asks_in_page`).
+- At 390 px the dialog keeps the page gutter and the page doesn't scroll sideways (`test_uc_m_02_confirm_dialog_fits_a_phone`).
 
 ### UC-M-03: Queue a quiz onto the session
 
@@ -1260,7 +1269,7 @@ it in `#quiz-runs`.
 - Selecting a valid draft and clicking `#add-quiz-btn` queues it and toasts that it was published.
 - `#quiz-select` starts on the placeholder (value `""`); clicking `#add-quiz-btn` without choosing toasts "Pick a quiz first." and queues nothing.
 - On an `ended` session, `#quiz-composer` is hidden.
-- A quiz already in this session is labelled in `#quiz-select` ("already added · Queued"); adding it asks for confirmation, and dismissing queues nothing. The picker refreshes when runs are added or removed.
+- A quiz already in this session is labelled in `#quiz-select` ("already added · Queued"); adding it opens the confirmation dialog titled "Add this quiz again?", whose **Add again** action is `.primary` (not `.danger`) and has focus; Cancel queues nothing, and **Add again** queues a second run. The picker refreshes when runs are added or removed.
 
 ### UC-M-04: Start a queued quiz run
 
@@ -1402,7 +1411,9 @@ recognizes which phase the current question is in.
 - **Given** a queued or live QuizRun
 - **When** the moderator opens the run's ⋯ overflow menu, clicks
   **Remove from session** for a queued run or **Delete run (discard
-  results)** for a live run, and confirms
+  results)** for a live run, and confirms in the confirmation dialog
+  ("Remove this quiz from the session?" with **Remove quiz**, or
+  "Delete this quiz run?" with **Delete run**)
 - **Then** `DELETE /api/sessions/{code}/quiz_runs/{id}` deletes the
   run and its responses
 - **And** a closed run returns `400 Closed quiz runs are historical
@@ -1417,7 +1428,7 @@ recognizes which phase the current question is in.
 - With no auth → `403`.
 
 **Tests (UI)**
-- In `#quiz-runs`, opening the ⋯ menu on a queued row and clicking "Remove from session" (after native confirm) removes the row. Its control has `aria-label="Remove this queued quiz from the session"`; live rows retain "Delete run (discard results)" with `aria-label="Delete this quiz run"`.
+- In `#quiz-runs`, opening the ⋯ menu on a queued row and clicking "Remove from session", then **Remove quiz** in the confirmation dialog, removes the row. Its control has `aria-label="Remove this queued quiz from the session"`; live rows retain "Delete run (discard results)" with `aria-label="Delete this quiz run"`.
 - On an ended Session, a legacy queued row does not offer Start or vote-count controls; it offers only **Remove from session**. The backend also rejects a direct Start request.
 - No ⋯ menu (and thus no Delete control) is rendered on `.badge-closed` rows.
 
@@ -1992,11 +2003,12 @@ when the run is no longer live.
   (`POST /api/sessions/{code}/feedback`), confirms "Submitted ✓", and changes
   the action to **Resubmit feedback**; the Feedback card is visually distinct
   from the Q&A/quiz cards
-- **And** the participant can retract their feedback via a subtle
-  **two-step inline confirm** (**Clear feedback**, `#fb-clear` → "Clear
-  feedback? Yes / No"):
-  "Yes" (`#fb-clear-yes`) issues `DELETE /api/sessions/{code}/feedback`,
-  "No" (`#fb-clear-no`) cancels. (Deterministic — no auto-revert timer.)
+- **And** the participant can retract their feedback with a subtle
+  **Clear feedback** button (`#fb-clear`), which opens the confirmation
+  dialog (UX.md §14): "Clear your feedback?", detail "Your stars and
+  comments are removed.", buttons Cancel and **Clear feedback**.
+  **Clear feedback** issues `DELETE /api/sessions/{code}/feedback`;
+  Cancel, Esc or a click outside keeps the feedback.
   History in `SessionFeedbackVersion` is retained; afterward `mine`
   returns null and the summary count drops; a "Feedback cleared" toast
   confirms it
@@ -2037,7 +2049,8 @@ when the run is no longer live.
 - While a quiz is live, `#quiz-card` is the first card in `main`; once the run closes, `#quiz-card` is hidden and `#profile-card` is first again.
 - `#fb-submit` is present and enabled. With no rating it shows a "Choose a rating first" cue; selecting a star reveals `#fb-expand` without submitting, and clicking **Submit feedback** fires one `POST .../feedback` with the rating and both comments.
 - After reload, `#feedback-card` is closed with `#fb-summary` showing the prior rating; opening it shows the prior rating (filled stars count) and comment values prefilled, and the button reads **Resubmit feedback**. Editing then resubmitting fires another `POST`.
-- `#fb-clear` reads **Clear feedback**; clicking it reveals an inline confirm (`#fb-clear-confirm`); `#fb-clear-no` cancels (rating unchanged), `#fb-clear-yes` clears the stars (filled count 0), hides `#fb-expand`, and shows a "Feedback cleared" toast.
+- `#fb-clear` reads **Clear feedback**; clicking it opens the confirmation dialog titled "Clear your feedback?" with a `.danger` **Clear feedback** action and focus on Cancel. Cancel leaves the rating unchanged and returns focus to `#fb-clear`; **Clear feedback** clears the stars (filled count 0), hides `#fb-expand`, and shows a "Feedback cleared" toast. No native dialog opens, and the page has no inline Yes / No (`test_uc_p_13_clear_asks_in_page`).
+- At 390 px the Clear feedback dialog and its buttons stay inside the page gutter, with no sideways scroll (`test_uc_p_13_clear_dialog_fits_a_phone`).
 - With a star picked and text typed in `#fb-went-well` but not submitted, the moderator renaming the session and then ending it leaves the typed text and the filled stars in place (`test_uc_p_13_live_updates_keep_feedback_draft`).
 
 ---

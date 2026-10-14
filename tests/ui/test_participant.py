@@ -11,6 +11,7 @@ import httpx
 from playwright.sync_api import expect
 
 from ._helpers import (
+    accept_confirm,
     admin_login_via_ui,
     api_end_session,
     api_login,
@@ -19,6 +20,9 @@ from ._helpers import (
     api_queue_quiz_run,
     api_start_session,
     ask_query_api,
+    confirm_dialog,
+    dismiss_confirm,
+    watch_native_dialogs,
 )
 
 PNG_BYTES = bytes.fromhex(
@@ -116,9 +120,23 @@ def test_uc_p_13_submit_and_resubmit_prefills_prior_values(
         c.close()
 
 
-def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
-    """UC-P-13: 'Clear feedback' is a two-step undo via an inline confirm —
-    'No' cancels, 'Yes' clears the rating and hides the comment fields."""
+def _submit_five_stars(page, base_url, code):
+    page.goto(f"{base_url}/s/{code}")
+    page.wait_for_selector("#feedback-card:visible")
+    page.locator("#fb-stars button.star").nth(4).click()  # 5 stars
+    with page.expect_response(
+        lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
+    ):
+        page.click("#fb-submit")
+    expect(page.locator("#fb-stars button.star.filled")).to_have_count(5)
+    # The card collapsed after submitting; reopen it to clear.
+    page.locator("#feedback-card > summary").click()
+
+
+def test_uc_p_13_clear_asks_in_page(base_url, admin_setup, page):
+    """UC-P-13: 'Clear feedback' asks in the in-page confirmation dialog —
+    Cancel keeps the rating, 'Clear feedback' clears it and hides the
+    comment fields. No native dialog and no inline Yes / No."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-P13c {secrets.token_hex(3)}")
     c.post(
@@ -126,32 +144,50 @@ def test_uc_p_13_two_step_clear(base_url, admin_setup, page):
         json={"enabled": True},
     ).raise_for_status()
     try:
-        page.goto(f"{base_url}/s/{s['code']}")
-        page.wait_for_selector("#feedback-card:visible")
-        page.locator("#fb-stars button.star").nth(4).click()  # 5 stars
-        with page.expect_response(
-            lambda r: r.url.endswith("/feedback") and r.request.method == "POST"
-        ):
-            page.click("#fb-submit")
-        expect(page.locator("#fb-stars button.star.filled")).to_have_count(5)
-        # The card collapsed after submitting; reopen it to clear.
-        page.locator("#feedback-card > summary").click()
-        # First tap reveals the confirm; "No" cancels (no delete).
+        native = watch_native_dialogs(page)
+        _submit_five_stars(page, base_url, s["code"])
         expect(page.locator("#fb-clear")).to_have_text("Clear feedback")
+        expect(page.locator("#fb-clear-confirm")).to_have_count(0)
         page.click("#fb-clear")
-        expect(page.locator("#fb-clear-confirm")).to_be_visible()
-        page.click("#fb-clear-no")
-        expect(page.locator("#fb-clear-confirm")).to_be_hidden()
+        dialog = confirm_dialog(page, "Clear your feedback?")
+        expect(dialog.locator(".confirm-detail")).to_have_text("Your stars and comments are removed.")
+        expect(dialog.locator(".confirm-ok")).to_have_text("Clear feedback")
+        expect(dialog.locator(".confirm-ok")).to_have_class(re.compile(r"\bdanger\b"))
+        expect(dialog.locator(".confirm-cancel")).to_be_focused()
+        dismiss_confirm(page)
         expect(page.locator("#fb-stars button.star.filled")).to_have_count(5)
-        # Re-open and confirm with "Yes" → DELETE clears it.
+        expect(page.locator("#fb-clear")).to_be_focused()
+        # Ask again and confirm → DELETE clears it.
         page.click("#fb-clear")
         with page.expect_response(
             lambda r: r.url.endswith("/feedback") and r.request.method == "DELETE"
         ):
-            page.click("#fb-clear-yes")
+            accept_confirm(page, "Clear your feedback?", "Clear feedback")
         expect(page.locator("#fb-stars button.star.filled")).to_have_count(0)
         expect(page.locator("#fb-expand")).to_be_hidden()
         expect(page.locator(".toast", has_text="Feedback cleared")).to_be_visible()
+        assert native == []
+    finally:
+        c.close()
+
+
+def test_uc_p_13_clear_dialog_fits_a_phone(base_url, admin_setup, page):
+    """UC-P-13 / UC-X-12: at 390 px the Clear feedback dialog keeps the
+    page gutter and the page doesn't scroll sideways."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-P13cp {secrets.token_hex(3)}")
+    c.post(f"/api/sessions/{s['code']}/feedback_enabled", json={"enabled": True}).raise_for_status()
+    try:
+        page.set_viewport_size({"width": 390, "height": 844})
+        _submit_five_stars(page, base_url, s["code"])
+        page.click("#fb-clear")
+        dialog = confirm_dialog(page, "Clear your feedback?")
+        box = dialog.bounding_box()
+        assert box["x"] >= 15 and box["x"] + box["width"] <= 390 - 15, box
+        for button in (dialog.locator(".confirm-cancel"), dialog.locator(".confirm-ok")):
+            b = button.bounding_box()
+            assert b["x"] >= box["x"] and b["x"] + b["width"] <= box["x"] + box["width"], (b, box)
+        assert_no_horizontal_overflow(page)
     finally:
         c.close()
 

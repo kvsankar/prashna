@@ -1,4 +1,4 @@
-import { $, answerOption, api, bindMenuDismiss, el, errorToast, exportLinks, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
+import { $, answerOption, api, askConfirm, bindMenuDismiss, el, errorToast, exportLinks, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type {
   EditorAnswer, EditorQuestion, PublishProblem, QuizEditor, QuizRun, QuizRunResults, QuizRunRow, QuizSummary,
   SessionRow,
@@ -144,7 +144,11 @@ async function addQuizToSession(
   q: QuizSummary, s: SessionRow, menu: HTMLDetailsElement, alreadyAdded: boolean,
 ): Promise<void> {
   // Repeating a quiz in a session is allowed but usually a mistake (UC-A-29).
-  if (alreadyAdded && !confirm(`"${q.title}" is already in "${s.title}". Add it again?`)) {
+  if (alreadyAdded && !await askConfirm({
+    title: "Add this quiz again?",
+    detail: `"${q.title}" is already in "${s.title}".`,
+    confirmLabel: "Add again",
+  })) {
     menu.open = false;
     return;
   }
@@ -347,7 +351,13 @@ guardClick($<HTMLButtonElement>("#create-quiz"), createQuiz);
 $("#new-quiz-title").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("#create-quiz").click(); });
 
 async function removeQuiz(id: number): Promise<void> {
-  if (!confirm("Delete this quiz template?")) return;
+  const ok = await askConfirm({
+    title: "Delete this quiz?",
+    detail: "Its questions and answers are deleted too.",
+    confirmLabel: "Delete quiz",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await api(`/api/quizzes/${id}`, { method: "DELETE" });
     if (editingId === id) closeEditor();
@@ -611,7 +621,13 @@ function renderQuestion(qq: EditorQuestion, idx: number, slot: HTMLElement): HTM
     el("strong", {}, `Q${idx + 1}`), typeSel, pollLabel, el("div", { class: "spacer" }),
     ...moveButtons(ids, idx, "question", saveOrder),
     guardClick(el("button", { class: "danger ghost small" }, "Delete") as HTMLButtonElement, async () => {
-      if (!confirm("Delete this question?")) return;
+      const ok = await askConfirm({
+        title: "Delete this question?",
+        detail: "Its answers are deleted too.",
+        confirmLabel: "Delete question",
+        danger: true,
+      });
+      if (!ok) return;
       try { await api(`/api/quiz_questions/${qq.id}`, { method: "DELETE" }); }
       catch (e) { errorToast((e as Error).message); return; }
       void openQuizDetail(quizId);

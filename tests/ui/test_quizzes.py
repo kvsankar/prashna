@@ -10,6 +10,7 @@ import secrets
 from playwright.sync_api import expect
 
 from ._helpers import (
+    accept_confirm,
     admin_login_via_ui,
     api_end_session,
     api_login,
@@ -17,6 +18,9 @@ from ._helpers import (
     api_make_session,
     api_queue_quiz_run,
     api_start_session,
+    confirm_dialog,
+    dismiss_confirm,
+    watch_native_dialogs,
 )
 
 
@@ -193,11 +197,18 @@ def test_uc_a_13_delete_unused_quiz_removes_row(base_url, admin_setup, page):
     quiz = api_make_quiz(c, f"UI-Q13 {secrets.token_hex(3)}")
     try:
         _goto_quizzes(page, base_url)
-        page.on("dialog", lambda d: d.accept())
+        native = watch_native_dialogs(page)
         row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
         _open_row_more(row)
         row.locator("button.danger").click()
+        dismiss_confirm(page, "Delete this quiz?")
+        page.wait_for_timeout(300)
+        expect(row).to_be_visible()
+        _open_row_more(row)
+        row.locator("button.danger").click()
+        accept_confirm(page, "Delete this quiz?", "Delete quiz")
         expect(page.locator("#quiz-rows tr").filter(has_text=quiz["title"])).to_have_count(0, timeout=5000)
+        assert native == []
     finally:
         c.close()
 
@@ -210,10 +221,10 @@ def test_uc_a_13_delete_used_quiz_toasts_error(base_url, admin_setup, page):
     api_queue_quiz_run(c, session["code"], quiz["id"])
     try:
         _goto_quizzes(page, base_url)
-        page.on("dialog", lambda d: d.accept())
         row = page.locator("#quiz-rows tr").filter(has_text=quiz["title"])
         _open_row_more(row)
         row.locator("button.danger").click()
+        accept_confirm(page, "Delete this quiz?", "Delete quiz")
         expect(page.locator(".toast-error")).to_be_visible()
         expect(row).to_be_visible()
     finally:
@@ -433,9 +444,18 @@ def test_uc_a_16_delete_question_removes_row(base_url, admin_setup, page):
         _goto_quizzes(page, base_url)
         page.locator("#quiz-rows tr").filter(has_text=quiz["title"]).click()
         expect(page.locator("#editor-body .editor-q")).to_have_count(2)
-        page.on("dialog", lambda d: d.accept())
+        native = watch_native_dialogs(page)
         page.locator("#editor-body .editor-q").first.locator("button.danger", has_text="Delete").click()
+        dialog = confirm_dialog(page, "Delete this question?")
+        expect(dialog.locator(".confirm-detail")).to_have_text("Its answers are deleted too.")
+        # Esc cancels and leaves the editor open (it doesn't also close the pane).
+        page.keyboard.press("Escape")
+        expect(dialog).to_be_hidden()
+        expect(page.locator("#editor-body .editor-q")).to_have_count(2)
+        page.locator("#editor-body .editor-q").first.locator("button.danger", has_text="Delete").click()
+        accept_confirm(page, "Delete this question?", "Delete question")
         expect(page.locator("#editor-body .editor-q")).to_have_count(1, timeout=5000)
+        assert native == []
     finally:
         c.close()
 
@@ -891,16 +911,21 @@ def test_uc_a_29_menu_shows_sessions_already_holding_the_quiz(base_url, admin_se
         expect(items.filter(has_text=holding["title"])).to_contain_text("Already added · Queued")
         expect(items.filter(has_text=other["title"])).not_to_contain_text("Already added")
 
-        page.once("dialog", lambda d: d.dismiss())
+        native = watch_native_dialogs(page)
         items.filter(has_text=holding["title"]).click()
+        dialog = confirm_dialog(page, "Add this quiz again?")
+        expect(dialog.locator(".confirm-detail")).to_have_text(
+            f'"{quiz["title"]}" is already in "{holding["title"]}".')
+        dismiss_confirm(page)
         page.wait_for_timeout(500)
         assert len(c.get(f"/api/sessions/{holding['code']}/quiz_runs").json()) == 1
 
         _open_add_menu(row)
-        page.once("dialog", lambda d: d.accept())
         row.locator("details.add-to-session .menu-panel button").filter(has_text=holding["title"]).click()
+        accept_confirm(page, "Add this quiz again?", "Add again")
         expect(page.locator(".toast").last).to_contain_text(holding["title"])
         assert len(c.get(f"/api/sessions/{holding['code']}/quiz_runs").json()) == 2
+        assert native == []
     finally:
         c.close()
 
@@ -1153,8 +1178,8 @@ def test_uc_a_10_editor_warns_when_an_edit_breaks_a_publish_rule(base_url, admin
         expect(q2).to_have_class(re.compile(r"\bhas-problem\b"))
         expect(page.locator("#editor-problem-count")).to_have_text("2 to fix")
         expect(badge).to_have_text("Needs fixing")
-        page.once("dialog", lambda d: d.accept())
         q2.get_by_role("button", name="Delete", exact=True).click()
+        accept_confirm(page, "Delete this question?", "Delete question")
         expect(page.locator("#editor-body .editor-q")).to_have_count(1, timeout=5000)
         expect(nav).to_be_hidden(timeout=5000)
         expect(notes).to_have_count(0)

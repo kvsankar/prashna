@@ -1,4 +1,4 @@
-import { $, api, bindMenuDismiss, el, errorToast, escapeHtml, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
+import { $, api, askConfirm, bindMenuDismiss, el, errorToast, escapeHtml, exportMenu, guardClick, markUsable, setVisible, statusLabel, toast } from "./common";
 import type { AdminStatus, Limits, SessionRow } from "./types";
 
 // `?session=<code>` is an older link to a session; the session page is now
@@ -189,7 +189,7 @@ async function loadSessions(): Promise<void> {
         actions.appendChild(startBtn);
       }
       const delBtn = el("button", { class: "danger xsmall" }, "Delete");
-      delBtn.addEventListener("click", () => startDeleteFlow(s));
+      delBtn.addEventListener("click", () => void startDeleteFlow(s));
       actions.appendChild(delBtn);
       tr.appendChild(actions);
       tbody.appendChild(tr);
@@ -198,7 +198,7 @@ async function loadSessions(): Promise<void> {
       const requested = rows.find((row) => row.code === requestedDeleteCode);
       requestedDeleteCode = null;
       history.replaceState({}, "", "/");
-      if (requested) startDeleteFlow(requested);
+      if (requested) void startDeleteFlow(requested);
     }
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="error-banner">${escapeHtml((e as Error).message)}</td></tr>`;
@@ -238,7 +238,7 @@ function count(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
-function startDeleteFlow(s: SessionRow): void {
+async function startDeleteFlow(s: SessionRow): Promise<void> {
   if (s.status === "live") {
     errorToast("End the session before deleting it.");
     return;
@@ -246,7 +246,13 @@ function startDeleteFlow(s: SessionRow): void {
   // Feedback and attendee profiles count as data too (UC-A-07).
   const hasData = s.query_count > 0 || s.quiz_run_count > 0 || s.feedback_count > 0 || s.profile_count > 0;
   if (!hasData) {
-    if (confirm(`Delete empty session "${s.title}"?`)) void deleteNoData(s);
+    const ok = await askConfirm({
+      title: "Delete the empty session?",
+      detail: `"${s.title}" has nothing in it yet.`,
+      confirmLabel: "Delete session",
+      danger: true,
+    });
+    if (ok) void deleteNoData(s);
     return;
   }
   const warn = $("#cd-warn");

@@ -1,4 +1,4 @@
-import { $, answerOption, api, bindMenuDismiss, el, errorToast, exportMenu, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, showSessionDeleted, statusLabel, toast, type LiveMessage } from "./common";
+import { $, answerOption, api, askConfirm, bindMenuDismiss, el, errorToast, exportMenu, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, showSessionDeleted, statusLabel, toast, type LiveMessage } from "./common";
 import type {
   FeedbackSummary,
   ModeratorBootstrap,
@@ -201,9 +201,14 @@ function renderLifecycle(): void {
   } else if (status === "live") {
     hint.textContent = "Session is live. End it when you're done.";
     const btn = el("button", { class: "danger ghost small" }, "End session");
-    btn.addEventListener("click", () => {
-      if (!confirm("End the session? Participants can no longer ask questions.")) return;
-      void transition("end");
+    btn.addEventListener("click", async () => {
+      const ok = await askConfirm({
+        title: "End the session?",
+        detail: "Participants can no longer ask questions.",
+        confirmLabel: "End session",
+        danger: true,
+      });
+      if (ok) void transition("end");
     });
     actions.appendChild(btn);
     actions.appendChild(feedbackBtn);
@@ -507,10 +512,15 @@ async function toggleLiveCounts(id: number, show: boolean): Promise<void> {
   } catch (e) { errorToast((e as Error).message); }
 }
 async function del(id: number, status: string): Promise<void> {
-  const prompt = status === "queued"
-    ? "Remove this queued quiz from the session?"
-    : "Delete this quiz run? Its responses are discarded and it leaves the session.";
-  if (!confirm(prompt)) return;
+  const ok = await askConfirm(status === "queued"
+    ? { title: "Remove this quiz from the session?", confirmLabel: "Remove quiz", danger: true }
+    : {
+      title: "Delete this quiz run?",
+      detail: "Its responses are discarded and it leaves the session.",
+      confirmLabel: "Delete run",
+      danger: true,
+    });
+  if (!ok) return;
   try {
     await api(`/api/sessions/${CODE}/quiz_runs/${id}`, { method: "DELETE", headers: modHeaders() });
     await loadQuizRuns();
@@ -525,7 +535,11 @@ guardClick($<HTMLButtonElement>("#add-quiz-btn"), async () => {
   const quiz = quizzes.find((q) => q.id === quizId);
   const isDraft = quiz?.status === "draft";
   // Repeating a quiz in a session is allowed but usually a mistake.
-  if (quiz?.in_session && !confirm(`"${quiz.title}" is already in this session. Add it again?`)) return;
+  if (quiz?.in_session && !await askConfirm({
+    title: "Add this quiz again?",
+    detail: `"${quiz.title}" is already in this session.`,
+    confirmLabel: "Add again",
+  })) return;
   try {
     const r = await api<QuizRun>(`/api/sessions/${CODE}/quiz_runs`, {
       method: "POST", headers: modHeaders(), body: { quiz_id: quizId, publish: isDraft },

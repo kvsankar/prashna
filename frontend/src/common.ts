@@ -486,3 +486,84 @@ export function bindMenuDismiss(): void {
     }
   });
 }
+
+/** What the confirmation dialog asks (UX.md §14). */
+export interface ConfirmOptions {
+  /** A short question, e.g. "End the session?". */
+  title: string;
+  /** One optional line on what happens. */
+  detail?: string;
+  /** The action, named with a verb, e.g. "End session". */
+  confirmLabel: string;
+  /** A loss that is hard to redo: red action, focus starts on Cancel. */
+  danger?: boolean;
+}
+
+interface ConfirmUi {
+  dialog: HTMLDialogElement;
+  title: HTMLElement;
+  detail: HTMLElement;
+  cancel: HTMLButtonElement;
+  ok: HTMLButtonElement;
+  /** Closes the open dialog with the answer; null while closed. */
+  settle: ((ok: boolean) => void) | null;
+}
+let confirmUi: ConfirmUi | null = null;
+
+function confirmDialogEl(): ConfirmUi {
+  if (confirmUi) return confirmUi;
+  const title = el("h2", { id: "confirm-title", class: "confirm-title" });
+  const detail = el("p", { id: "confirm-detail", class: "confirm-detail" });
+  const cancel = el("button", { type: "button", class: "ghost confirm-cancel" }, "Cancel") as HTMLButtonElement;
+  const ok = el("button", { type: "button", class: "confirm-ok" }) as HTMLButtonElement;
+  // The inner box fills the dialog, so a click whose target is the dialog
+  // itself landed on the backdrop.
+  const dialog = el("dialog", { class: "confirm-dialog", "aria-labelledby": "confirm-title" },
+    el("div", { class: "confirm-box" }, title, detail,
+      el("div", { class: "confirm-actions" }, cancel, ok))) as HTMLDialogElement;
+  const ui: ConfirmUi = { dialog, title, detail, cancel, ok, settle: null };
+  cancel.addEventListener("click", () => ui.settle?.(false));
+  ok.addEventListener("click", () => ui.settle?.(true));
+  dialog.addEventListener("click", (e) => { if (e.target === dialog) ui.settle?.(false); });
+  // Esc cancels here and goes no further, so page-level Esc handlers
+  // (closing a menu or a detail pane) don't also act on it.
+  dialog.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    ui.settle?.(false);
+  });
+  // Other close requests (such as a phone's back gesture) cancel too.
+  dialog.addEventListener("cancel", (e) => { e.preventDefault(); ui.settle?.(false); });
+  document.body.appendChild(dialog);
+  confirmUi = ui;
+  return ui;
+}
+
+/** Ask before an action whose loss is hard to redo (UX.md §14). Resolves
+ *  true when the person picks the action; Cancel, Esc and a click on the
+ *  backdrop resolve false. Focus returns to the element that had it. */
+export function askConfirm({ title, detail, confirmLabel, danger = false }: ConfirmOptions): Promise<boolean> {
+  const ui = confirmDialogEl();
+  ui.settle?.(false);  // a dialog still open counts as cancelled
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  ui.title.textContent = title;
+  ui.detail.textContent = detail ?? "";
+  setVisible(ui.detail, Boolean(detail));
+  if (detail) ui.dialog.setAttribute("aria-describedby", "confirm-detail");
+  else ui.dialog.removeAttribute("aria-describedby");
+  ui.ok.textContent = confirmLabel;
+  ui.ok.className = `confirm-ok ${danger ? "danger" : "primary"}`;
+  return new Promise<boolean>((resolve) => {
+    ui.settle = (ok) => {
+      ui.settle = null;
+      if (ui.dialog.open) ui.dialog.close();
+      resolve(ok);
+      // After the caller's handler has run: a guarded trigger is enabled
+      // again by then and can take focus.
+      setTimeout(() => { if (opener?.isConnected && !ui.dialog.open) opener.focus(); }, 0);
+    };
+    ui.dialog.showModal();
+    (danger ? ui.cancel : ui.ok).focus();
+  });
+}

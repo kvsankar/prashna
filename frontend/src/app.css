@@ -173,8 +173,7 @@ details#feedback-card > summary::-webkit-details-marker { display: none; }
 .fb-chevron::before { content: "▾"; }
 details#feedback-card:not([open]) .fb-chevron::before { content: "▸"; }
 .fb-rate-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-group); }
-.fb-rate-row #fb-clear, .fb-rate-row #fb-clear-confirm { margin-left: auto; }
-#fb-clear-confirm button { margin-left: var(--gap-related); }
+.fb-rate-row #fb-clear { margin-left: auto; }
 .fb-avg { font-size: var(--text-body); font-weight: var(--weight-semibold); color: var(--star); }
 .fb-stars-static { color: var(--star); letter-spacing: 1px; }
 .fb-item { padding: var(--gap-related) 0; border-top: 1px solid var(--border); }
@@ -421,6 +420,18 @@ details.menu > .menu-panel.session-picker .already-added { flex-basis: 100%; fon
 /* QR lightbox — any QR rendered via renderQR is click-to-enlarge for scanning. */
 .qr-expandable { cursor: zoom-in; }
 .qr-expandable:hover, .qr-expandable:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-lg); }
+/* Confirmation dialog (UX.md §14): a card centred on a dimmed page. The
+   width keeps the page gutter on phones. */
+dialog.confirm-dialog {
+  width: 420px; max-width: calc(100vw - 2 * var(--pad-page));
+  margin: auto; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-xl);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow-menu);
+}
+dialog.confirm-dialog::backdrop { background: var(--backdrop); }
+.confirm-box { padding: var(--pad-card); }
+.confirm-title { margin: 0; font-size: var(--text-body); color: var(--text); text-transform: none; letter-spacing: normal; }
+.confirm-detail { margin: var(--gap-related) 0 0; font-size: var(--text-base); color: var(--muted); }
+.confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--gap-related); margin-top: var(--pad-card); }
 .qr-lightbox { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; padding: var(--space-7); }
 .qr-lightbox-inner { width: min(90vh, 90vw); height: min(90vh, 90vw); display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; }
 .qr-lightbox-inner svg { width: 100%; height: 100%; }

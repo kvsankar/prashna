@@ -28,7 +28,7 @@ The component styles in `frontend/src/app.css` use the tokens through
 | Type | `--text-xs` 11 … `--text-5xl` 48 | 11 badge, 12 table header, 13 dense body, 14 body, 16 section, 18 page, 24+ projector |
 | Spacing roles | `--gap-tight` 4, `--gap-related` 8, `--gap-group` 12, `--pad-card` 16, `--gap-section` 24, `--pad-page` 24, `--pad-projector` | See "Spacing" below |
 | Spacing steps | `--space-1` 4, `--space-2` 8, `--space-3` 12, `--space-4` 16, `--space-5` 24, `--space-6` 32, `--space-7` 48 | The margin utilities (`.mt-2` and so on) and the projector's larger scale |
-| Other | `--shadow-menu`, `--shadow-toast`, `--nav-bg`, `--overlay-bg`, `--overlay-text`, `--star`, `--qr-bg`, `--proj-bg`, `--proj-hint` | Menus, toasts, sticky nav, QR lightbox, star ratings, QR codes, projector |
+| Other | `--shadow-menu`, `--shadow-toast`, `--nav-bg`, `--overlay-bg`, `--overlay-text`, `--backdrop`, `--star`, `--qr-bg`, `--proj-bg`, `--proj-hint` | Menus and the confirmation dialog, toasts, sticky nav, QR lightbox, the confirmation dialog's backdrop, star ratings, QR codes, projector |
 
 Add a token rather than a one-off value.
 
@@ -422,8 +422,14 @@ be added at the end and then moved.
 - A **`danger ghost xsmall`** button in the row's actions column, or in
   the row's ⋯ menu below a `.menu-sep` when the row has more actions than
   fit inline.
-- Confirms with native `confirm("Delete this ___?")` for now. Replace
-  with a modal once we have a modal pattern.
+- Asks first with the confirmation dialog (§14) when the loss is hard to
+  redo: "Delete this ___?" with a **Delete ___** action. A delete that
+  is easy to redo (an answer in the quiz editor) happens at once.
+- **Exception: a session that holds data.** Deleting it opens the
+  typed-title card (`#confirm-delete-card`) below the session list
+  instead: it lists what will be lost and enables **Delete** only when
+  the session's title is typed exactly. It is deliberately slower than
+  the dialog. An empty session uses the dialog.
 - On success: remove the row immediately, close the detail pane if it
   was showing that entity.
 - **No soft-delete or undo** until we have a real audit need. Don't
@@ -518,7 +524,8 @@ create affordance.
 | Session deleted      | `#session-deleted` banner replaces the page's content (`showSessionDeleted()`, UC-X-01) |
 | Auth expired         | Redirect to `/` (handled in `api()`)                         |
 
-Never use `alert()` or `prompt()`.
+Never use `alert()`, `confirm()` or `prompt()`; a question before an
+action uses the confirmation dialog (§14).
 
 ### Info / lifecycle hint
 
@@ -649,15 +656,54 @@ state, use a verb button (§7 Status transitions).
 
 ## 14. Modals
 
-Reserved for the rare case where work must block. Today we have *none*.
-When we add one:
+Reserved for the rare case where work must block. The only modal is the
+**confirmation dialog**. Never use a modal for create or edit (§7).
 
-- Centered overlay on `rgba(0,0,0,0.5)`.
-- `Esc` and click-outside both dismiss.
-- Primary action on the right, ghost cancel on the left.
-- Never use a modal for create — see §7 Create. Never use a modal for
-  delete confirmation once we have a confirm-modal helper — until then,
-  `confirm()` is acceptable.
+### Confirmation dialog
+
+One in-page dialog asks before an action, in Prashna's own style. It
+replaces the browser's `confirm()` pop-up, which Prashna never uses
+(`test_frontend_uses_no_native_dialogs`).
+
+**Confirm only when the loss is hard to redo.**
+
+- Confirm: end the session; delete a quiz run or remove a queued quiz;
+  delete a quiz question or a quiz; delete an empty session; clear your
+  feedback.
+- Don't confirm: delete an answer in the quiz editor (add it again);
+  remove a Q&A question (**Restore** brings it back); any toggle.
+- A **heads-up** before an action that is allowed but usually a mistake
+  (adding a quiz to a session that already has it) uses the same dialog
+  with a plain action, not a red one.
+
+**Anatomy.** `askConfirm({ title, detail, confirmLabel, danger })` in
+`common.ts` opens one `<dialog class="confirm-dialog">`, created on
+first use and reused. It resolves `true` for the action, `false`
+otherwise.
+
+- A card like `section.card` (`--panel`, border, `--radius-xl`,
+  `--pad-card`, `--shadow-menu`), centred on the dimmed page
+  (`--backdrop`, 50% black). It is at most 420 px wide and keeps the
+  page gutter on phones.
+- The heading (`.confirm-title`) is a short question: "End the
+  session?", "Delete this question?".
+- An optional one-line detail (`.confirm-detail`) says what happens:
+  "Participants can no longer ask questions."
+- Two default-size buttons at the bottom right: **Cancel** (`.ghost`) on
+  the left, the action on the right. The action is named with a verb and
+  its object ("End session", "Delete question", "Add again"), never "OK"
+  or "Yes". It is `.danger` for a loss and `.primary` for a heads-up.
+
+**Behaviour.**
+
+- The dialog opens with `showModal()`, so the page behind it can't be
+  used and Tab stays inside it.
+- **Cancel**, **Esc** and a click on the backdrop all cancel. Esc stops
+  at the dialog; it doesn't also close a menu or a detail pane.
+- Focus starts on **Cancel** for a loss, so a stray Enter is safe, and on
+  the action for a heads-up.
+- When the dialog closes, focus returns to the control that opened it.
+- The handler awaits the answer: `if (!await askConfirm({...})) return;`.
 
 ---
 
@@ -726,7 +772,7 @@ are. Check every change at 390 px wide (UC-X-12).
 - ❌ A "Save" button next to a text field that already persists on
   blur.
 - ❌ Status as an editable dropdown.
-- ❌ Native `alert()` for non-blocking errors.
+- ❌ Native `alert()` for non-blocking errors, or native `confirm()` before an action.
 - ❌ Stretching one detail pane to host two unrelated entities.
 - ❌ Interleaving setup/creational controls with live/operational ones on
   a work surface (group setup behind a `<details class="setup">`, see §4).

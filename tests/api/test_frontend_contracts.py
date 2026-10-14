@@ -135,6 +135,23 @@ def test_answer_options_come_from_one_renderer():
     assert "export function answerOption(" in (ROOT / "frontend/src/common.ts").read_text()
 
 
+def test_frontend_uses_no_native_dialogs():
+    """UX.md §8 and §14: no browser alert, confirm or prompt pop-ups. A
+    question before a hard-to-redo action uses the in-page confirmation
+    dialog, askConfirm() in common.ts."""
+    native = re.compile(r"(?<![\w$])(alert|confirm|prompt)\s*\(")
+    offenders = [
+        f"{p.relative_to(ROOT)}:{n}: {m.group(1)}("
+        for p in [*TS_SOURCES, *HTML_PAGES]
+        for n, line in enumerate(p.read_text().splitlines(), 1)
+        for m in native.finditer(line)
+    ]
+    assert offenders == []
+    common = (ROOT / "frontend/src/common.ts").read_text()
+    assert "export function askConfirm(" in common
+    assert "showModal()" in common
+
+
 def test_keyboard_shortcuts_submit_through_the_guarded_button():
     """UX.md §12: Enter / Ctrl+Enter submit by clicking the form's button,
     so the button's guardClick double-submit guard also covers the key."""

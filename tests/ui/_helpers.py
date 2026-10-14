@@ -15,6 +15,7 @@ import secrets
 from typing import Any
 
 import httpx
+from playwright.sync_api import expect
 
 from ..support import SETUP_TOKEN
 
@@ -143,3 +144,44 @@ def ask_query_api(client_or_url, code: str, text: str, *, voter_token: str | Non
         r = client_or_url.post(f"/api/sessions/{code}/queries", json={"text": text})
     assert r.status_code == 200, r.text
     return r.json()
+
+
+# ---------- In-page confirmation dialog (UX.md §14) ----------
+
+CONFIRM_DIALOG = "dialog.confirm-dialog"
+
+
+def watch_native_dialogs(page) -> list[str]:
+    """Collect every native browser dialog (alert, confirm, prompt) the page
+    opens and dismiss it. Prashna uses none (UX.md §14), so tests assert the
+    returned list stays empty."""
+    seen: list[str] = []
+    page.on("dialog", lambda d: (seen.append(f"{d.type}: {d.message}"), d.dismiss()))
+    return seen
+
+
+def confirm_dialog(page, title: str | None = None):
+    """Wait for the in-page confirmation dialog and return its locator,
+    checking its heading when `title` is given."""
+    dialog = page.locator(CONFIRM_DIALOG)
+    expect(dialog).to_be_visible(timeout=5000)
+    if title is not None:
+        expect(dialog.locator(".confirm-title")).to_have_text(title)
+    return dialog
+
+
+def accept_confirm(page, title: str | None = None, label: str | None = None) -> None:
+    """Click the dialog's action button (checking its label when given)."""
+    dialog = confirm_dialog(page, title)
+    ok = dialog.locator(".confirm-ok")
+    if label is not None:
+        expect(ok).to_have_text(label)
+    ok.click()
+    expect(dialog).to_be_hidden(timeout=5000)
+
+
+def dismiss_confirm(page, title: str | None = None) -> None:
+    """Click the dialog's Cancel button."""
+    dialog = confirm_dialog(page, title)
+    dialog.locator(".confirm-cancel").click()
+    expect(dialog).to_be_hidden(timeout=5000)

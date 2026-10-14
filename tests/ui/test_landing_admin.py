@@ -12,11 +12,16 @@ import httpx
 from playwright.sync_api import expect
 
 from ._helpers import (
+    CONFIRM_DIALOG,
+    accept_confirm,
     admin_login_via_ui,
     api_login,
     api_make_session,
     api_start_session,
     ask_query_api,
+    confirm_dialog,
+    dismiss_confirm,
+    watch_native_dialogs,
 )
 
 # ---------- UC-A-03 ----------
@@ -271,16 +276,25 @@ def test_uc_a_07_delete_live_blocked_with_toast(base_url, admin_setup, page):
         c.close()
 
 
-def test_uc_a_07_delete_no_data_native_confirm(base_url, admin_setup, page):
-    """UC-A-07: Delete on planning session with no data → native confirm; OK removes the row."""
+def test_uc_a_07_delete_no_data_asks_in_page(base_url, admin_setup, page):
+    """UC-A-07: Delete on a planning session with no data → the in-page
+    confirmation dialog; Cancel keeps the row, Delete session removes it."""
     c = api_login(base_url)
     s = api_make_session(c, f"UI-A07empty {secrets.token_hex(3)}")
     try:
+        native = watch_native_dialogs(page)
         admin_login_via_ui(page, base_url)
-        page.on("dialog", lambda d: d.accept())
         row = page.locator("#session-rows tr").filter(has_text=s["title"])
         row.locator("button.danger").click()
+        dialog = confirm_dialog(page, "Delete the empty session?")
+        expect(dialog.locator(".confirm-detail")).to_have_text(f'"{s["title"]}" has nothing in it yet.')
+        dismiss_confirm(page)
+        page.wait_for_timeout(300)
+        expect(row).to_be_visible()
+        row.locator("button.danger").click()
+        accept_confirm(page, "Delete the empty session?", "Delete session")
         expect(page.locator("#session-rows tr").filter(has_text=s["title"])).to_have_count(0, timeout=5000)
+        assert native == []
     finally:
         c.close()
 
@@ -337,6 +351,8 @@ def test_uc_a_07_profile_and_feedback_open_the_confirm_card(base_url, admin_setu
         warn = page.locator("#cd-warn")
         expect(warn).to_contain_text("1 feedback response")
         expect(warn).to_contain_text("1 attendee profile")
+        # The typed-title card replaces the confirmation dialog here.
+        expect(page.locator(CONFIRM_DIALOG)).to_be_hidden()
         assert dialogs == []
     finally:
         c.close()
@@ -348,10 +364,12 @@ def test_uc_a_07_delete_from_session_page(base_url, admin_setup, page):
     s = api_make_session(c, f"UI-A07page {secrets.token_hex(3)}")
     try:
         _goto_session_page(page, base_url, s)
-        page.on("dialog", lambda d: d.accept())
+        native = watch_native_dialogs(page)
         page.click("#set-delete")
+        accept_confirm(page, "Delete the empty session?", "Delete session")
         expect(page.locator("#sessions-card")).to_be_visible(timeout=5000)
         expect(page.locator("#session-rows tr").filter(has_text=s["title"])).to_have_count(0, timeout=5000)
+        assert native == []
     finally:
         c.close()
 
