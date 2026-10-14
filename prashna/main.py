@@ -479,8 +479,12 @@ def normalize_optional_text(payload: dict, field: str, max_len: int) -> str | No
     return text[:max_len] or None
 
 
-def serialize_participant_profile(p: m.Participant) -> dict:
-    return {
+# The profile fields only the session's owner sees (UC-M-13).
+CONTACT_FIELDS = ("email", "contact_number", "linkedin_url")
+
+
+def serialize_participant_profile(p: m.Participant, *, include_contact: bool = True) -> dict:
+    body = {
         "id": p.id,
         "name": p.name,
         "email": p.email,
@@ -492,6 +496,10 @@ def serialize_participant_profile(p: m.Participant) -> dict:
         "current_work": p.current_work,
         "learning_goal": p.learning_goal,
     }
+    if not include_contact:
+        for field in CONTACT_FIELDS:
+            del body[field]
+    return body
 
 
 def serialize_feedback(f: m.SessionFeedback) -> dict:
@@ -1433,6 +1441,31 @@ async def update_session(
     return serialize_session(s)
 
 
+@app.post("/api/sessions/{code}/mod_key")
+async def change_mod_key(
+    code: str,
+    db: DbSession = Depends(get_db),
+    me: m.User = Depends(auth.current_admin),
+):
+    """Replace the moderator key (UC-A-08). Owner-only: every delegate link
+    stops working at once, and open delegate pages show the key gate."""
+    s = get_session_by_code(db, code)
+    require_session_owner(s, me)
+    s.mod_key = gen_token()[:16]
+    db.commit()
+    await broadcast_session(s, "moderator_key")
+    # Never log the key itself (CLAUDE.md).
+    log_diagnostic(
+        "session.lifecycle",
+        action="mod_key",
+        outcome="success",
+        actor_id=me.id,
+        session_id=s.id,
+        session_code=s.code,
+    )
+    return serialize_session(s, include_mod_key=True)
+
+
 @app.post("/api/sessions/{code}/participant_base_url")
 async def set_participant_base_url(
     code: str,
@@ -1686,7 +1719,9 @@ def list_participant_profiles(
         .where(m.Participant.session_id == s.id)
         .order_by(m.Participant.last_seen_at.desc())
     ).all()
-    items = [serialize_participant_profile(p) for p in rows if participant_has_profile(p)]
+    # Contact details are for the owner only; a delegate gets the rest.
+    owner = is_admin_owner(s, me)
+    items = [serialize_participant_profile(p, include_contact=owner) for p in rows if participant_has_profile(p)]
     return {"count": len(items), "items": items}
 
 
@@ -2997,8 +3032,9 @@ async def submit_quiz_run(
 
 
 # ---------- routes: data export (UC-A-30) ----------
-# Owner-only: exports include participants' contact details, so the mod_key
-# delegation path never reaches them.
+# Owner-only (the owner's admin cookie). Exports carry participants' contact
+# details, which only the owner sees: a delegate with the mod_key gets
+# attendee profiles without them (UC-M-13) and reaches no export route.
 
 
 def _export_format(value: str) -> str:

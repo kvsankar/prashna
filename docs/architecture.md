@@ -483,7 +483,11 @@ them in SQLite. Log retention for production is in
   stay with the owner.
 - Consequence: the moderator key travels in the URL fragment and in browser
   `localStorage`, and that handling is part of the moderator client contract.
-- Revisit when: teams need revocable, audited, multi-person moderation.
+  A delegate sees attendee profiles without contact details (email, contact
+  number, LinkedIn); only the owner sees those and the exports. The owner
+  can change the key, which cuts off every delegate at once; there is no
+  per-delegate revocation.
+- Revisit when: teams need per-person, audited moderation.
 
 ### Immutable quiz versions
 

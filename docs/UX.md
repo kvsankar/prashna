@@ -674,7 +674,8 @@ replaces the browser's `confirm()` pop-up, which Prashna never uses
 **Confirm only when the loss is hard to redo.**
 
 - Confirm: end the session; delete a quiz run; delete a quiz question
-  or a quiz; delete an empty session; clear your feedback.
+  or a quiz; delete an empty session; clear your feedback; change the
+  moderator key (delegates need the new link).
 - Don't confirm: delete an answer in the quiz editor (add it again);
   remove a queued quiz from a session (add it again); remove a Q&A
   question (**Restore** brings it back); any toggle.

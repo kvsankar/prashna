@@ -1,4 +1,4 @@
-import { $, answerOption, api, askConfirm, bindMenuDismiss, el, errorToast, exportMenu, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, showSessionDeleted, statusLabel, toast, type LiveMessage } from "./common";
+import { $, answerOption, api, askConfirm, bindMenuDismiss, el, errorToast, exportMenu, guardClick, markUsable, modHeaders, modKey, openLiveSocket, pathCode, publicBase, renderQR, setModKey, setVisible, showSessionDeleted, statusLabel, toast, type LiveMessage, type LiveSocket } from "./common";
 import type {
   FeedbackSummary,
   ModeratorBootstrap,
@@ -32,6 +32,7 @@ let quizRuns: QuizRun[] = [];
 let quizzes: QuizSummary[] = [];
 let sessionState: Session | null = null;
 let presenceTimer: ReturnType<typeof setInterval> | null = null;
+let liveSocket: LiveSocket | null = null;
 let isOwner = false;
 const pendingResponseText = new Map<number, string>();
 let latestSessionSeq = 0;
@@ -170,6 +171,21 @@ $("#set-share-mod").addEventListener("click", async () => {
   } catch {
     errorToast("Couldn't copy — load over HTTPS for clipboard access.");
   }
+});
+// A new key cuts off every delegate link at once (UC-A-08); open delegate
+// pages get the moderator_key hint and show the key gate.
+guardClick($<HTMLButtonElement>("#set-change-mod"), async () => {
+  const ok = await askConfirm({
+    title: "Change the moderator key?",
+    detail: "Moderator links you shared stop working. Share the new link with anyone who should keep access.",
+    confirmLabel: "Change key",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/sessions/${CODE}/mod_key`, { method: "POST" });
+    toast("Moderator key changed. Share the new moderator URL with anyone who should keep access.");
+  } catch (e) { errorToast((e as Error).message); }
 });
 // Deletion stays one flow on the session list (typed-title confirm). A live
 // session can't be deleted, so say so here instead of leaving the page.
@@ -595,7 +611,7 @@ async function loadProfiles(): Promise<void> {
   } catch { /* non-fatal */ }
 }
 
-function profileLine(label: string, value: string | null): HTMLElement | null {
+function profileLine(label: string, value: string | null | undefined): HTMLElement | null {
   if (!value) return null;
   return el("div", { class: "small" }, el("strong", {}, label + ": "), value);
 }
@@ -667,12 +683,13 @@ function refreshSoon(msg: LiveMessage): void {
     refreshTimer = null;
     const types = new Set(pendingLiveTypes);
     pendingLiveTypes.clear();
+    if (types.has("moderator_key") && !isOwner) { void recheckKey(); return; }
     if (types.has("reconnect")) { refreshAll(); return; }
     const knownTypes = new Set([
       "session_state", "feedback_state", "query_new", "query_vote",
       "query_responded", "query_removed", "query_deleted", "quiz_run_new",
       "quiz_run_update", "quiz_run_deleted", "quiz_submission", "feedback",
-      "participant",
+      "participant", "moderator_key",
     ]);
     if ([...types].some((type) => !knownTypes.has(type))) { refreshAll(); return; }
     if (["session_state", "feedback_state"].some((type) => types.has(type))) loadSession().catch(reportError);
@@ -684,6 +701,22 @@ function refreshSoon(msg: LiveMessage): void {
     if (["feedback", "feedback_state"].some((type) => types.has(type))) void loadFeedback();
     if (types.has("participant")) { void loadPresence(); void loadProfiles(); }
   }, 400);
+}
+
+// The owner changed the moderator key (UC-M-01): if this delegate's key no
+// longer works, stop refreshing and ask for the new one.
+async function recheckKey(): Promise<void> {
+  try {
+    await api(`/api/sessions/${CODE}/moderator-bootstrap`, { headers: modHeaders() });
+    refreshAll();
+  } catch {
+    liveSocket?.close();
+    liveSocket = null;
+    if (presenceTimer) clearInterval(presenceTimer);
+    presenceTimer = null;
+    showKeyGate();
+    errorToast("Couldn't load session — re-enter the moderator key.");
+  }
 }
 
 async function boot(): Promise<void> {
@@ -704,7 +737,8 @@ async function boot(): Promise<void> {
   // parallel without delaying the usable moderator surface.
   void loadProfiles();
   void loadFeedback();
-  openLiveSocket(CODE, refreshSoon);
+  liveSocket?.close();
+  liveSocket = openLiveSocket(CODE, refreshSoon);
   if (presenceTimer) clearInterval(presenceTimer);
   presenceTimer = setInterval(() => void loadPresence(), 15000);
 }

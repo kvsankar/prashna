@@ -131,7 +131,10 @@ ends.
 
 The admin who owns a session can do everything a moderator can, on the same
 page, plus the session's settings. The moderator link is how the admin hands
-the room to someone without an admin account.
+the room to someone without an admin account. Someone with the link sees
+attendee profiles without their email, phone number, or LinkedIn profile.
+To stop every shared link from working, the admin changes the moderator key
+in the session's settings.
 
 ## Documentation
 

@@ -380,7 +380,8 @@ def test_uc_p_03_profile_blank_fields_become_null(client, admin_client, make_ses
 
 
 def test_uc_m_13_participant_profiles_summary(client, admin_client, make_session, mod_headers):
-    """UC-M-13: moderators can list only attendees with provided profile data."""
+    """UC-M-13: the owner lists only attendees with provided profile data,
+    with every field; a delegate gets the same list without contact details."""
     s = make_session()
     admin_client.cookies.clear()
     client.patch(f"/api/sessions/{s['code']}/me", json={
@@ -400,20 +401,38 @@ def test_uc_m_13_participant_profiles_summary(client, admin_client, make_session
     ).json()["photo_url"]
     client.cookies.clear()
     client.get(f"/api/sessions/{s['code']}/me")
+    client.cookies.clear()
 
+    shared = {
+        "name": "Dana",
+        "organization": "ExampleCo",
+        "role": "Manager",
+        "photo_url": photo,
+        "current_work": "Building a training platform",
+        "learning_goal": "Practice live facilitation",
+    }
+    contact = {
+        "email": "dana@example.com",
+        "contact_number": "+1 415 555 0101",
+        "linkedin_url": "https://www.linkedin.com/in/dana-example",
+    }
+
+    # A delegate (moderator key, no admin cookie): no contact details.
     r = client.get(f"/api/sessions/{s['code']}/participants", headers=mod_headers(s["mod_key"]))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["count"] == 1
-    assert body["items"][0]["name"] == "Dana"
-    assert body["items"][0]["email"] == "dana@example.com"
-    assert body["items"][0]["contact_number"] == "+1 415 555 0101"
-    assert body["items"][0]["organization"] == "ExampleCo"
-    assert body["items"][0]["role"] == "Manager"
-    assert body["items"][0]["linkedin_url"] == "https://www.linkedin.com/in/dana-example"
-    assert body["items"][0]["photo_url"] == photo
-    assert body["items"][0]["current_work"] == "Building a training platform"
-    assert body["items"][0]["learning_goal"] == "Practice live facilitation"
+    item = body["items"][0]
+    assert {key: item[key] for key in shared} == shared
+    assert not set(contact) & set(item), item
+
+    # The owner (admin cookie): every field.
+    client.post("/api/admin/login", json={"username": "admin", "password": "testpass1"}).raise_for_status()  # pragma: allowlist secret
+    r = client.get(f"/api/sessions/{s['code']}/participants")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["count"] == 1
+    assert body["items"][0] == {"id": item["id"], **shared, **contact}
 
 
 def test_uc_m_13_participant_profiles_requires_moderator(client, admin_client, make_session):

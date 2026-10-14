@@ -56,6 +56,70 @@ def test_uc_m_01_patch_session_is_owner_only(client, admin_client, make_session,
     assert r.status_code == 401
 
 
+def test_uc_a_08_owner_changes_the_moderator_key(client, admin_client, make_session, mod_headers, caplog):
+    """UC-A-08: the owner changes the moderator key; the old key stops
+    working at once, the new one works, open pages get a hint, and the key
+    is never logged."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="prashna")
+    s = make_session()
+    old_key = s["mod_key"]
+    with admin_client.websocket_connect(f"/ws/sessions/{s['code']}") as ws:
+        r = admin_client.post(f"/api/sessions/{s['code']}/mod_key")
+        assert r.status_code == 200, r.text
+        assert ws_receive(ws) == {"type": "moderator_key"}
+    new_key = r.json()["mod_key"]
+    assert new_key and new_key != old_key
+    assert len(new_key) == len(old_key)
+    listed = {row["code"]: row["mod_key"] for row in admin_client.get("/api/sessions").json()}
+    assert listed[s["code"]] == new_key
+
+    admin_client.cookies.clear()
+    refused = client.get(f"/api/sessions/{s['code']}/moderator-bootstrap", headers=mod_headers(old_key))
+    assert refused.status_code == 403
+    assert refused.json() == {"detail": "Not authorized — moderator key or admin login required"}
+    assert client.post(f"/api/sessions/{s['code']}/start", headers=mod_headers(old_key)).status_code == 403
+    assert client.get(f"/api/sessions/{s['code']}/moderator-bootstrap",
+                      headers=mod_headers(new_key)).status_code == 200
+
+    log_text = "\n".join(f"{rec.getMessage()} {rec.__dict__}" for rec in caplog.records)
+    assert old_key not in log_text
+    assert new_key not in log_text
+
+
+def test_uc_a_08_change_moderator_key_is_owner_only(client, admin_client, make_session, mod_headers):
+    """UC-A-08: changing the moderator key needs the owner's admin cookie:
+    a delegate's key alone gets 401, another admin gets 403 "Not your
+    session", and the key stays the same."""
+    s = make_session()
+    admin_client.cookies.clear()
+    r = client.post(f"/api/sessions/{s['code']}/mod_key")
+    assert r.status_code == 401
+    assert r.json() == {"detail": "Not authenticated"}
+    r = client.post(f"/api/sessions/{s['code']}/mod_key", headers=mod_headers(s["mod_key"]))
+    assert r.status_code == 401
+    assert r.json() == {"detail": "Not authenticated"}
+
+    from prashna import auth
+    from prashna import models as m
+    from prashna.db import SessionLocal
+    with SessionLocal() as db:
+        other = m.User(username="other", password_hash=auth.hash_password("longenough"))
+        db.add(other)
+        db.commit()
+        db.refresh(other)
+        db.query(m.Session).filter_by(code=s["code"]).one().owner_user_id = other.id
+        db.commit()
+    client.post("/api/admin/login", json={"username": "admin", "password": "testpass1"}).raise_for_status()  # pragma: allowlist secret
+    r = client.post(f"/api/sessions/{s['code']}/mod_key")
+    assert r.status_code == 403
+    assert r.json() == {"detail": "Not your session"}
+    client.cookies.clear()
+    assert client.get(f"/api/sessions/{s['code']}/moderator-bootstrap",
+                      headers=mod_headers(s["mod_key"])).status_code == 200
+
+
 def test_uc_m_01_unknown_code_redirects(make_session, app_module):
     """UC-M-01: GET /m/<unknown> → 303 to /?bad_code=..."""
     with TestClient(app_module.app, follow_redirects=False) as c:

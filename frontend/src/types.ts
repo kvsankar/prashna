@@ -83,14 +83,16 @@ export interface FeedbackSummary {
   items: Feedback[];
 }
 
+/** An attendee profile. The contact fields (email, contact number,
+ *  LinkedIn) are absent when a delegate lists profiles (UC-M-13). */
 export interface ParticipantProfile {
   id: number;
   name: string | null;
-  email: string | null;
-  contact_number: string | null;
+  email?: string | null;
+  contact_number?: string | null;
   organization: string | null;
   role: string | null;
-  linkedin_url: string | null;
+  linkedin_url?: string | null;
   photo_url: string | null;
   current_work: string | null;
   learning_goal: string | null;

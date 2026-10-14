@@ -125,7 +125,7 @@ function loadAllSoon(msg: { type: string }): void {
     showSessionDeleted();
     return;
   }
-  if (msg.type === "feedback_state" || sessionDeleted) return;
+  if (msg.type === "feedback_state" || msg.type === "moderator_key" || sessionDeleted) return;
   if (reloadTimer) return;
   reloadTimer = setTimeout(() => { reloadTimer = null; void loadAll(); }, 400);
 }

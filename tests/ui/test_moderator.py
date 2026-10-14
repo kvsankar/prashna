@@ -959,6 +959,36 @@ def test_uc_m_13_non_web_linkedin_is_plain_text(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_m_13_delegate_sees_no_contact_details(base_url, admin_setup, page):
+    """UC-M-13: a delegate's Attendee profiles card shows the profile
+    without email, contact number, or LinkedIn, and no empty lines for them."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-M13d {secrets.token_hex(3)}")
+    with httpx.Client(base_url=base_url) as pc:
+        pc.patch(f"/api/sessions/{s['code']}/me", json={
+            "name": "Dana",
+            "email": "dana@example.com",
+            "contact_number": "+1 415 555 0101",
+            "organization": "ExampleCo",
+            "role": "Engineering Manager",
+            "linkedin_url": "https://www.linkedin.com/in/dana-example",
+            "current_work": "Building a training platform",
+            "learning_goal": "Practice live facilitation",
+        }).raise_for_status()
+    try:
+        page.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        profiles = page.locator("#profiles-list")
+        expect(page.locator("#profiles-summary")).to_contain_text("1 profile", timeout=5000)
+        for shown in ("Dana", "ExampleCo", "Engineering Manager",
+                      "Building a training platform", "Practice live facilitation"):
+            expect(profiles).to_contain_text(shown)
+        for hidden in ("dana@example.com", "+1 415 555 0101", "linkedin.com", "Email", "Contact", "LinkedIn"):
+            expect(profiles).not_to_contain_text(hidden)
+        expect(profiles.locator("a")).to_have_count(0)
+    finally:
+        c.close()
+
+
 # ---------- UC-M-10 ----------
 
 
@@ -1278,4 +1308,53 @@ def test_uc_x_01_failed_live_refetch_shows_an_error_on_the_session_page(base_url
         expect(page.locator(".toast-error")).to_contain_text("Server is restarting", timeout=5000)
         assert errors == []
     finally:
+        c.close()
+
+
+def test_uc_a_08_owner_changes_the_moderator_key(base_url, admin_setup, page, browser):
+    """UC-A-08, UC-M-01: "Change moderator key" asks first; Cancel keeps the
+    key, confirming changes it, and an open delegate tab shows the key gate
+    until the new key is entered."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-A08key {secrets.token_hex(3)}")
+
+    def current_key() -> str:
+        rows = c.get("/api/sessions").json()
+        return next(row["mod_key"] for row in rows if row["code"] == s["code"])
+
+    delegate = browser.new_context()
+    try:
+        tab = delegate.new_page()
+        tab.goto(f"{base_url}/m/{s['code']}#k={s['mod_key']}")
+        expect(tab.locator("#lifecycle-card")).to_be_visible(timeout=5000)
+
+        native = watch_native_dialogs(page)
+        admin_login_via_ui(page, base_url)
+        page.goto(f"{base_url}/m/{s['code']}")
+        button = page.locator("#set-change-mod")  # Set up is open while not started
+        expect(button).to_have_text("Change moderator key")
+        button.click()
+        dialog = confirm_dialog(page, "Change the moderator key?")
+        expect(dialog.locator(".confirm-detail")).to_have_text(
+            "Moderator links you shared stop working. "
+            "Share the new link with anyone who should keep access.")
+        expect(dialog.locator(".confirm-ok")).to_have_class(re.compile(r"\bdanger\b"))
+        dismiss_confirm(page)
+        assert current_key() == s["mod_key"]
+
+        button.click()
+        accept_confirm(page, "Change the moderator key?", "Change key")
+        expect(page.locator(".toast")).to_contain_text("Moderator key changed", timeout=5000)
+        new_key = current_key()
+        assert new_key != s["mod_key"]
+        assert native == []
+
+        expect(tab.locator("#modkey-card")).to_be_visible(timeout=5000)
+        expect(tab.locator("#lifecycle-card")).to_be_hidden()
+        expect(tab.locator(".toast-error")).to_contain_text("re-enter the moderator key")
+        tab.fill("#modkey-input", new_key)
+        tab.click("#modkey-submit")
+        expect(tab.locator("#lifecycle-card")).to_be_visible(timeout=5000)
+    finally:
+        delegate.close()
         c.close()

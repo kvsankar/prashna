@@ -395,7 +395,8 @@ owner-only controls; a delegate sees the same page without them.
   gate (admin owners authenticate via cookie)
 - **And** the owner sees a **Session settings** card (`#settings-card`)
   inside Set up, with the Title input (UC-A-05), a "Share moderator
-  URL" copy button for delegation, and **Delete session…** (UC-A-07)
+  URL" copy button for delegation, **Change moderator key**
+  (`#set-change-mod`), and **Delete session…** (UC-A-07)
 - **And** the owner sees the whole-session **Export ▾** (UC-A-30) in the
   Session lifecycle card, in every state
 - **And** the owner sees the Base URL field in the Invite card (UC-A-06)
@@ -405,16 +406,32 @@ owner-only controls; a delegate sees the same page without them.
 - **And** "Share moderator URL" fetches the key on click from
   `GET /api/sessions` (owner-only) and copies `<origin>/m/<code>#k=<mod_key>`;
   the key is never rendered into the DOM
+- **And** **Change moderator key** first asks in the confirmation dialog
+  (UX.md §14): "Change the moderator key?", detail "Moderator links you
+  shared stop working. Share the new link with anyone who should keep
+  access.", action **Change key** (danger). Confirming calls
+  `POST /api/sessions/{code}/mod_key` (owner-only), which replaces the
+  key with a new one made the same way as at session creation, saves it,
+  broadcasts `moderator_key` (UC-X-01), and returns the session with the
+  new `mod_key`. The page toasts "Moderator key changed. Share the new
+  moderator URL with anyone who should keep access." **Cancel** changes
+  nothing. The old key stops working at once on every moderator route,
+  and open delegate pages show the key gate (UC-M-01). "Share moderator
+  URL" then copies the link with the new key. The key is never written
+  to the server log
 
 **Tests (API)**
 - `POST /api/sessions/{code}/start` with admin cookie on a `planning` session → `200 {status: "live"}`; sets `started_at`. Auth: mod-key OR admin cookie.
 - `POST /api/sessions/{code}/end` with admin cookie → `200 {status: "ended"}`; sets `ended_at`.
 - `POST /api/sessions/{code}/start` on an `ended` session → `400 "Session has ended"`.
+- `POST /api/sessions/{code}/mod_key` with the owner's cookie → `200` with a new `mod_key` of the same length, which `GET /api/sessions` also lists; it broadcasts `{"type": "moderator_key"}`; afterwards the old key gets `403` on `moderator-bootstrap` and `start` while the new key gets `200`; neither key appears in the captured log records (`test_uc_a_08_owner_changes_the_moderator_key`).
+- `POST /api/sessions/{code}/mod_key` without a cookie, and with only the mod-key, → `401 "Not authenticated"`; another admin's session → `403 "Not your session"`; the key stays the same (`test_uc_a_08_change_moderator_key_is_owner_only`).
 
 **Tests (UI)**
 - On `/` (authed), clicking a row in `#session-rows` navigates to `/m/<code>`; the moderator surface loads with no `#modkey-card` gate, and `#settings-card` is visible.
 - Clicking `#set-share-mod` copies the moderator URL (with `#k=<mod_key>` fragment) to clipboard and toasts confirmation.
 - Opening `/m/<code>#k=<mod_key>` as a delegate (no admin cookie) hides `#settings-card`, `#base-url`, and `#base-url-help`; the owner sees `#base-url-help` and the `#base-url` placeholder "e.g. https://quiz.example.org" (`test_uc_a_08_base_url_help_follows_the_field`).
+- With a delegate tab open on `/m/<code>#k=<mod_key>`, the owner clicks `#set-change-mod`: the dialog reads "Change the moderator key?" with its detail and a danger **Change key**; **Cancel** keeps the key; confirming toasts "Moderator key changed" and changes the key; the delegate tab then shows `#modkey-card` with the "re-enter the moderator key" toast, and entering the new key loads the surface again; no native dialog opens (`test_uc_a_08_owner_changes_the_moderator_key`).
 - Start and End on the session page are covered by UC-M-02.
 
 ---
@@ -1156,6 +1173,12 @@ an integer returns `400 "<name> must be a whole number from 1 to
   that already shows `/m/<code>` loads it: the page reloads when the
   part after `#` gains a `k=` key. Its section links (`#quizzes-card`
   and the others) stay ordinary jumps
+- **And** when the owner changes the moderator key (UC-A-08), an open
+  delegate page gets the `moderator_key` hint and checks its key again.
+  The old key gets `403`, so the page stops refreshing, closes its
+  socket, and shows the key gate with the "Couldn't load session —
+  re-enter the moderator key." toast. Entering the new key loads the
+  surface again. The owner's page ignores the hint
 
 **Tests (API)**
 - Any `mod-or-owner` route (e.g., `POST /api/sessions/{code}/start`) with valid `X-Mod-Key` header → `200`. Auth: mod-key.
@@ -1175,6 +1198,7 @@ an integer returns `400 "<name> must be a whole number from 1 to
 - Opening `/m/<code>` with a wrong stored key renders `#modkey-card` with toast "Couldn't load session — re-enter the moderator key."
 - With `#modkey-card` showing, `#title` reads "Session <code>", `header.top .meta` and the Sessions breadcrumb are hidden, and the card's text does not mention `#k=` (`test_uc_m_01_key_gate_shows_no_session_chrome`).
 - With `#modkey-card` showing, going to `/m/<code>#k=<mod_key>` in the same tab boots the moderator surface (`test_uc_m_01_moderator_link_pasted_into_an_open_tab`).
+- After the owner changes the moderator key, an open delegate tab shows `#modkey-card` and the toast, and the new key loads it again (`test_uc_a_08_owner_changes_the_moderator_key`).
 - `#moderator-breadcrumbs` shows Sessions → session title. The Sessions link targets `/`; the session title is the current page. The tab title reads "<session title> — Prashna" (`test_uc_m_01_breadcrumbs_jump_within_page_and_back_to_session`). The adjacent section links jump to Lifecycle, Set up, Quiz, Questions, Profiles, and Feedback; jumping to Set up opens the disclosure.
 - The header links to the session's other views: `#participant-link` "Participant view" (`/s/<code>`, same tab) and `#projector-link` "Projector" (`/p/<code>`, a new tab, so the session page stays open while the projector goes on the room screen; the session list's Projector link does the same). A delegate moderator does not see the Sessions breadcrumb, which only an admin can use (`test_uc_m_views_links_for_a_delegate`).
 
@@ -1628,6 +1652,10 @@ by default while the session is `planning`.
   photograph, name ("Anonymous attendee" when blank), email, contact
   number, organization, role, LinkedIn link, current work, and learning
   goal; participants with no profile data are left out
+- **And** the contact details (email, contact number, and LinkedIn) are
+  for the owner only. A delegate (moderator key, no owner cookie) gets
+  each profile without those three fields, and the card shows no line
+  for them. Everything else is the same for both
 - **And** the LinkedIn value is a link only when it starts with `http://`
   or `https://`; any other stored value is shown as plain text
 - **And** with no profiles the card reads "No attendee profiles yet."
@@ -1635,15 +1663,17 @@ by default while the session is `planning`.
 - **Backend route**: `GET /api/sessions/{code}/participants`
   (mod-or-owner auth) → `{count, items: [{id, name, email,
   contact_number, organization, role, linkedin_url, photo_url,
-  current_work, learning_goal}, ...]}`
+  current_work, learning_goal}, ...]}` for the owner; a delegate's items
+  leave out `email`, `contact_number`, and `linkedin_url`
 
 **Tests (API)**
-- With one participant who submitted every field and a photograph, and a second participant with no profile data, `GET /api/sessions/{code}/participants` with the mod-key → `200 {count: 1, items: [...]}` carrying every field and the photograph URL (`test_uc_m_13_participant_profiles_summary`).
+- With one participant who submitted every field and a photograph, and a second participant with no profile data, `GET /api/sessions/{code}/participants` with the owner's cookie → `200 {count: 1, items: [...]}` carrying every field and the photograph URL; with the mod-key and no cookie → the same item without `email`, `contact_number`, and `linkedin_url` (`test_uc_m_13_participant_profiles_summary`).
 - With no auth → `403` (`test_uc_m_13_participant_profiles_requires_moderator`).
 
 **Tests (UI)**
 - After a participant submits a full profile with a photograph, `/m/<code>` as the admin owner shows `#profiles-card`; `#profiles-summary` contains "1 profile" and `#profiles-list` contains each field and an `img.profile-photo-preview` with the photograph URL (`test_uc_m_13_profiles_panel_shows_attendee_details`).
 - When the profiles response carries a LinkedIn value of `javascript:alert(1)` (an older row), `#profiles-list` shows it as text and contains no link with that `href` (`test_uc_m_13_non_web_linkedin_is_plain_text`).
+- A delegate (`/m/<code>#k=<mod_key>`) sees the profile's name, organization, role, current work, and learning goal in `#profiles-list`, and no email, contact number, LinkedIn value, or "Email", "Contact", or "LinkedIn" label (`test_uc_m_13_delegate_sees_no_contact_details`).
 
 ---
 
@@ -1752,8 +1782,9 @@ once something is saved. Every field is optional:
 - **And** reloading the page prefills every saved field and the photograph
 - **And** each successful `PATCH` or photo upload broadcasts
   `{type: "participant"}`
-- **And** moderators see submitted profiles on the session page (UC-M-13);
-  other participants and the projector never see them
+- **And** moderators see submitted profiles on the session page (UC-M-13),
+  delegates without the contact details; other participants and the
+  projector never see them
 
 **Tests (API)**
 - `PATCH /api/sessions/{code}/me` with `{"name": "Alice"}` → `200` with `name: "Alice"`. Auth: none (cookie issued on first call).
@@ -2288,8 +2319,11 @@ are the rules every user-facing UC silently relies on.
   `session_state`, `participant`, `query_new`, `query_vote`,
   `query_responded`, `query_removed`, `query_deleted`,
   `quiz_run_new`, `quiz_run_update`, `quiz_run_deleted`,
-  `quiz_submission`, `feedback`, `feedback_state`, `session_deleted`); each frontend treats the message as a
-  refresh hint and re-fetches the data it cares about
+  `quiz_submission`, `feedback`, `feedback_state`, `moderator_key`,
+  `session_deleted`); each frontend treats the message as a
+  refresh hint and re-fetches the data it cares about. Only a delegate's
+  session page acts on `moderator_key` (UC-M-01); the participant and
+  projector pages ignore it
 - **And** `session_deleted` is final: the participant, moderator, and
   projector pages replace their content with the banner "This session was
   deleted." (`#session-deleted`), stop refreshing, and close their socket
@@ -2324,6 +2358,7 @@ are the rules every user-facing UC silently relies on.
 - `PATCH .../me` → frame `{"type": "participant"}`.
 - `POST .../feedback` → frame `{"type": "feedback"}`.
 - `POST .../feedback_enabled` → frame `{"type": "feedback_state"}` (UC-M-12).
+- `POST .../mod_key` → frame `{"type": "moderator_key"}` (UC-A-08).
 - `DELETE /api/sessions/{code}` → frame `{"type": "session_deleted"}` (`test_uc_x_01_session_deleted_broadcasts`).
 - Sending the text frame `ping` → the server answers `{"type": "pong"}` (`test_uc_x_01_ping_gets_pong`).
 - A broadcast whose send to one socket fails or times out evicts that socket and closes it, and still delivers to the others (`test_uc_x_01_failed_socket_is_closed`).

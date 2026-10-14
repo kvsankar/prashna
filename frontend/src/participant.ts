@@ -625,7 +625,7 @@ function onLive(msg: LiveMessage): void {
       loadSession().catch(reportError); break;
     case "quiz_submission":
       if (activeQuiz && activeQuiz.results) scheduleQuizRefresh(); break;
-    case "feedback": case "participant":
+    case "feedback": case "participant": case "moderator_key":
       break;
     case "session_deleted":
       if (quizCountTimer) clearTimeout(quizCountTimer);
