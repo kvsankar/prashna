@@ -2339,10 +2339,12 @@ are the rules every user-facing UC silently relies on.
   **and closed**, so its page reconnects and resyncs instead of silently
   receiving nothing more
 - **And** every page sends a `ping` text frame every 25 s and the server
-  answers `{type: "pong"}`; a page that receives no frame for 60 s closes
-  its socket and reconnects, so a connection that died without closing
-  (Wi-Fi drop, sleeping network card, an hour-long proxy idle timeout)
-  recovers within a minute
+  answers `{type: "pong"}`; when a ping is still unanswered at the next
+  ping, the page closes its socket and reconnects, so a connection that
+  died without closing (Wi-Fi drop, sleeping network card, an hour-long
+  proxy idle timeout) recovers within a minute. The check counts
+  unanswered pings, not elapsed time, because browsers run a background
+  tab's timers only once a minute; such a tab keeps its connection
 
 **Tests (API)**
 - Connect WS to `/ws/sessions/{CODE}` with matching `Origin`/`Host`; perform `PATCH /api/sessions/{code}` → WS receives `{"type": "session_state"}`.
@@ -2365,7 +2367,8 @@ are the rules every user-facing UC silently relies on.
 
 **Tests (UI)**
 - With `/s/<CODE>`, `/m/<CODE>`, and `/p/<CODE>` open, deleting the session shows `#session-deleted` reading "This session was deleted." on each page and no page opens another socket (`test_uc_x_01_session_deleted_shows_final_state`).
-- With the server's frames to the page swallowed after the socket opens, the page reconnects (a second socket opens) once its silence timeout passes; test builds shorten the 25 s / 60 s timings through `localStorage` `prashna:keepalive-ms` (`test_uc_x_01_silent_socket_reconnects`).
+- With the server's frames to the page swallowed after the socket opens, the page reconnects (a second socket opens) once a ping goes unanswered; test builds shorten the 25 s ping interval through `localStorage` `prashna:keepalive-ms` (`test_uc_x_01_silent_socket_reconnects`).
+- With the page's clock jumped forward 61 s three times, as when a browser slows a background tab's timers to once a minute, the page keeps its one socket (`test_uc_x_01_slowed_background_timers_keep_the_socket`).
 - A refetch that a live update triggers and that fails shows the server's message in an error toast instead of failing silently, on the participant page and the session page (UX.md §8); the page raises no unhandled error (`test_uc_x_01_failed_live_refetch_shows_an_error`).
 
 ### UC-X-02: WebSocket upgrade rejections

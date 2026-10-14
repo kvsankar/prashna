@@ -268,9 +268,11 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
       };
     }
   }
-  // Keepalive (UC-X-01): ping every 25 s; a socket silent for 60 s is treated
-  // as dead and replaced, so a connection that died without closing (Wi-Fi
-  // drop, a proxy's long idle timeout) cannot leave the page frozen.
+  // Keepalive (UC-X-01): ping every 25 s; a socket whose last ping is still
+  // unanswered at the next ping is treated as dead and replaced, so a
+  // connection that died without closing (Wi-Fi drop, a proxy's long idle
+  // timeout) cannot leave the page frozen. It counts unanswered pings, not
+  // elapsed time: browsers run a background tab's timers only once a minute.
   let pingMs = 25_000;
   if (import.meta.env.MODE === "test") {
     try {
@@ -278,16 +280,15 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
       if (override > 0) pingMs = override;
     } catch { /* storage unavailable: keep the default */ }
   }
-  const silenceMs = pingMs * 2.4;
-  let lastFrameAt = Date.now();
+  let pongPending = false;
   setInterval(() => {
     if (!alive || !ws) return;
     if (ws.readyState === WebSocket.OPEN) {
-      if (Date.now() - lastFrameAt > silenceMs) {
+      if (pongPending) {
         replaceDeadSocket();
         return;
       }
-      try { ws.send("ping"); } catch { /* the close handler reconnects */ }
+      try { ws.send("ping"); pongPending = true; } catch { /* the close handler reconnects */ }
     }
   }, pingMs);
   function replaceDeadSocket(): void {
@@ -300,9 +301,8 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
   }
   function connect(): void {
     ws = new WebSocket(url);
-    lastFrameAt = Date.now();
+    pongPending = false;
     ws.onopen = () => {
-      lastFrameAt = Date.now();
       retry = 0;
       // The page performs its own initial load. Refetch only after a real
       // reconnect so opening the socket does not duplicate every first-load
@@ -313,7 +313,7 @@ export function openLiveSocket(code: string, onMessage: (msg: LiveMessage) => vo
       connectedOnce = true;
     };
     ws.onmessage = (ev) => {
-      lastFrameAt = Date.now();
+      pongPending = false;
       let msg: LiveMessage;
       try { msg = JSON.parse(ev.data) as LiveMessage; } catch { return; /* ignore malformed frame */ }
       if (msg.type === "pong") return;  // keepalive replies are not refresh hints

@@ -572,6 +572,27 @@ def test_uc_x_01_silent_socket_reconnects(base_url, admin_setup, page):
         c.close()
 
 
+def test_uc_x_01_slowed_background_timers_keep_the_socket(base_url, admin_setup, page):
+    """UC-X-01: a background tab whose timers the browser runs only once a
+    minute keeps its socket; it reconnects only when a ping goes unanswered."""
+    c = api_login(base_url)
+    s = api_make_session(c, f"UI-X01slow {secrets.token_hex(3)}")
+    opened = []
+    page.on("websocket", lambda ws: opened.append(ws.url))
+    try:
+        page.clock.install()
+        page.goto(f"{base_url}/s/{s['code']}")
+        page.wait_for_selector("#ask-card:visible")
+        page.wait_for_timeout(500)
+        for _ in range(3):
+            # One jump fires the 25 s ping timer once, as in a throttled tab.
+            page.clock.fast_forward("01:01")
+            page.wait_for_timeout(500)  # the ping's reply arrives
+        assert len(opened) == 1, opened
+    finally:
+        c.close()
+
+
 def test_uc_d_05_projector_polls_while_a_quiz_is_live(base_url, admin_setup, page):
     """UC-D-05: with no live updates at all, the projector still shows new votes within ~5 s."""
     c, s, run = _live_quiz_with_counts(base_url)
