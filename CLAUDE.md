@@ -11,7 +11,10 @@ frameworks, abstractions, or features beyond what the task needs.
 
 ## Where each topic lives
 
-- [`README.md`](README.md): what Prashna is, install, first run, roles.
+- [`README.md`](README.md): what Prashna is, install, and a quick tutorial.
+- [`docs/user-guide.md`](docs/user-guide.md): the user guide, for the
+  people who run sessions: roles, features, tunnels, data, backup, update,
+  uninstall, password reset, and troubleshooting.
 - [`docs/specs.md`](docs/specs.md): the behaviour contract. Every use case
   (`UC-A-*` admin, `UC-M-*` moderator, `UC-P-*` participant, `UC-D-*`
   projector, `UC-X-*` system) has acceptance criteria and **Tests (API)** /

@@ -121,7 +121,8 @@ def test_readme_puts_each_command_in_its_own_tagged_block():
         lines = [line for line in body.splitlines() if line.strip()]
         assert language in ("sh", "powershell"), body
         assert len(lines) == 1, body
-        assert not lines[0].lstrip().startswith("$"), body
+        # A prompt is "$ " or "PS> "; `$HOME` in a PowerShell command is not one.
+        assert not re.match(r"(\$|PS>)\s", lines[0].lstrip()), body
     assert readme.count("```") == 2 * len(blocks)
 
 
@@ -202,3 +203,120 @@ def test_every_environment_variable_is_documented():
     assert known <= names, sorted(known - names)
     missing = sorted(name for name in names if f"`{name}`" not in development)
     assert missing == []
+
+
+# User documentation (UC-X-15, "User documentation").
+GUIDE_URL = "https://github.com/kvsankar/prashna/blob/main/docs/user-guide.md"
+README_HEADINGS = [
+    "What Prashna does", "Why Prashna", "Install", "Quick tutorial", "User guide", "Licence",
+]
+GUIDE_HEADINGS = [
+    "Roles", "Run a session", "Questions and answers", "Quizzes and polls", "Feedback",
+    "The projector page", "Share moderation", "Put Prashna online", "Where your data is",
+    "Export", "Back up and restore", "Update Prashna", "Uninstall Prashna",
+    "Reset the admin password", "Troubleshooting", "Run Prashna in Docker",
+]
+# A bold span in Markdown: **label**.
+BOLD = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def section(text: str, heading: str) -> str:
+    """The body of one `## heading` section, up to the next `## ` heading."""
+    return text.split(f"\n## {heading}\n", 1)[1].split("\n## ", 1)[0]
+
+
+def frontend_text() -> str:
+    files = [*(ROOT / "frontend").glob("*.html"), *(ROOT / "frontend" / "src").glob("*.ts")]
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+
+def missing_ui_labels(text: str) -> list[str]:
+    """Bold spans that name no label in the frontend source. The docs set UI
+    labels in bold, so each one must be text that the UI shows."""
+    ui = frontend_text()
+    labels = {label.strip().rstrip("→▾ ").strip() for label in BOLD.findall(text)}
+    return sorted(label for label in labels if label not in ui)
+
+
+def test_uc_x_15_readme_is_install_tutorial_and_guide_link():
+    """UC-X-15: the README installs Prashna, gives a quick tutorial, and
+    points to the user guide; the rest of the how-to lives in the guide."""
+    readme = read("README.md")
+
+    assert re.findall(r"^## (.+)$", readme, re.MULTILINE) == README_HEADINGS
+    assert re.search(r"\bpolls?\b", section(readme, "What Prashna does"))
+    why = " ".join(section(readme, "Why Prashna").split())
+    assert "One command installs it" in why
+    assert "MIT License" in why
+    guide = section(readme, "User guide")
+    assert GUIDE_URL in guide
+    assert "https://sankara.net/prashna/" in guide
+    assert "https://github.com/kvsankar/prashna/blob/main/docs/development.md" in section(readme, "Licence")
+
+
+def test_uc_x_15_readme_windows_venv_commands():
+    """UC-X-15: the Windows virtual-environment route works in PowerShell:
+    `py`, and `$HOME` (PowerShell 5.1 does not expand `~` for programs)."""
+    readme = read("README.md")
+    for command in (
+        r"py -m venv $HOME\.prashna",
+        r"$HOME\.prashna\Scripts\pip install prashna",
+        r"$HOME\.prashna\Scripts\prashna",
+        r"$HOME\.prashna\Scripts\pip install --upgrade prashna",
+    ):
+        assert f"```powershell\n{command}\n```" in readme, command
+    assert "~\\.prashna" not in readme
+
+
+def test_uc_x_15_readme_quick_tutorial_steps():
+    """UC-X-15: the quick tutorial walks from the first start to an online
+    audience, in order, with the labels the UI shows."""
+    tutorial = section(read("README.md"), "Quick tutorial")
+    steps = [
+        "setup link", "**+ New session**", "**Projector**", "QR code", "**Ask**",
+        "**Reveal results", "prashna --tunnel cloudflare", "prashna --host 0.0.0.0",
+    ]
+    positions = [tutorial.find(step) for step in steps]
+
+    assert -1 not in positions, dict(zip(steps, positions))
+    assert positions == sorted(positions), dict(zip(steps, positions))
+    assert "**Base URL**" in tutorial[positions[-1]:]
+    assert "prashna --tunnel ngrok" in tutorial
+    assert missing_ui_labels(tutorial) == []
+
+
+def test_uc_x_15_user_guide_covers_the_end_user_topics():
+    """UC-X-15: docs/user-guide.md is the main user guide: it covers every
+    end-user topic, with the exact commands and the labels the UI shows."""
+    guide = read("docs/user-guide.md")
+
+    assert re.findall(r"^## (.+)$", guide, re.MULTILINE) == GUIDE_HEADINGS
+    for text in (
+        "~/.local/share/prashna",
+        "~/Library/Application Support/prashna",
+        r"%LOCALAPPDATA%\prashna",
+        "--data-dir",
+        "prashna backup create",
+        "prashna backup restore",
+        "--confirm",
+        "uv tool upgrade prashna",
+        "pipx upgrade prashna",
+        "uv tool uninstall prashna",
+        "pipx uninstall prashna",
+        "prashna reset-password",
+        "docker compose exec prashna python -m prashna reset-password",
+        "prashna --tunnel cloudflare",
+        "prashna --tunnel ngrok",
+        "prashna --host 0.0.0.0",
+        "](../distribution/README.md)",
+    ):
+        assert text in guide, text
+    assert missing_ui_labels(guide) == []
+
+
+def test_uc_x_15_user_guide_is_listed_where_topics_live():
+    """The user guide owns end-user how-to; CLAUDE.md and the documentation
+    policy say so."""
+    assert "docs/user-guide.md" in read("CLAUDE.md")
+    policy = read("docs/development.md").split("## Documentation policy", 1)[1]
+    assert "[`user-guide.md`](user-guide.md)" in policy

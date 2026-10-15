@@ -254,7 +254,8 @@ Anonymous image pulls need the GHCR package to be public; see
 
   | Topic | Owner |
   | --- | --- |
-  | What Prashna is, install, first run | [`README.md`](../README.md) |
+  | What Prashna is, install, quick tutorial | [`README.md`](../README.md) |
+  | End-user how-to: features, tunnels, data, backup, update, uninstall, troubleshooting | [`user-guide.md`](user-guide.md) |
   | Behaviour and its tests | [`specs.md`](specs.md) |
   | UI rules | [`UX.md`](UX.md) |
   | Architecture, data model, decisions, risks | [`architecture.md`](architecture.md) |

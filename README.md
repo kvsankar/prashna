@@ -18,20 +18,22 @@ short quizzes. You see what the room wants to know and what it understood.
 - **Anonymous Q&A.** Participants post questions and upvote each other's.
   The moderator responds in text or out loud. A removed question is hidden
   from participants and kept for the record.
-- **Moderator-run quizzes.** Single- or multiple-choice questions, optional
-  images, anonymous answers, results revealed one question at a time, a lobby
-  screen on the projector, and optional live counts while people answer.
-  Quizzes are versioned: editing a quiz never changes the report of a past
-  run.
+- **Quizzes and polls, run by the moderator.** Single- or multiple-choice
+  questions, polls with no correct answer, optional images and anonymous
+  answers. The moderator reveals the results one question at a time.
+  Editing a quiz never changes the results of a past run.
 - **Projector view.** The screen at the front of the room shows the join
   code, a QR code for the participant link, the top questions, and the
   current quiz question in step with the moderator.
-- **Export.** The admin can export sessions, Q&A questions, attendee
-  profiles, feedback, quiz runs, and quizzes as JSON or as an Excel workbook.
+- **Export.** The admin can export sessions, questions, attendee profiles,
+  feedback, quiz runs and quizzes as JSON or as an Excel workbook.
 
-![How prashna brings an admin, moderators, participants and a projector into one live session for Q&A and quizzes, and what it produces afterwards](https://raw.githubusercontent.com/kvsankar/prashna/main/docs/images/prashna-infographic.png)
+![How Prashna brings an admin, moderators, participants and a projector into one live session for Q&A and quizzes, and what it produces afterwards](https://raw.githubusercontent.com/kvsankar/prashna/main/docs/images/prashna-infographic.png)
 
-*How prashna runs a session with an audience: an admin sets it up, a moderator runs the room, participants join on their phones and the projector shows the room the same state. Questions are asked and upvoted, versioned quizzes are run question by question, and the session ends with ranked questions, quiz results, run reports, attendee profiles and feedback. The [infographic source](https://github.com/kvsankar/prashna/blob/main/docs/images/prashna-infographic.html) is kept with the image.*
+*How Prashna runs a session. An admin sets it up and a moderator runs the
+room. Participants join on their phones, and the projector shows the room
+the same state. At the end you have the ranked questions, the quiz
+results, the attendee profiles and the feedback.*
 
 ## Why Prashna
 
@@ -41,7 +43,7 @@ short quizzes. You see what the room wants to know and what it understood.
   it online. The tunnel needs `cloudflared` or `ngrok`.
 - **Your data stays on your machine.** Prashna stores its data in a folder
   on your computer.
-- **It is free and open source,** under the MIT licence.
+- **It is free and open source,** under the MIT License.
 
 ## Install
 
@@ -93,29 +95,32 @@ uvx prashna@latest
 pipx install prashna
 ```
 
-Or use pip inside a virtual environment. First create the environment:
+Or use pip inside a virtual environment in the folder `.prashna` in your
+home folder. A plain `pip install` into the system Python is refused on
+Debian, Ubuntu, and some other Linux distributions
+("externally-managed-environment"); the virtual environment avoids that.
+
+On macOS and Linux, create the environment, then install Prashna into it:
 
 ```sh
 python3 -m venv ~/.prashna
 ```
 
-Then install Prashna into it. On macOS and Linux:
-
 ```sh
 ~/.prashna/bin/pip install prashna
 ```
 
-On Windows:
+On Windows, in PowerShell:
 
 ```powershell
-~\.prashna\Scripts\pip install prashna
+py -m venv $HOME\.prashna
 ```
 
-A plain `pip install` into the system Python is refused on Debian, Ubuntu,
-and some other Linux distributions ("externally-managed-environment"); the
-virtual environment avoids that.
+```powershell
+$HOME\.prashna\Scripts\pip install prashna
+```
 
-## Start and update
+### Start and update
 
 Start Prashna:
 
@@ -123,152 +128,168 @@ Start Prashna:
 prashna
 ```
 
-If you installed it into a virtual environment, start it from there:
+If you installed it into a virtual environment, start it from there. On
+macOS and Linux:
 
 ```sh
 ~/.prashna/bin/prashna
 ```
 
-To update, use the tool you installed with. With uv, which the
-one-command installer also uses:
+On Windows:
+
+```powershell
+$HOME\.prashna\Scripts\prashna
+```
+
+To update an installation made with the one-command installer or with uv,
+run:
 
 ```sh
 uv tool upgrade prashna
 ```
 
-With pipx:
-
-```sh
-pipx upgrade prashna
-```
-
-With the virtual environment:
+To update the virtual environment, stop Prashna first. On macOS and Linux:
 
 ```sh
 ~/.prashna/bin/pip install --upgrade prashna
 ```
 
-To list every option (the address and port, the data folder,
-`--no-browser`, `--tunnel`, and the `backup` and `reset-password`
-commands):
+On Windows:
 
-```sh
-prashna --help
+```powershell
+$HOME\.prashna\Scripts\pip install --upgrade prashna
 ```
 
-If you forget the admin password, set a new one:
+The [user guide](https://github.com/kvsankar/prashna/blob/main/docs/user-guide.md#update-prashna)
+gives the update and uninstall commands for every install method.
 
-```sh
-prashna reset-password
-```
+## Quick tutorial
 
-## First run
+This tutorial takes about ten minutes. You can do it alone on your
+laptop, with a second browser window as the participant.
 
-`prashna` serves on <http://127.0.0.1:8000> and opens your browser on a
-one-time page where you choose the admin's username and password. The page
-works once. After that, sign in to create sessions and write quizzes.
-Prashna keeps its data in your app-data folder.
+### 1. Start Prashna and create the admin
 
-## Share over the internet
+Run `prashna`. On the first run, Prashna prints a one-time setup link in
+the terminal and opens it in your browser. On that page, choose the
+admin's username and password (at least 8 characters), then click
+**Create admin**. The setup link works only once. After that, sign in at
+<http://127.0.0.1:8000/>.
 
-To let people join from their own phones over the internet, start Prashna
-with a tunnel. With a Cloudflare quick tunnel (no account needed):
+The terminal also shows the data folder, where Prashna keeps its
+database. Keep the terminal open: Prashna runs until you press Ctrl+C.
+
+### 2. Create a session
+
+A session is one gathering, for example one class or one talk. Under
+**Your sessions**, type a title in the **New session title** box and click
+**+ New session**. Click the new row to open the session page.
+
+On the session page, click **Start session** when the audience is ready.
+
+### 3. Open the projector page
+
+On the session page, click **Projector** at the top. The projector page
+opens in a new tab. Show that tab on the screen that the room sees. It
+shows the join code, a QR code, the top questions and the current quiz
+question. Click the QR code to enlarge it.
+
+### 4. Let the audience join
+
+People scan the QR code with their phone camera, or open the participant
+link. The link is under **Participants join at:** in the
+**Invite participants** card, inside **Set up** on the session page.
+People can also type the session code on the Prashna home page. They need
+no account and no app.
+
+Phones can reach Prashna only after you put it online (step 7). To try
+it alone first, click **Participant view** at the top of the session page.
+
+### 5. Ask and upvote
+
+On the participant page, type a question under **Your question** and click
+**Ask**. A question is anonymous unless the participant ticks
+**Show my name**. Other participants click the ▲ beside a question to
+upvote it. The questions with the most votes rise to the top.
+
+On the session page, the **Questions** card lists the questions. Type a
+reply if you want to, and click **Mark responded**. Click **Remove** to
+hide a question from participants.
+
+### 6. Run a short quiz
+
+1. Click **Quiz library** at the top of the home page. Type a title in
+   the **New quiz title** box and click **+ New**.
+2. In the editor, click the **+** button to add a question, and type the
+   question. Click **+ Answer** for each answer. Tick **Correct** beside
+   the right answer, or tick **Poll (no correct answer)** for a poll.
+3. Click **Add to session ▾** on the quiz's row and choose your session.
+4. On the session page, in the **Quiz** card, click **Start**. The
+   question appears on the phones and on the projector page.
+5. When people have answered, click **Reveal results →**. Voting on that
+   question closes, and the projector page shows the results. Click
+   **Next question →**, and on the last question, **Finish quiz →**.
+
+### 7. Put Prashna online for your audience
+
+By default, Prashna listens only on your own computer
+(`http://127.0.0.1:8000`). Phones cannot open that address. Choose one of
+these ways to let them in.
+
+#### Over the internet, with a tunnel
+
+Stop Prashna with Ctrl+C, then
+start it with a Cloudflare quick tunnel. This needs the `cloudflared`
+program and no account:
 
 ```sh
 prashna --tunnel cloudflare
 ```
 
-With ngrok (uses your signed-in ngrok):
+Or use ngrok, signed in to your ngrok account:
 
 ```sh
 prashna --tunnel ngrok
 ```
 
-Prashna starts the tunnel, waits until its public address works, and prints
-it (`Participants join at: https://…`). Participant links and the projector's
-QR code use that address automatically, while you keep using
-`http://127.0.0.1:8000` yourself. Ctrl+C stops Prashna and the tunnel
-together.
+Prashna prints the public address (`Participants join at: https://…`).
+The participant link and the QR code use that address. You keep using
+`http://127.0.0.1:8000` yourself. Ctrl+C stops Prashna and the tunnel.
 
-You need the tunnel program once.
+#### On the same Wi-Fi network
 
-**Cloudflare.** Install `cloudflared`. No account is needed. On macOS:
-
-```sh
-brew install cloudflared
-```
-
-On Windows:
-
-```powershell
-winget install --id Cloudflare.cloudflared
-```
-
-On Linux, use
-[Cloudflare's downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
-
-**ngrok.** Install it from [ngrok.com/download](https://ngrok.com/download),
-then sign in once:
+Start Prashna so that other devices on
+the network can reach it:
 
 ```sh
-ngrok config add-authtoken <your token>
+prashna --host 0.0.0.0
 ```
 
-On the free plans they differ like this:
+Then find your laptop's address on the network, for example
+`192.168.1.20`, in your network settings. On the session page, open
+**Set up** and type `http://192.168.1.20:8000` (with your address) in the
+**Base URL** box. The participant link and the QR code then use that
+address. Anyone on the same network can reach Prashna while it runs.
 
-| | Cloudflare quick tunnel | ngrok free plan |
-| --- | --- | --- |
-| Account | None | Required |
-| Address | New on every start | The same every time |
-| Participants | Go straight in | See an ngrok warning page once and click "Visit" |
-| Limits | 200 requests in progress at once | 20,000 requests and 1 GB per month |
+The user guide explains how to install `cloudflared` and `ngrok`, and how
+the two tunnels differ.
 
-For a live room, prefer Cloudflare. Every live update makes each
-participant's page fetch new data, so one session with a large audience can
-use up ngrok's monthly request allowance.
+## User guide
 
-The address is public while the tunnel runs. Stop Prashna when the session
-ends.
-
-## Roles
-
-| Role | Page | Who gets in |
-| --- | --- | --- |
-| Admin | `/` | The person who signed in with the admin password. Creates sessions and quizzes. |
-| Moderator | `/m/<code>` | The admin who owns the session, or anyone the admin gives the moderator link to, such as a co-host. Runs the room. |
-| Participant | `/s/<code>` | Anyone with the session code or QR code. No account; an optional profile. |
-| Projector | `/p/<code>` | Anyone. Read-only, for the room's screen. |
-| Quiz library | `/quizzes` | The admin. Writes quizzes and reads run reports. |
-
-The admin who owns a session can do everything a moderator can, on the same
-page, plus the session's settings. The moderator link is how the admin hands
-the room to someone without an admin account. Someone with the link sees
-attendee profiles without their email, phone number, or LinkedIn profile.
-To stop every shared link from working, the admin changes the moderator key
-in the session's settings.
-
-## Documentation
-
-- [Behaviour specification](https://github.com/kvsankar/prashna/blob/main/docs/specs.md): every use case and its tests.
-- [UX rules](https://github.com/kvsankar/prashna/blob/main/docs/UX.md): the frontend design system.
-- [Architecture](https://github.com/kvsankar/prashna/blob/main/docs/architecture.md): components, data model, design decisions, and risks.
-- [Development guide](https://github.com/kvsankar/prashna/blob/main/docs/development.md): setup, environment variables, tests, checks, and releases.
-- [Engineering backlog](https://github.com/kvsankar/prashna/blob/main/docs/todo.md).
-- [Performance measurement](https://github.com/kvsankar/prashna/blob/main/performance/README.md).
-
-To run Prashna in Docker instead, see the
+The [user guide](https://github.com/kvsankar/prashna/blob/main/docs/user-guide.md)
+covers everything else. It explains the roles, quizzes and polls,
+feedback, sharing moderation with a co-host, and tunnels. It also covers
+where your data is, export, backup and restore, updating, uninstalling,
+resetting the admin password, and troubleshooting. To run Prashna in Docker, see the
 [container guide](https://github.com/kvsankar/prashna/blob/main/distribution/README.md).
-The production deployment behind nginx is described in the
-[deployment runbook](https://github.com/kvsankar/prashna/blob/main/deploy/README.md).
 
-## License
+The landing page is <https://sankara.net/prashna/>.
 
-MIT. See [LICENSE](https://github.com/kvsankar/prashna/blob/main/LICENSE).
+## Licence
 
-## Status
+Prashna is under the MIT License. See
+[LICENSE](https://github.com/kvsankar/prashna/blob/main/LICENSE).
 
-Prashna runs in production at `prashna.sankara.net` for a single operator. It
-is released as a Python package on PyPI and as a container image.
-Product ideas that need a decision are listed in the
-[deferred appendix](https://github.com/kvsankar/prashna/blob/main/docs/specs.md#deferred-decision-needed)
-of the specification.
+For contributors: the
+[development guide](https://github.com/kvsankar/prashna/blob/main/docs/development.md)
+covers setup, tests, checks and releases.

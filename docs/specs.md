@@ -2916,8 +2916,10 @@ one command, on macOS, Linux, or Windows.
   `https://sankara.net/prashna/`, `https://sankara.net/prashna/install.sh`
   and `https://sankara.net/prashna/install.ps1`. The README, the landing
   page, the scripts' own usage comments and the package's Homepage link
-  show these addresses. sankara.net serves them from the GitHub Pages site,
-  outside this repository, and the GitHub Pages addresses keep working
+  show these addresses. sankara.net redirects the two script addresses to
+  the GitHub Pages site, and the GitHub Pages addresses keep working. The
+  sankara.net landing page is a separate page, kept outside this
+  repository; it is not the GitHub Pages page
 - **And** the README and the landing page offer, right after the install
   scripts and before pipx, `uv tool install prashna` for people who
   already have `uv`. It installs the same `prashna` command. They also
@@ -2959,6 +2961,69 @@ already signed in stay signed in. In the container image, which runs the
 code without installing the command, it is
 `docker compose exec prashna python -m prashna reset-password`.
 
+**User documentation.** Each user document has one job. The README
+installs Prashna and gives a short tutorial. The user guide holds the
+rest of the end-user how-to. The container guide covers Docker.
+
+- **The README** (`README.md`, also the PyPI page) has these `##`
+  sections, in this order: `What Prashna does`, `Why Prashna`, `Install`,
+  `Quick tutorial`, `User guide`, `Licence`. It has no other `##`
+  section, so roles, backup, the data folder, uninstalling and project
+  status stay out of it
+  - "What Prashna does" mentions polls. "Why Prashna" says that one
+    command installs Prashna, and calls the licence the MIT License
+  - "Install" gives the Windows virtual-environment commands in
+    PowerShell form: `py -m venv $HOME\.prashna`,
+    `$HOME\.prashna\Scripts\pip install prashna`,
+    `$HOME\.prashna\Scripts\prashna` to start and
+    `$HOME\.prashna\Scripts\pip install --upgrade prashna` to update,
+    beside the macOS and Linux forms under `~/.prashna/bin/`
+  - "Quick tutorial" covers, in this order: the first start and the
+    one-time setup link, creating a session, opening the projector page,
+    the audience joining with the QR code or the link, asking and
+    upvoting, a short quiz, and putting Prashna online for the audience
+    with `prashna --tunnel cloudflare` or `prashna --tunnel ngrok`, or on
+    the same Wi-Fi network with `prashna --host 0.0.0.0` and the session's
+    **Base URL** (UC-A-06). It names controls with their labels in the UI
+  - "User guide" links the user guide at
+    `https://github.com/kvsankar/prashna/blob/main/docs/user-guide.md`
+    and the landing page `https://sankara.net/prashna/`
+  - "Licence" names the MIT License and links the development guide for
+    contributors
+- **The user guide** (`docs/user-guide.md`) is for the people who run
+  sessions, not for developers. It has these `##` sections: `Roles`,
+  `Run a session`, `Questions and answers`, `Quizzes and polls`,
+  `Feedback`, `The projector page`, `Share moderation`,
+  `Put Prashna online`, `Where your data is`, `Export`,
+  `Back up and restore`, `Update Prashna`, `Uninstall Prashna`,
+  `Reset the admin password`, `Troubleshooting`, `Run Prashna in Docker`.
+  It gives the data folder of each platform as in this use case, the
+  backup commands `prashna backup create <file>` and
+  `prashna backup restore <file> --confirm`, the update and uninstall
+  commands of each install method, `prashna reset-password` and its
+  container form, and links the container guide
+- **The GitHub Pages page** (`scripts/build_pages_site.py`) opens with the
+  same context as the README: Prashna is a live Q&A and quiz tool for
+  trainers, teachers and speakers. It links the landing page
+  `https://sankara.net/prashna/` and the user guide, and each `<pre>`
+  block holds one command
+- **The tagline** "Live questions and quizzes for trainers, teachers and
+  speakers" is the package `description` in `pyproject.toml` and the
+  GitHub Pages page's description and lead line
+- **The container guide** (`distribution/README.md`)
+  - says where its files come from: the GitHub Release asset
+    `prashna-<version>.zip` (or `.tar.gz`), whose `compose.yaml` pins the
+    image tag to that release (UC-X-10)
+  - names images by release tag, `ghcr.io/kvsankar/prashna:<version>`
+    with the current release as the example, and says that `latest`
+    follows the `main` branch and is not a release
+  - gives the container form of the password reset
+  - names the Base URL field's card **Invite participants**, its label in
+    the UI
+  - has no text about the owner's production host and no "Registry
+    access" section
+  - puts each command in its own fenced block
+
 **Tests (API)**
 - `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
 - `install.sh` run where `uv` is absent and its download fails exits 1 with a message naming `https://docs.astral.sh/uv/`, and never runs `uv tool install`.
@@ -2990,6 +3055,12 @@ code without installing the command, it is
 - README.md, the GitHub and PyPI front page, opens with who Prashna is for and the problem it solves, then `## What Prashna does` and `## Why Prashna`, and only then `## Install` (`test_readme_opens_with_context_before_install`).
 - Every fenced code block in README.md is tagged `sh` or `powershell` and holds exactly one command, with no `$` prompt, so a reader copies each command on its own (`test_readme_puts_each_command_in_its_own_tagged_block`).
 - The CI workflow has a `pages` job that runs only on `v*` tags, needs the PyPI job, builds the site with that script, and deploys it with `actions/upload-pages-artifact` and `actions/deploy-pages` under the `github-pages` environment with `pages: write` and `id-token: write`.
+- README.md's `##` headings are exactly `What Prashna does`, `Why Prashna`, `Install`, `Quick tutorial`, `User guide`, `Licence`; "What Prashna does" mentions polls; "Why Prashna" says "One command installs it" and "MIT License"; the user-guide section links `https://github.com/kvsankar/prashna/blob/main/docs/user-guide.md` and `https://sankara.net/prashna/`; the Licence section links the development guide (`test_uc_x_15_readme_is_install_tutorial_and_guide_link`).
+- README.md shows the Windows virtual-environment commands `py -m venv $HOME\.prashna`, `$HOME\.prashna\Scripts\pip install prashna`, `$HOME\.prashna\Scripts\prashna` and `$HOME\.prashna\Scripts\pip install --upgrade prashna`, each in its own `powershell` block, and no `~\.prashna` path (`test_uc_x_15_readme_windows_venv_commands`).
+- README.md's "Quick tutorial" names, in this order, **+ New session**, **Projector**, the QR code, **Ask**, a quiz's **Reveal results**, `prashna --tunnel cloudflare`, and `prashna --host 0.0.0.0` with **Base URL**; each bold UI label it uses appears in `frontend/` (`test_uc_x_15_readme_quick_tutorial_steps`).
+- `docs/user-guide.md` has the `##` sections listed above, in that order; it names the three data folders, `prashna backup create`, `prashna backup restore … --confirm`, `uv tool uninstall prashna`, `pipx uninstall prashna` and `distribution/README.md` (as a link); it also names `docker compose exec prashna python -m prashna reset-password`; each bold UI label it uses appears in `frontend/` (`test_uc_x_15_user_guide_covers_the_end_user_topics`).
+- `scripts/build_pages_site.py <dir>` writes an `index.html` that says "trainers, teachers and speakers", links `https://sankara.net/prashna/` and the user guide, and has exactly one non-empty line in each `<pre>` block; its description and the `pyproject.toml` `description` are "Live questions and quizzes for trainers, teachers and speakers" (`test_uc_x_15_pages_site_opens_with_context_and_links_the_landing_page`).
+- `distribution/README.md` names `ghcr.io/kvsankar/prashna:<the pyproject version>`, says that `latest` follows `main`, names the release asset `prashna-<version>.zip`, gives `docker compose exec prashna python -m prashna reset-password`, says **Invite participants**, does not say "Invite card", "Hetzner" or "Registry access", and has exactly one command in each fenced block (`test_uc_x_15_container_guide_names_a_release_and_its_bundle`).
 
 ---
 
