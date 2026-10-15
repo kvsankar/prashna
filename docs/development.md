@@ -211,14 +211,16 @@ distribution/        README shipped inside the Compose release bundle
 docs/                specs, UX rules, architecture, this guide, the backlog
 compose.yaml         laptop and small-host Compose model
 compose.env.example  optional settings for compose.yaml
+compose.https.yaml   HTTPS add-on for compose.yaml: Caddy on ports 80 and 443
+Caddyfile            Caddy site for compose.https.yaml
 Dockerfile           production image
 ```
 
 ## Cut a release
 
-1. Set the new version in `pyproject.toml`, and in the example image tag
-   and bundle name in `distribution/README.md` (a test checks that they
-   match). Commit both.
+1. Set the new version in `pyproject.toml`, and in the example image tag,
+   bundle name and download URLs in `distribution/README.md` (tests check
+   that they match). Commit both.
 2. Tag the commit `vX.Y.Z` with the same version and push the tag.
 
 The tag starts the CI workflow, which:

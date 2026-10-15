@@ -1,0 +1,8 @@
+# Used by compose.https.yaml. Caddy gets the certificate for PRASHNA_DOMAIN,
+# redirects HTTP to HTTPS and forwards everything, WebSockets included, to
+# Prashna. The header line tells browsers to use only HTTPS for this name
+# for one year; leave it out if the name may serve plain HTTP later.
+{$PRASHNA_DOMAIN} {
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy prashna:8000
+}

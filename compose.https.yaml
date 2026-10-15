@@ -1,0 +1,38 @@
+# HTTPS for your own domain. Turn it on in .env with
+#   COMPOSE_FILE=compose.yaml:compose.https.yaml
+#   PRASHNA_DOMAIN=quiz.example.org
+# Caddy gets and renews a Let's Encrypt certificate for PRASHNA_DOMAIN.
+# The domain's DNS A/AAAA record must point at this server, and ports 80
+# and 443 must be open. `!reset` needs Docker Compose 2.24 or later.
+services:
+  prashna:
+    # Only Caddy reaches Prashna, over the Compose network.
+    ports: !reset []
+    environment:
+      PRASHNA_TRUSTED_PROXY_HOPS: "1"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      prashna:
+        condition: service_healthy
+    ports:
+      - "${PRASHNA_HTTP_PORT:-80}:80"
+      - "${PRASHNA_HTTPS_PORT:-443}:443"
+      - "${PRASHNA_HTTPS_PORT:-443}:443/udp"
+    environment:
+      PRASHNA_DOMAIN: ${PRASHNA_DOMAIN:?Set PRASHNA_DOMAIN in .env to your domain name}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+networks:
+  default:
+    # IPv6 visitors keep their own address (otherwise Docker's proxy
+    # replaces it with the network gateway, and rate limits lump them together).
+    enable_ipv6: true
+
+volumes:
+  caddy-data:
+  caddy-config:

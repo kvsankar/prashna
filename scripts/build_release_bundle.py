@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 FILES = {
     ROOT / "compose.yaml": "compose.yaml",
     ROOT / "compose.env.example": "compose.env.example",
+    ROOT / "compose.https.yaml": "compose.https.yaml",
+    ROOT / "Caddyfile": "Caddyfile",
     ROOT / "distribution" / "README.md": "README.md",
 }
 
@@ -54,8 +56,8 @@ def build_bundle(version: str, output_dir: Path) -> list[Path]:
         env_file = bundle / "compose.env.example"
         env_file.write_text(
             env_file.read_text(encoding="utf-8").replace(
-                "PRASHNA_IMAGE_TAG=latest",
-                f"PRASHNA_IMAGE_TAG={version}",
+                "# PRASHNA_IMAGE_TAG=latest",
+                f"# PRASHNA_IMAGE_TAG={version}",
             ),
             encoding="utf-8",
         )

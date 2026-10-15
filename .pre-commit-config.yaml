@@ -13,6 +13,14 @@ repos:
         entry: uv run check-yaml
         language: system
         types: [yaml]
+        exclude: ^compose\.https\.yaml$
+      # Compose's `!reset` tag has no YAML constructor, so this file gets a
+      # syntax-only check; tests/ops/test_distribution.py reads its content.
+      - id: check-yaml-compose-tags
+        name: check yaml syntax (Compose tags)
+        entry: uv run check-yaml --unsafe
+        language: system
+        files: ^compose\.https\.yaml$
       - id: check-toml
         name: check toml
         entry: uv run check-toml

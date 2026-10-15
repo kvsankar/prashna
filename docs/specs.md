@@ -2681,12 +2681,82 @@ have a participant cookie are limited **per person**, not per address.
 - **And** every SQLite connection the backup tool opens is closed before
   its temporary folder is removed, so cleanup can't fail on Windows,
   where an open file can't be deleted
+- **And** the bundle holds exactly five files: `README.md` (the container
+  guide), `compose.yaml`, `compose.env.example`, `compose.https.yaml` and
+  `Caddyfile`
+- **And** `compose.https.yaml` is an add-on that serves Prashna over HTTPS
+  on the owner's own domain. With
+  `COMPOSE_FILE=compose.yaml:compose.https.yaml` in `.env`, every plain
+  `docker compose …` command uses it, so the backup, restore and password
+  commands do not change. With the add-on:
+  - Prashna publishes no host port. Only Caddy reaches it, over the
+    Compose network
+  - a `caddy:2` service publishes port 80, port 443 and port 443/udp
+    (HTTP/3). `PRASHNA_HTTP_PORT` and `PRASHNA_HTTPS_PORT` change the host
+    side (a port, or an address and a port). Caddy starts after Prashna's
+    health check passes
+  - Prashna runs with `PRASHNA_TRUSTED_PROXY_HOPS=1`, so rate limits
+    (UC-X-08) use each visitor's address from Caddy's `X-Forwarded-For`,
+    and sign-in cookies are `Secure`
+  - the Compose network has IPv6 turned on (`enable_ipv6: true`). IPv6
+    visitors then keep their own address. Without it, Docker gives every
+    IPv6 connection the network gateway's address, and all IPv6 visitors
+    share one rate-limit bucket
+  - when `PRASHNA_DOMAIN` is not set, Compose stops before it starts
+    anything, with the message `Set PRASHNA_DOMAIN in .env to your domain
+    name`
+  - Caddy keeps its certificates and settings in the named volumes
+    `caddy-data` (`/data`) and `caddy-config` (`/config`), so a restart or
+    an update reuses the certificate
+- **And** the `Caddyfile` serves the site `{$PRASHNA_DOMAIN}`. Caddy gets
+  and renews its certificate, and redirects HTTP to HTTPS. The site
+  forwards every request, WebSockets included, to `prashna:8000`, and
+  sends `Strict-Transport-Security: max-age=31536000` (HSTS)
+- **And** a `.env` copied from `compose.env.example` changes nothing:
+  every setting in the file is commented out. So `PRASHNA_IMAGE_TAG` is
+  not pinned, and a `.env` copied into a newer bundle runs that bundle's
+  release. The file has commented
+  `COMPOSE_FILE=compose.yaml:compose.https.yaml` and `PRASHNA_DOMAIN=`
+  lines for the HTTPS add-on. It warns that `PRASHNA_BIND_ADDR=0.0.0.0`
+  publishes plain HTTP to everyone who can reach the machine
+- **And** the Compose project name is `prashna` in every bundle, so a new
+  bundle folder takes over the same containers and volumes.
+  `COMPOSE_PROJECT_NAME` in `.env` replaces it
 
 **Tests (Ops)**
 - Root Compose config resolves with no env file and no `PRASHNA_SECRET_KEY`
   (`test_local_compose_runs_without_any_env_file`); with a test env it
   resolves the requested image tag and port, health endpoint, and named-volume
   mounts without `/opt/prashna` host paths.
+- `compose.https.yaml`, read as YAML: Prashna's `ports` is `!reset []` and
+  its `PRASHNA_TRUSTED_PROXY_HOPS` is `"1"`; the `caddy` service uses
+  `caddy:2`, publishes 80, 443 and 443/udp, depends on Prashna being
+  healthy, requires `PRASHNA_DOMAIN` with the message above, mounts the
+  `Caddyfile` read-only and the volumes `caddy-data:/data` and
+  `caddy-config:/config`; the default network has `enable_ipv6: true`
+  (`test_uc_x_10_https_override_content`).
+- `docker compose config` with `compose.yaml`, `compose.https.yaml` and
+  `PRASHNA_DOMAIN=quiz.example.org` resolves: Prashna has no published
+  port, Caddy publishes 80/tcp, 443/tcp and 443/udp, and
+  `PRASHNA_TRUSTED_PROXY_HOPS` is `1`. Without `PRASHNA_DOMAIN` it exits
+  non-zero and prints the message
+  (`test_uc_x_10_https_override_resolves_and_requires_a_domain`).
+- The `Caddyfile` has the site `{$PRASHNA_DOMAIN}`, `reverse_proxy
+  prashna:8000` and the HSTS header
+  (`test_uc_x_10_caddyfile_proxies_to_prashna_with_hsts`).
+- `compose.env.example`, in the repository and in a built bundle, has no
+  uncommented setting, has the commented `COMPOSE_FILE` and
+  `PRASHNA_DOMAIN` lines, and warns about `0.0.0.0`
+  (`test_uc_x_10_env_example_sets_nothing`).
+- `COMPOSE_PROJECT_NAME` in `.env` replaces the project name `prashna`
+  in the resolved config (`test_uc_x_10_project_name_can_be_changed`).
+- Opt-in: `PRASHNA_CADDY_SMOKE=1 uv run pytest tests/ops/test_caddy_smoke.py`
+  builds the bundle and runs it with the add-on and
+  `PRASHNA_DOMAIN=localhost` (Caddy's own certificate authority) under a
+  new project name. It checks the HTTP-to-HTTPS redirect, the `Secure`
+  sign-in cookie, a question that reaches an open moderator page over
+  `wss`, and that Prashna's port is not published. It then removes the
+  project and its volumes.
 - The Hetzner `deploy/docker-compose.yml` without `PRASHNA_SECRET_KEY` fails
   with an actionable message (`test_compose_config_reports_missing_secret_actionably`).
 - Backup/restore round-trip restores the original SQLite contents and uploads;
@@ -2706,7 +2776,10 @@ have a participant cookie are limited **per person**, not per address.
 - Creating and restoring an archive closes every SQLite connection it
   opened (`test_uc_x_10_backup_closes_its_database_connections`).
 - Release-bundle build for `1.2.3` emits `.tar.gz`, `.zip`, and `SHA256SUMS`;
-  both Compose and env defaults inside the bundle pin `1.2.3`.
+  both archives hold exactly the five bundle files; the bundle's
+  `compose.yaml` defaults to the image tag `1.2.3`, and its
+  `compose.env.example` shows `1.2.3` only on a commented line
+  (`test_release_bundle_pins_version_and_has_matching_checksums`).
 - The release workflow declares amd64+arm64 publication, pulls the just-pushed
   image digest for a Compose smoke, and attaches the versioned bundle to the
   matching GitHub Release.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import html
 import io
+import json
 import os
 import re
 import shutil
@@ -16,12 +17,15 @@ import zipfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from prashna.backup import create_archive, restore_archive
 from scripts.build_release_bundle import build_bundle
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yaml"
+HTTPS_COMPOSE = ROOT / "compose.https.yaml"
+CADDYFILE = ROOT / "Caddyfile"
 WORKFLOW = ROOT / ".github" / "workflows" / "docker.yml"
 NODE24_ACTION_REFS = (
     "actions/checkout@v7",
@@ -173,7 +177,13 @@ def test_restore_rejects_archive_path_traversal(tmp_path, monkeypatch):
         restore_archive(archive, confirmed=True)
 
 
+BUNDLE_FILES = {"README.md", "compose.yaml", "compose.env.example", "compose.https.yaml", "Caddyfile"}
+
+
 def test_release_bundle_pins_version_and_has_matching_checksums(tmp_path):
+    """UC-X-10: both archives hold exactly the five bundle files; the bundle's
+    compose.yaml defaults to its release, and its env example shows the
+    release only on a commented line."""
     tar_path, zip_path, checksums = build_bundle("1.2.3", tmp_path)
 
     assert tar_path.is_file() and zip_path.is_file() and checksums.is_file()
@@ -181,13 +191,14 @@ def test_release_bundle_pins_version_and_has_matching_checksums(tmp_path):
         names = set(archive.namelist())
         compose = archive.read("prashna-1.2.3/compose.yaml").decode()
         env_example = archive.read("prashna-1.2.3/compose.env.example").decode()
-    assert names == {
-        "prashna-1.2.3/README.md",
-        "prashna-1.2.3/compose.env.example",
-        "prashna-1.2.3/compose.yaml",
-    }
+    with tarfile.open(tar_path) as archive:
+        tar_names = {member.name for member in archive.getmembers() if member.isfile()}
+    expected = {f"prashna-1.2.3/{name}" for name in BUNDLE_FILES}
+    assert names == expected
+    assert tar_names == expected
     assert "${PRASHNA_IMAGE_TAG:-1.2.3}" in compose
-    assert "PRASHNA_IMAGE_TAG=1.2.3" in env_example
+    assert re.search(r"^# PRASHNA_IMAGE_TAG=1\.2\.3$", env_example, re.MULTILINE)
+    assert not re.search(r"^PRASHNA_IMAGE_TAG=", env_example, re.MULTILINE)
     listed = {
         name: digest
         for digest, name in (line.split("  ", 1) for line in checksums.read_text(encoding="utf-8").splitlines())
@@ -195,6 +206,157 @@ def test_release_bundle_pins_version_and_has_matching_checksums(tmp_path):
     assert listed == {
         path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (tar_path, zip_path)
     }
+
+
+def _unpacked_bundle(tmp_path: Path, version: str = "1.2.3") -> Path:
+    """Build the release bundle and unpack its .tar.gz, as a server owner does."""
+    tar_path = build_bundle(version, tmp_path / "dist")[0]
+    with tarfile.open(tar_path) as archive:
+        archive.extractall(tmp_path, filter="data")
+    return tmp_path / f"prashna-{version}"
+
+
+def _compose_env() -> dict[str, str]:
+    """The environment without PRASHNA_* or COMPOSE_* settings, so only the
+    bundle folder's .env decides the configuration."""
+    env = _clean_prashna_env()
+    for key in tuple(env):
+        if key.startswith("COMPOSE_"):
+            env.pop(key)
+    return env
+
+
+def _bundle_config(bundle: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["docker", "compose", "config", "--format", "json"],
+        cwd=bundle, env=_compose_env(), text=True, capture_output=True, check=False, timeout=30,
+    )
+
+
+class _ComposeLoader(yaml.SafeLoader):
+    """Reads Compose's `!reset` tag as ("!reset", value)."""
+
+
+def _reset(loader: yaml.SafeLoader, node: yaml.Node):
+    if isinstance(node, yaml.SequenceNode):
+        return ("!reset", loader.construct_sequence(node))
+    if isinstance(node, yaml.MappingNode):
+        return ("!reset", loader.construct_mapping(node))
+    assert isinstance(node, yaml.ScalarNode)
+    return ("!reset", loader.construct_scalar(node))
+
+
+_ComposeLoader.add_constructor("!reset", _reset)
+
+DOMAIN_MESSAGE = "Set PRASHNA_DOMAIN in .env to your domain name"
+HTTPS_ENV = "COMPOSE_FILE=compose.yaml:compose.https.yaml\n"
+
+
+def test_uc_x_10_https_override_content():
+    """UC-X-10: the HTTPS add-on hides Prashna's port, trusts one proxy hop,
+    runs Caddy on 80, 443 and 443/udp with named volumes, needs a domain,
+    and turns on IPv6 on the Compose network."""
+    override = yaml.load(HTTPS_COMPOSE.read_text(encoding="utf-8"), Loader=_ComposeLoader)
+    prashna = override["services"]["prashna"]
+    caddy = override["services"]["caddy"]
+
+    assert prashna["ports"] == ("!reset", [])
+    assert prashna["environment"] == {"PRASHNA_TRUSTED_PROXY_HOPS": "1"}
+    assert caddy["image"] == "caddy:2"
+    assert caddy["restart"] == "unless-stopped"
+    assert caddy["depends_on"] == {"prashna": {"condition": "service_healthy"}}
+    assert caddy["ports"] == [
+        "${PRASHNA_HTTP_PORT:-80}:80",
+        "${PRASHNA_HTTPS_PORT:-443}:443",
+        "${PRASHNA_HTTPS_PORT:-443}:443/udp",
+    ]
+    assert caddy["environment"] == {"PRASHNA_DOMAIN": "${PRASHNA_DOMAIN:?" + DOMAIN_MESSAGE + "}"}
+    assert caddy["volumes"] == [
+        "./Caddyfile:/etc/caddy/Caddyfile:ro",
+        "caddy-data:/data",
+        "caddy-config:/config",
+    ]
+    assert override["networks"] == {"default": {"enable_ipv6": True}}
+    assert set(override["volumes"]) == {"caddy-data", "caddy-config"}
+
+
+def test_uc_x_10_https_override_resolves_and_requires_a_domain(tmp_path):
+    """UC-X-10: in an unpacked bundle, a .env with COMPOSE_FILE and a domain
+    makes plain `docker compose` use the add-on; without the domain Compose
+    stops with the add-on's message."""
+    bundle = _unpacked_bundle(tmp_path)
+    (bundle / ".env").write_text(HTTPS_ENV + "PRASHNA_DOMAIN=quiz.example.org\n", encoding="utf-8")
+
+    result = _bundle_config(bundle)
+    assert result.returncode == 0, result.stderr
+    config = json.loads(result.stdout)
+    prashna = config["services"]["prashna"]
+    caddy = config["services"]["caddy"]
+    assert config["name"] == "prashna"
+    assert not prashna.get("ports")
+    assert prashna["image"] == "ghcr.io/kvsankar/prashna:1.2.3"
+    assert prashna["environment"]["PRASHNA_TRUSTED_PROXY_HOPS"] == "1"
+    published = {(port["published"], port["target"], port["protocol"]) for port in caddy["ports"]}
+    assert published == {("80", 80, "tcp"), ("443", 443, "tcp"), ("443", 443, "udp")}
+    assert caddy["environment"]["PRASHNA_DOMAIN"] == "quiz.example.org"
+    assert config["networks"]["default"]["enable_ipv6"] is True
+    mounts = {(volume["type"], volume["source"], volume["target"]) for volume in caddy["volumes"]}
+    assert ("volume", "caddy-data", "/data") in mounts
+    assert ("volume", "caddy-config", "/config") in mounts
+    assert ("bind", str(bundle / "Caddyfile"), "/etc/caddy/Caddyfile") in mounts
+
+    (bundle / ".env").write_text(HTTPS_ENV, encoding="utf-8")
+    missing = _bundle_config(bundle)
+    assert missing.returncode != 0
+    assert DOMAIN_MESSAGE in missing.stderr
+
+
+def test_uc_x_10_caddyfile_proxies_to_prashna_with_hsts():
+    """UC-X-10: the Caddyfile serves PRASHNA_DOMAIN, forwards to Prashna and
+    sends HSTS."""
+    lines = [line.strip() for line in CADDYFILE.read_text(encoding="utf-8").splitlines()
+             if line.strip() and not line.strip().startswith("#")]
+
+    assert lines == [
+        "{$PRASHNA_DOMAIN} {",
+        'header Strict-Transport-Security "max-age=31536000"',
+        "reverse_proxy prashna:8000",
+        "}",
+    ]
+
+
+def test_uc_x_10_env_example_sets_nothing(tmp_path):
+    """UC-X-10: a .env copied from compose.env.example, in the repository or
+    in a bundle, changes no default and pins no release; it offers the HTTPS
+    lines commented out and warns about 0.0.0.0."""
+    bundle = _unpacked_bundle(tmp_path)
+    for path in (ROOT / "compose.env.example", bundle / "compose.env.example"):
+        text = path.read_text(encoding="utf-8")
+        settings = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+        assert settings == [], path
+        assert re.search(r"^# COMPOSE_FILE=compose\.yaml:compose\.https\.yaml$", text, re.MULTILINE)
+        assert re.search(r"^# PRASHNA_DOMAIN=", text, re.MULTILINE)
+        assert re.search(r"^# PRASHNA_IMAGE_TAG=", text, re.MULTILINE)
+        flat = " ".join(text.split())
+        assert "PRASHNA_BIND_ADDR=0.0.0.0" in flat
+        assert "plain HTTP" in flat
+    shutil.copy(bundle / "compose.env.example", bundle / ".env")
+    result = _bundle_config(bundle)
+    assert result.returncode == 0, result.stderr
+    config = json.loads(result.stdout)
+    assert config["services"]["prashna"]["image"] == "ghcr.io/kvsankar/prashna:1.2.3"
+    assert "caddy" not in config["services"]
+
+
+def test_uc_x_10_project_name_can_be_changed(tmp_path):
+    """UC-X-10: COMPOSE_PROJECT_NAME in .env replaces the project name
+    `prashna`, for a server that already runs a project of that name."""
+    bundle = _unpacked_bundle(tmp_path)
+    (bundle / ".env").write_text("COMPOSE_PROJECT_NAME=prashna-quiz\n", encoding="utf-8")  # pragma: allowlist secret
+
+    result = _bundle_config(bundle)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["name"] == "prashna-quiz"
 
 
 def test_release_bundle_rejects_non_semver(tmp_path):
