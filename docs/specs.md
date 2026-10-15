@@ -2892,6 +2892,15 @@ one command, on macOS, Linux, or Windows.
 - **And** if the tunnel program is not installed, or prints no address
   within 45 seconds, `prashna --tunnel …` exits with status 1, showing the
   install command or the tunnel's last output lines
+- **And** Prashna takes the public address only from the tunnel's success
+  report: the `https://<name>.trycloudflare.com` line inside the box that
+  `cloudflared` prints when the quick tunnel is created, or the JSON record
+  with `"msg": "started tunnel"` from `ngrok`. A URL in any other line is
+  never the address. For example, when `cloudflared` cannot reach Cloudflare
+  it prints `failed to request quick Tunnel: Post
+  "https://api.trycloudflare.com/tunnel"` and exits; Prashna then exits with
+  status 1 and shows that output. `api.trycloudflare.com` is never the
+  address
 - **And** a Cloudflare quick-tunnel hostname appears in DNS about 15 s after
   `cloudflared` prints it; a lookup before then gets a "no such name"
   answer that resolvers cache, so the address would fail for a while.
@@ -3044,6 +3053,8 @@ rest of the end-user how-to. The container guide covers Docker.
 - With a stub `cloudflared` (and, separately, a stub `ngrok`) on `PATH` that prints a known address, `prashna --tunnel …` prints `Participants join at: <address>`, sessions report it as `default_base_url`, and stopping Prashna stops the stub (`test_uc_x_15_tunnel_wires_the_public_address`).
 - Through that tunnel, a visitor who exhausts the login rate limit (`X-Forwarded-For: <visitor A>`) gets `429` while another visitor (`<visitor B>`) still gets `401` for a wrong password (`test_uc_x_15_tunnel_rate_limits_each_visitor`).
 - Without the tunnel program on `PATH`, `prashna --tunnel cloudflare` exits 1 and names `cloudflared` and how to install it; a stub that exits without an address makes it exit 1 showing the stub's output (`test_uc_x_15_tunnel_reports_missing_or_failed_programs`).
+- With a stub `cloudflared` that prints `failed to request quick Tunnel: Post "https://api.trycloudflare.com/tunnel"` and exits 1, `prashna --tunnel cloudflare` exits 1, shows that line, and never prints `Participants join at` (`test_uc_x_15_tunnel_failure_never_reports_the_api_address`).
+- With the tunnel program's process mocked, `prashna.tunnel.Tunnel` reads `https://<name>.trycloudflare.com` from a sample of `cloudflared`'s success box, raises `TunnelError` showing the output for the `api.trycloudflare.com` error line, reads the ngrok address from the `started tunnel` record, and ignores an ngrok record that has a `url` but another `msg` (`test_uc_x_15_tunnel_reads_only_the_success_report`).
 - `prashna.tunnel.wait_until_resolvable` returns once a DNS-over-HTTPS answer lists an address, returns `False` after its timeout, and returns at once for a timeout of 0 (`test_uc_x_15_tunnel_waits_for_public_dns`).
 - Opt-in: `PRASHNA_CLOUDFLARE_SMOKE=1 uv run pytest tests/ops/test_cloudflare_smoke.py` runs `prashna --tunnel cloudflare` with the real `cloudflared` and checks the health API, a participant page, and a WebSocket ping through the public address, querying it only after Prashna prints it.
 

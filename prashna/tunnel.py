@@ -32,8 +32,15 @@ INSTALL_HINTS = {
         "then run the same command again."
     ),
 }
-# cloudflared prints the quick-tunnel address inside a box in its log output.
-CLOUDFLARE_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+# cloudflared prints the quick-tunnel address alone on a line of a box in its
+# log output: "INF |  https://<name>.trycloudflare.com  |". Only that line
+# counts. Other lines can hold trycloudflare.com URLs too: when cloudflared
+# cannot reach Cloudflare it logs `failed to request quick Tunnel: Post
+# "https://api.trycloudflare.com/tunnel"`, and api.trycloudflare.com is
+# Cloudflare's service address, never a tunnel (UC-X-15).
+CLOUDFLARE_URL = re.compile(r"\|\s+(https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com)\s+\|")
+# ngrok (`--log-format json`) reports the public address in this record.
+NGROK_STARTED = "started tunnel"
 WAIT_SECS = 45
 
 
@@ -100,14 +107,17 @@ class Tunnel:
         threading.Thread(target=self._read, daemon=True).start()
 
     def _parse(self, line: str) -> str | None:
+        """The public address, when `line` is the tunnel's success report."""
         if self.kind == "cloudflare":
             match = CLOUDFLARE_URL.search(line)
-            return match.group(0) if match else None
+            return match.group(1) if match else None
         try:
             record = json.loads(line)
         except ValueError:
             return None
-        url = record.get("url") if isinstance(record, dict) else None
+        if not isinstance(record, dict) or record.get("msg") != NGROK_STARTED:
+            return None
+        url = record.get("url")
         return url if isinstance(url, str) and url.startswith("https://") else None
 
     def _read(self) -> None:

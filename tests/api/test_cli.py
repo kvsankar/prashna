@@ -451,6 +451,95 @@ def test_uc_x_15_tunnel_reports_missing_or_failed_programs(tmp_path):
     assert "test failure" in failed.stderr
 
 
+# cloudflared's own lines: what it prints when the quick tunnel is created,
+# and what it prints when it cannot reach Cloudflare (network blocked).
+CLOUDFLARED_SUCCESS = [
+    "2026-10-15T10:00:00Z INF Requesting new quick Tunnel on trycloudflare.com...",
+    "2026-10-15T10:00:03Z INF +--------------------------------------------------------------------------------------------+",
+    "2026-10-15T10:00:03Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |",
+    "2026-10-15T10:00:03Z INF |  https://wired-example-words-here.trycloudflare.com                                        |",
+    "2026-10-15T10:00:03Z INF +--------------------------------------------------------------------------------------------+",
+]
+CLOUDFLARED_FAILURE = [
+    "2026-10-15T10:00:00Z INF Requesting new quick Tunnel on trycloudflare.com...",
+    '2026-10-15T10:00:01Z ERR failed to request quick Tunnel: Post "https://api.trycloudflare.com/tunnel": '
+    "dial tcp: lookup api.trycloudflare.com: no such host",
+]
+
+
+def test_uc_x_15_tunnel_failure_never_reports_the_api_address(tmp_path):
+    """UC-X-15: when cloudflared cannot create the quick tunnel, Prashna exits 1
+    and shows its output; the API address in the error is never the address."""
+    lines = "\n".join(f"print({line!r}, file=sys.stderr, flush=True)" for line in CLOUDFLARED_FAILURE)
+    stubs = _stub_dir(tmp_path, {"cloudflared": f"{lines}\nsys.exit(1)"})
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "prashna.cli", "--data-dir", str(tmp_path / "d"), "--port", str(_free_port()),
+         "--no-browser", "--tunnel", "cloudflare"],
+        cwd=ROOT, env=_cli_env(PATH=f"{stubs}{os.pathsep}/usr/bin:/bin", STUB_DIR=str(stubs),
+                               PRASHNA_TUNNEL_DNS_WAIT_SECS="0"),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        out, err = proc.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out, err = proc.communicate()
+        raise AssertionError(f"prashna kept running after the tunnel failed:\n{out}{err}") from None
+    assert proc.returncode == 1, out + err
+    assert "failed to request quick Tunnel" in err
+    assert "Participants join at" not in out + err
+
+
+class _FakeTunnelProcess:
+    """Stands in for the tunnel program: prints `lines`, then exits."""
+
+    def __init__(self, lines: list[str]) -> None:
+        import io
+        self.stdout = io.StringIO("".join(line + "\n" for line in lines))
+        self.returncode: int | None = None
+
+    def wait(self, timeout: float | None = None) -> int:
+        if self.returncode is None:
+            self.returncode = 1
+        return self.returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.returncode = -15
+
+    kill = terminate
+
+
+@pytest.mark.parametrize(("kind", "lines", "expected"), [
+    ("cloudflare", CLOUDFLARED_SUCCESS, "https://wired-example-words-here.trycloudflare.com"),
+    ("cloudflare", CLOUDFLARED_FAILURE, None),
+    ("ngrok", ['{"lvl": "info", "msg": "update available", "url": "https://ngrok.com/download"}',
+               '{"addr": "http://127.0.0.1:8000", "lvl": "info", "msg": "started tunnel", "name": "command_line", '
+               '"obj": "tunnels", "url": "https://abc-123.ngrok-free.app"}'],
+     "https://abc-123.ngrok-free.app"),
+    ("ngrok", ['{"lvl": "info", "msg": "update available", "url": "https://ngrok.com/download"}'], None),
+], ids=["cloudflare-success-box", "cloudflare-api-error", "ngrok-started-tunnel", "ngrok-other-record"])
+def test_uc_x_15_tunnel_reads_only_the_success_report(monkeypatch, kind, lines, expected):
+    """UC-X-15: the public address comes only from the tunnel's success report;
+    a URL in any other line (such as cloudflared's API error) is never used."""
+    from prashna import tunnel
+
+    started: list[list[str]] = []
+    monkeypatch.setattr(tunnel.shutil, "which", lambda name: f"/opt/fake/{name}")
+    monkeypatch.setattr(tunnel.subprocess, "Popen",
+                        lambda command, **_: (started.append(command), _FakeTunnelProcess(lines))[1])
+    t = tunnel.Tunnel(kind, 8000)
+    assert started and started[0][0].startswith("/opt/fake/")
+    if expected:
+        assert t.wait_for_url(timeout=5) == expected
+    else:
+        with pytest.raises(tunnel.TunnelError) as error:
+            t.wait_for_url(timeout=5)
+        assert t.url is None
+        assert lines[-1] in str(error.value)
+
+
 def test_uc_x_15_tunnel_waits_for_public_dns(monkeypatch):
     """UC-X-15: the quick-tunnel address is reported only once public DNS has it."""
     from prashna import tunnel
