@@ -330,3 +330,28 @@ def test_setup_keeps_the_data_folder_private():
     setup = (ROOT / "deploy" / "setup.sh").read_text()
     assert 'sudo chmod 700 "$APP_DIR/data"' in setup
     assert setup.index('sudo chown -R "$APP_UID:$APP_GID"') < setup.index('sudo chmod 700 "$APP_DIR/data"')
+
+
+TAGLINE = "Live questions and quizzes for trainers, teachers and speakers"
+GUIDE_URL = "https://github.com/kvsankar/prashna/blob/main/docs/user-guide.md"
+
+
+def test_uc_x_15_pages_site_opens_with_context_and_links_the_landing_page(tmp_path):
+    """UC-X-15: the GitHub Pages page opens with the README's context, links
+    the sankara.net landing page and the user guide, and puts one command in
+    each block; it and the package share one tagline."""
+    import tomllib
+    site = tmp_path / "site"
+    subprocess.run([sys.executable, "scripts/build_pages_site.py", str(site)], cwd=ROOT, check=True)
+    index = (site / "index.html").read_text(encoding="utf-8")
+
+    assert "trainers, teachers and speakers" in index
+    assert f'href="{INSTALL_URL}/"' in index
+    assert f'href="{GUIDE_URL}"' in index
+    assert f'<meta name="description" content="{TAGLINE}.">' in index
+    blocks = re.findall(r"<pre><code>(.*?)</code></pre>", index, re.DOTALL)
+    assert blocks
+    for block in blocks:
+        assert len([line for line in block.splitlines() if line.strip()]) == 1, block
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["description"] == TAGLINE

@@ -1,7 +1,7 @@
 [project]
 name = "prashna"
 version = "0.6.0"
-description = "Live Q&A and quizzes for any session with an audience"
+description = "Live questions and quizzes for trainers, teachers and speakers"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

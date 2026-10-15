@@ -6,8 +6,9 @@ Writes install.sh and install.ps1 (copied unchanged from
 prashna/installers/) and an index.html landing page. The release workflow
 runs it on version tags and deploys OUT_DIR to
 https://kvsankar.github.io/prashna/. The public addresses that the page
-shows are under https://sankara.net/prashna/, which serves this site
-(UC-X-15).
+shows are under https://sankara.net/prashna/: sankara.net redirects the
+two script addresses here, and its landing page is a separate page that
+this page links (UC-X-15).
 """
 
 from __future__ import annotations
@@ -22,16 +23,23 @@ INSTALLERS = ROOT / "prashna" / "installers"
 INSTALL_URL = "https://sankara.net/prashna"
 REPO_URL = "https://github.com/kvsankar/prashna"
 
+GUIDE_URL = f"{REPO_URL}/blob/main/docs/user-guide.md"
+TAGLINE = "Live questions and quizzes for trainers, teachers and speakers"
+
 ONE_LINERS = (
-    ("macOS and Linux", f"curl -LsSf {INSTALL_URL}/install.sh | sh"),
-    ("Windows (PowerShell)", f'powershell -ExecutionPolicy ByPass -c "irm {INSTALL_URL}/install.ps1 | iex"'),
+    ("On macOS and Linux", f"curl -LsSf {INSTALL_URL}/install.sh | sh"),
+    ("On Windows, in PowerShell", f'powershell -ExecutionPolicy ByPass -c "irm {INSTALL_URL}/install.ps1 | iex"'),
 )
 
-# The same routes the README shows for machines that already have Python.
+# The same routes the README shows for machines that already have Python,
+# one command per block.
 WITH_PYTHON = (
     ("With pipx", "pipx install prashna"),
-    ("Or with pip inside a virtual environment",
-     "python3 -m venv ~/.prashna\n~/.prashna/bin/pip install prashna"),
+    ("Or with pip inside a virtual environment. On macOS and Linux, create it, then install into it",
+     "python3 -m venv ~/.prashna"),
+    (None, "~/.prashna/bin/pip install prashna"),
+    ("On Windows, in PowerShell", r"py -m venv $HOME\.prashna"),
+    (None, r"$HOME\.prashna\Scripts\pip install prashna"),
 )
 
 PAGE = """<!doctype html>
@@ -40,7 +48,7 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Prashna</title>
-<meta name="description" content="Live Q&amp;A and quizzes for any session with an audience.">
+<meta name="description" content="{tagline}.">
 <style>
   :root {{ --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --code-bg: #f6f8fa; --link: #0969da; }}
   @media (prefers-color-scheme: dark) {{
@@ -53,18 +61,27 @@ PAGE = """<!doctype html>
   h2 {{ margin-top: 2rem; font-size: 1.15rem; }}
   p.lead {{ margin-top: 0; color: var(--muted); }}
   pre {{ background: var(--code-bg); padding: 0.75rem 1rem; border-radius: 6px;
-        white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9rem; }}
+        overflow-x: auto; font-size: 0.9rem; }}
   a {{ color: var(--link); }}
 </style>
 </head>
 <body>
 <main>
 <h1>Prashna</h1>
-<p class="lead">Live Q&amp;A and quizzes for any session with an audience.</p>
+<p class="lead">{tagline}.</p>
+
+<p>Prashna is a live Q&amp;A and quiz tool for trainers, teachers and
+speakers who run a workshop, a class or a talk. In a room, most people do
+not ask questions out loud. With Prashna, people use their phones to ask
+questions without giving their names, and to answer short quizzes and
+polls. You see what the room wants to know and what it understood.</p>
+<p>The main page for Prashna is <a href="{landing}/">sankara.net/prashna</a>.
+The <a href="{guide}">user guide</a> explains how to run a session.</p>
 
 <h2>Install</h2>
-<p>One command, on a machine with or without Python. It installs
-<a href="https://docs.astral.sh/uv/">uv</a>, which fetches Python if needed.</p>
+<p>One command installs Prashna, on a machine with or without Python. It
+installs <a href="https://docs.astral.sh/uv/">uv</a>, which fetches Python
+if needed.</p>
 {installs}
 <h2>Already have uv?</h2>
 <p>This command installs the same <code>prashna</code> command. It is the
@@ -77,34 +94,43 @@ same on macOS, Linux, and Windows:</p>
 version, run:</p>
 <pre><code>uvx prashna@latest</code></pre>
 <h2>Already have Python 3.11 or newer?</h2>
-<p>Install without uv:</p>
+<p>Install without uv. A plain <code>pip install</code> into the system
+Python is refused on Debian, Ubuntu, and some other Linux distributions;
+the virtual environment avoids that.</p>
 {with_python}
-<p>A plain <code>pip install</code> into the system Python is refused on Debian,
-Ubuntu, and some other Linux distributions; the virtual environment avoids
-that. On Windows, the pip is <code>~\\.prashna\\Scripts\\pip</code>.</p>
 <h2>Start it</h2>
 <pre><code>prashna</code></pre>
-<p>With the virtual environment, run <code>~/.prashna/bin/prashna</code>. Your
-browser opens on a one-time page where you choose the admin's username and
-password.</p>
+<p>With the virtual environment, start <code>~/.prashna/bin/prashna</code>
+(on Windows, <code>$HOME\\.prashna\\Scripts\\prashna</code>). On the first
+run, Prashna prints a one-time setup link and opens it in your browser.
+On that page, choose the admin's username and password.</p>
 
 <h2>More</h2>
-<p><a href="{repo}">Source code and documentation on GitHub</a></p>
+<ul>
+<li><a href="{landing}/">Prashna's main page</a></li>
+<li><a href="{guide}">User guide</a>: running a session, putting it online,
+backup, updating and troubleshooting</li>
+<li><a href="{repo}">Source code on GitHub</a></li>
+</ul>
 </main>
 </body>
 </html>
 """
 
 
-def _blocks(items: tuple[tuple[str, str], ...]) -> str:
-    return "\n".join(
-        f"<p>{html.escape(label)}:</p>\n<pre><code>{html.escape(command, quote=False)}</code></pre>"
-        for label, command in items
-    )
+def _blocks(items: tuple[tuple[str | None, str], ...]) -> str:
+    """One <pre> block per command, each after its label, if it has one."""
+    parts = []
+    for label, command in items:
+        if label:
+            parts.append(f"<p>{html.escape(label)}:</p>")
+        parts.append(f"<pre><code>{html.escape(command, quote=False)}</code></pre>")
+    return "\n".join(parts)
 
 
 def render_index() -> str:
-    return PAGE.format(installs=_blocks(ONE_LINERS), with_python=_blocks(WITH_PYTHON), repo=REPO_URL)
+    return PAGE.format(installs=_blocks(ONE_LINERS), with_python=_blocks(WITH_PYTHON), repo=REPO_URL,
+                       landing=INSTALL_URL, guide=GUIDE_URL, tagline=TAGLINE)
 
 
 def build_site(out_dir: Path) -> None:
