@@ -216,7 +216,9 @@ Dockerfile           production image
 
 ## Cut a release
 
-1. Set the new version in `pyproject.toml` and commit it.
+1. Set the new version in `pyproject.toml`, and in the example image tag
+   and bundle name in `distribution/README.md` (a test checks that they
+   match). Commit both.
 2. Tag the commit `vX.Y.Z` with the same version and push the tag.
 
 The tag starts the CI workflow, which:
@@ -235,15 +237,17 @@ The tag starts the CI workflow, which:
   `scripts/build_pages_site.py` and deploys it to GitHub Pages at
   `https://kvsankar.github.io/prashna/`. Users install from
   `https://sankara.net/prashna/install.sh` and `install.ps1`, the addresses
-  the README shows; sankara.net serves them from the GitHub Pages site, so
+  the README shows; sankara.net redirects them to the GitHub Pages site, so
   each Pages deploy updates them. The GitHub Pages addresses also work.
 
 Two one-time settings make the publishing jobs work: a trusted publisher on
 PyPI for project `prashna` (workflow `docker.yml`, environment `pypi`), and
 **Settings → Pages → Source: GitHub Actions** in the repository.
 
-Anonymous image pulls need the GHCR package to be public; see
-[`distribution/README.md`](../distribution/README.md).
+Anonymous image pulls need the `prashna` container package to be
+**Public** in GitHub Packages. That setting belongs to the GitHub account,
+not to the workflow. While the package is private, users must first sign in
+to `ghcr.io` with a GitHub token that has `read:packages`.
 
 ## Documentation policy
 

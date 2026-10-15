@@ -336,6 +336,11 @@ TAGLINE = "Live questions and quizzes for trainers, teachers and speakers"
 GUIDE_URL = "https://github.com/kvsankar/prashna/blob/main/docs/user-guide.md"
 
 
+def _project_version() -> str:
+    import tomllib
+    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+
 def test_uc_x_15_pages_site_opens_with_context_and_links_the_landing_page(tmp_path):
     """UC-X-15: the GitHub Pages page opens with the README's context, links
     the sankara.net landing page and the user guide, and puts one command in
@@ -355,3 +360,23 @@ def test_uc_x_15_pages_site_opens_with_context_and_links_the_landing_page(tmp_pa
         assert len([line for line in block.splitlines() if line.strip()]) == 1, block
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["description"] == TAGLINE
+
+
+def test_uc_x_15_container_guide_names_a_release_and_its_bundle():
+    """UC-X-15: the container guide names a release image and the bundle it
+    comes in, says what `latest` is, and gives the password reset."""
+    guide = (ROOT / "distribution" / "README.md").read_text(encoding="utf-8")
+    flat = " ".join(guide.split())
+
+    assert f"ghcr.io/kvsankar/prashna:{_project_version()}" in guide
+    assert re.search(r"`latest`[^.]*\bfollows the `main` branch", flat)
+    assert "prashna-<version>.zip" in guide
+    assert "docker compose exec prashna python -m prashna reset-password" in guide
+    assert "**Invite participants**" in guide
+    for internal in ("Invite card", "Hetzner", "Registry access"):
+        assert internal not in guide
+    # Fenced blocks, also those indented inside a numbered list.
+    blocks = re.findall(r"^ *```[^\n]*\n(.*?)^ *```$", guide, re.MULTILINE | re.DOTALL)
+    assert len(blocks) == guide.count("```") // 2
+    for block in blocks:
+        assert len([line for line in block.splitlines() if line.strip()]) == 1, block
