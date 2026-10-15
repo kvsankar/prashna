@@ -1,25 +1,21 @@
 # Narration for the demo video: one line per scene, "<scene id><TAB><text>".
-# compose.py burns the text of every app scene in as that scene's caption, so
-# the captions are the spoken words. The opening (01, 02) and the end (20) are
-# animations from cards.html and are spoken only.
-# voice.py speaks each line; compose.py fits each scene to its line.
-01-title	Prashna: live questions and quizzes.
-02-why	Many people won't ask out loud. Presenters can't see who's following. Prashna adds anonymous questions, upvotes, quick quizzes, and one shared screen.
-03-install	One command installs Prashna. Then start it.
-04-setup	First run: create the admin account.
-05-session	Create a session for the workshop.
-06-quiz-write	Write a short quiz in the library.
-07-quiz-check	Publish checks the quiz and marks what to fix.
-08-quiz-add	Fix it, publish, and add the quiz to the session.
-09-start	Open the session page and start the session.
-10-join	The projector shows the join code. Phones join with it.
-11-ask	A participant asks a question and chooses to show their name.
-12-others	Others ask anonymously and upvote. The projector lists the top questions.
-13-respond	The moderator marks a question as responded.
-14-quiz-start	The moderator starts the quiz.
-15-answer	Phones show the question. A participant answers.
-16-counts-on	The moderator turns on live vote counts.
-17-counts	The projector shows live counts without the answer text.
-18-answered	Phones show only how many have answered so far.
-19-reveal	Reveal results: the correct answer is shown.
-20-end	Try Prashna today. One command installs it. It's free and open source.
+# " | " splits a line into parts. voice.py speaks each part and joins them with
+# a short pause; the part times drive the card animations, the subtitle cues
+# and the captions of the silent version. The cards (01, 02, 04, 12, 15) show
+# the same words on screen; compose.py burns the other lines in as captions
+# in the silent version only.
+01-hook	Half the room has a question. | Nobody asks.
+02-hook	And you can't tell who's keeping up.
+03-intro	Prashna lets people ask anonymously, upvote, and answer quick quizzes from their phones, | all on one shared screen.
+04-why	It runs on your own laptop: | one command, no server, no subscription. | A built-in tunnel puts it online for your audience, | and your data stays on your machine.
+05-join	People scan the code on the screen and join from their phones. | No app, no sign-up.
+06-ask	They type their questions. | Diego chooses to show his name; the others stay anonymous.
+07-upvote	Everyone upvotes, | and the question most people want answered climbs to the top.
+08-answer	You answer it from your laptop, | and Diego sees your answer on his phone.
+09-quiz	Then start a quick quiz. | The question appears on every phone.
+10-votes	Votes fill in live. | The screen hides the answer text until you reveal it, so the room isn't swayed.
+11-reveal	Reveal the results, | and the right answer lights up everywhere.
+12-tunnel	Setting up takes a minute. | One flag gives you a public web address for your audience.
+13-invite	Prashna puts it in the join link and the QR code.
+14-setup	Create a session, write your quiz, | and start when the room is ready.
+15-end	Free. Runs on your laptop. No sign-ups for your audience. | Install it with one line, on macOS, Linux or Windows.

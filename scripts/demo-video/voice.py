@@ -8,9 +8,15 @@ hashes are checked against the values below; later runs need no network and
 no API key. Phonemes come from espeak-ng through kokoro-onnx's tokenizer;
 PRONUNCIATIONS overrides single words.
 
+A line may be split into parts with " | ". Each part is spoken on its own and
+the parts are joined with PART_GAP seconds of silence, so the start and end
+of every part is known exactly (the cards animate to them, and compose.py
+times the subtitle cues and captions with them).
+
 Outputs:
   voice/<scene>.wav          24 kHz mono, 16-bit, one per narration line
-  voice/durations.json       seconds per scene (read by compose.py)
+  voice/durations.json       seconds per scene (read by shoot_cards.py and compose.py)
+  voice/parts.json           per scene: [start, end, text] of each part, in seconds
   voice/provenance.json      model, revision, file hashes, voice, speed, packages
   voice-samples/<voice>.wav  with --samples: the same short passage in other voices
 
@@ -69,6 +75,7 @@ SAMPLE_VOICES = ("af_bella", "bf_emma")
 SPEED = 1.0
 LANG = "en-us"
 SAMPLE_RATE = 24000
+PART_GAP = 0.25  # seconds of silence between the parts of one line
 # word -> IPA used in place of espeak-ng's guess ("Prashna" rhymes with "brush-na")
 PRONUNCIATIONS = {"Prashna": "pɹˈʌʃnə"}
 
@@ -102,13 +109,14 @@ def fetch(rel: str) -> Path:
     return dest
 
 
-def read_narration() -> list[tuple[str, str]]:
+def read_narration() -> list[tuple[str, list[str]]]:
+    """(scene, parts) for every line of narration.txt."""
     rows = []
     for line in (W / "narration.txt").read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         scene, text = line.split("\t", 1)
-        rows.append((scene.strip(), text.strip()))
+        rows.append((scene.strip(), [part.strip() for part in text.split("|")]))
     return rows
 
 
@@ -163,13 +171,27 @@ def main() -> int:
     for old in OUT.glob("*.wav"):
         old.unlink()
     durations: dict[str, float] = {}
-    for scene, text in rows:
-        durations[scene] = round(write(OUT / f"{scene}.wav", sp.say(text, VOICE)), 3)
-        print(f"{scene:22s} {durations[scene]:5.2f}s  {text}")
+    timing: dict[str, list[list[object]]] = {}
+    gap = np.zeros(round(PART_GAP * SAMPLE_RATE), dtype=np.float32)
+    for scene, parts in rows:
+        pieces: list[np.ndarray] = []
+        timing[scene] = []
+        t = 0.0
+        for k, part in enumerate(parts):
+            if k:
+                pieces.append(gap)
+                t += PART_GAP
+            audio = sp.say(part, VOICE).astype(np.float32)
+            pieces.append(audio)
+            timing[scene].append([round(t, 3), round(t + len(audio) / SAMPLE_RATE, 3), part])
+            t += len(audio) / SAMPLE_RATE
+        durations[scene] = round(write(OUT / f"{scene}.wav", np.concatenate(pieces)), 3)
+        print(f"{scene:12s} {durations[scene]:5.2f}s  {' | '.join(parts)}")
     total = sum(durations.values())
-    words = sum(len(t.split()) for _, t in rows)
+    words = sum(len(" ".join(p).split()) for _, p in rows)
     print(f"total speech {total:.1f}s, {words} words")
     (OUT / "durations.json").write_text(json.dumps(durations, indent=2) + "\n")
+    (OUT / "parts.json").write_text(json.dumps(timing, indent=2, ensure_ascii=False) + "\n")
     packages = {p: importlib.metadata.version(p) for p in ("kokoro-onnx", "onnxruntime", "espeakng-loader", "phonemizer-fork")}
     provenance = {
         "model": "Kokoro-82M v1.0 (ONNX export)",
@@ -183,13 +205,14 @@ def main() -> int:
         "language": LANG,
         "sample_rate": SAMPLE_RATE,
         "pronunciations": PRONUNCIATIONS,
+        "part_gap_seconds": PART_GAP,
         "packages": packages,
         "narration_sha256": sha256(W / "narration.txt"),
     }
     (OUT / "provenance.json").write_text(json.dumps(provenance, indent=2, ensure_ascii=False) + "\n")
     if samples:
         # A passage of about 10 s for comparing voices by ear: the why card.
-        text = dict(rows)["02-why"]
+        text = " ".join(dict(rows)["04-why"])
         for voice in (VOICE, *SAMPLE_VOICES):
             d = write(SAMPLES / f"{voice}.wav", sp.say(text, voice))
             print(f"sample {voice}: {d:.1f}s")

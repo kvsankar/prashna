@@ -2,7 +2,8 @@
 # Rebuild prashna-demo.mp4 (narrated, no captions), prashna-demo-silent.mp4
 # (captions burned in) and prashna-demo.srt from scratch.
 # See README.md for what each step does. Steps 1-3 need network access the
-# first time (installer, PyPI, Hugging Face); later steps do not.
+# first time (installer, PyPI, Hugging Face). Step 4 needs internet and
+# cloudflared every time: it records through a real Cloudflare quick tunnel.
 set -eu
 W="$(cd "$(dirname "$0")" && pwd)"
 cd "$W"
@@ -19,19 +20,21 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-$W/uv-cache}"
 #    Downloads and hash-checks the model into models/ on first run.
 uv run --project tooling python voice.py --samples
 
-# 4. Start Prashna 0.6.0 from the clean HOME, drive the real pages headless,
-#    record admin/projector/phone/terminal videos -> recordings/, timeline.json
+# 4. Start `prashna --tunnel cloudflare` (0.6.0, clean HOME), drive the real
+#    pages headless (phones through the public trycloudflare.com address),
+#    record laptop/projector/phone videos -> recordings/, timeline.json
 #    (also writes server-output.raw.txt and terminal-text.txt via sanitize_terminal.py)
 uv run --project tooling python record_app.py
 
-# 5. Animated opening and end card from cards.html, one frame at a time, sized
-#    to the narration -> cards/01-title.mp4, cards/02-why.mp4, cards/20-end.mp4
+# 5. The designed cards from cards.html, one frame at a time, timed to the
+#    narration -> cards/01-hook.mp4, 02-hook.mp4, 04-why.mp4, 12-tunnel.mp4, 15-end.mp4
 uv run --project tooling python shoot_cards.py
 
-# 6. Cut, caption, fit scenes to the voice, mix and normalise the narration
+# 6. Place the recordings in device frames, zoom the laptop shots, fit scenes
+#    to the voice, caption, mix and normalise the narration
 #    -> prashna-demo.mp4 (no captions), prashna-demo-silent.mp4 (captions),
 #    prashna-demo.srt, scene-list.txt, opening-preview.png, ending-preview.png
-python3 -I compose.py
+uv run --project tooling python compose.py
 
 # 7. Review material: one frame every 6 s -> frames/, and contact-sheet.png;
 #    loudness and true peak of the final file

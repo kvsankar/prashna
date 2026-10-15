@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Build terminal-text.txt for the install scene from the real captured output.
+"""Build terminal-text.txt for the tunnel scene from the real server output.
 
-Inputs (written by run_install.sh and record_app.py):
-  install-output.raw.txt  - stdout+stderr of `curl ... | sh`
-  server-output.raw.txt   - stdout+stderr of `prashna` at startup
+Input (written by record_app.py): server-output.raw.txt, the stdout and
+stderr of `prashna --no-browser --data-dir <folder> --port 8000 --tunnel
+cloudflare`.
 
 Rules applied (and nothing else):
-  * any absolute path inside the work folder becomes `~` / `~/.local/share/prashna`
-  * the setup token becomes `prashna_st_…`
-  * the long `+ package==version` list is shortened to its first lines and
-    the `+ prashna==<version>` line, with `…` lines for the rest
-  * the trailing `exit=0` marker line is dropped
+  * the command line is shown as `prashna --tunnel cloudflare`, the command a
+    presenter types; the other options only change lines that are dropped
+  * only the lines that start with KEEP are kept, in their order and
+    verbatim; the data folder, database and one-time setup link lines are
+    dropped (they hold machine paths and the setup token)
+  * the blank line before "Prashna is running at" is kept
 """
 from __future__ import annotations
 
@@ -19,60 +20,34 @@ import sys
 from pathlib import Path
 
 W = Path(__file__).resolve().parent
-PORT_RE = re.compile(r"127\.0\.0\.1:\d+")
-
-
-def sanitize(line: str) -> str:
-    line = line.rstrip("\n")
-    line = line.replace(str(W / "demo-data"), "~/.local/share/prashna")
-    line = line.replace(str(W / "clean-home"), "~")
-    line = line.replace(str(W), "~")
-    line = re.sub(r"#setup=\S+", "#setup=prashna_st_…", line)
-    return line
-
-
-def shorten_packages(lines: list[str], keep: int = 3) -> list[str]:
-    out: list[str] = []
-    run: list[str] = []
-    for ln in lines + [""]:
-        if ln.startswith(" + "):
-            run.append(ln)
-            continue
-        if run:
-            if len(run) > keep + 1:
-                out.extend(run[:keep])
-                # Keep the installed Prashna version on screen.
-                own = [i for i, x in enumerate(run) if x.startswith(" + prashna==") and i >= keep]
-                for i in own:
-                    out.append(" …")
-                    out.append(run[i])
-                if not own or own[-1] < len(run) - 1:
-                    out.append(" …")
-            else:
-                out.extend(run)
-            run = []
-        out.append(ln)
-    return out[:-1]
+KEEP = (
+    "Starting the cloudflared tunnel",
+    "Waiting for the public address",
+    "Prashna is running at http://127.0.0.1:",
+    "Participants join at: https://",
+    "Press Ctrl+C to stop.",
+)
+COMMAND = "$ prashna --tunnel cloudflare"
 
 
 def main() -> int:
-    install = (W / "install-output.raw.txt").read_text().splitlines()
-    server = (W / "server-output.raw.txt").read_text().splitlines()
-    install = [sanitize(x) for x in install if not x.startswith("exit=")]
-    install = shorten_packages(install)
-    server = [sanitize(x) for x in server]
-    # Drop the trailing blank line of each block.
-    while install and not install[-1].strip():
-        install.pop()
-    while server and not server[-1].strip():
-        server.pop()
-    text = ["$ curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh", *install, "", "$ prashna", *server]
-    (W / "terminal-text.txt").write_text("\n".join(text) + "\n")
-    joined = "\n".join(text)
-    bad = [p for p in ("/tmp/", "/home/", "clean-home", "demo-setup-token") if p in joined]
-    if bad:
-        print("sanitizer left forbidden text:", bad, file=sys.stderr)
+    raw = (W / "server-output.raw.txt").read_text().splitlines()
+    kept = [ln.rstrip() for ln in raw if ln.startswith(KEEP)]
+    missing = [k for k in KEEP if not any(ln.startswith(k) for ln in kept)]
+    if missing:
+        print("server output lacks:", missing, file=sys.stderr)
         return 1
+    text = [COMMAND]
+    for ln in kept:
+        if ln.startswith("Prashna is running at"):
+            text.append("")
+        text.append(ln)
+    joined = "\n".join(text)
+    bad = [p for p in ("/tmp/", "/home/", "clean-home", "demo-setup-token", "#setup=") if p in joined]
+    if bad or not re.search(r"https://[a-z0-9-]+\.trycloudflare\.com$", joined, re.M):
+        print("terminal text failed its check:", bad or "no tunnel address", file=sys.stderr)
+        return 1
+    (W / "terminal-text.txt").write_text(joined + "\n")
     print(f"wrote terminal-text.txt ({len(text)} lines)")
     return 0
 
