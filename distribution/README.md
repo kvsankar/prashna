@@ -12,12 +12,12 @@ explains how to use Prashna once it runs.
 Each Prashna release has a bundle, `prashna-<version>.zip` (and the same
 files as `prashna-<version>.tar.gz`), on the
 [GitHub Releases page](https://github.com/kvsankar/prashna/releases). For
-release 0.6.0, the file is `prashna-0.6.0.zip`. `SHA256SUMS` beside it
+release 0.6.1, the file is `prashna-0.6.1.zip`. `SHA256SUMS` beside it
 holds the checksums of both files.
 
 The bundle holds three files: `compose.yaml`, `compose.env.example` and
 this guide. Its `compose.yaml` uses the image of that release, for
-example `ghcr.io/kvsankar/prashna:0.6.0`.
+example `ghcr.io/kvsankar/prashna:0.6.1`.
 
 1. Download `prashna-<version>.zip` and unzip it.
 2. Open a terminal in the unzipped folder `prashna-<version>`.
@@ -28,7 +28,7 @@ steps.
 The `compose.yaml` in the root of the source repository is not pinned to
 a release. It uses the image tag `latest`, which follows the `main`
 branch and is not a release. Use the bundle, or a release tag such as
-`0.6.0`, to run a released version.
+`0.6.1`, to run a released version.
 
 ## Start
 
@@ -62,11 +62,11 @@ The database and the uploads live in two Compose named volumes:
 
 ## Start without Compose
 
-The image also runs on its own. Replace `0.6.0` with the release you
+The image also runs on its own. Replace `0.6.1` with the release you
 want:
 
 ```sh
-docker run -d --name prashna -p 127.0.0.1:8000:8000 -v prashna-data:/data -v prashna-uploads:/app/uploads ghcr.io/kvsankar/prashna:0.6.0
+docker run -d --name prashna -p 127.0.0.1:8000:8000 -v prashna-data:/data -v prashna-uploads:/app/uploads ghcr.io/kvsankar/prashna:0.6.1
 ```
 
 Then find the setup link in its log:
