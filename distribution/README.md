@@ -13,13 +13,13 @@ explains how to use Prashna once it runs.
 Each Prashna release has a bundle, `prashna-<version>.zip` (and the same
 files as `prashna-<version>.tar.gz`), on the
 [GitHub Releases page](https://github.com/kvsankar/prashna/releases). For
-release 0.6.1, the file is `prashna-0.6.1.zip`. `SHA256SUMS` beside it
+release 0.6.2, the file is `prashna-0.6.2.zip`. `SHA256SUMS` beside it
 holds the checksums of both files.
 
 The bundle holds five files:
 
 - `compose.yaml` runs Prashna. It uses the image of that release, for
-  example `ghcr.io/kvsankar/prashna:0.6.1`.
+  example `ghcr.io/kvsankar/prashna:0.6.2`.
 - `compose.https.yaml` and `Caddyfile` add HTTPS on your own domain (see
   [Run on your own server with HTTPS](#run-on-your-own-server-with-https)).
 - `compose.env.example` describes the optional settings.
@@ -38,7 +38,7 @@ steps.
 The `compose.yaml` in the root of the source repository is not pinned to
 a release. It uses the image tag `latest`, which follows the `main`
 branch and is not a release. Use the bundle, or a release tag such as
-`0.6.1`, to run a released version.
+`0.6.2`, to run a released version.
 
 ## Start
 
@@ -133,16 +133,16 @@ sudo docker compose ls
 1. Download the bundle:
 
    ```sh
-   curl -fsSLO https://github.com/kvsankar/prashna/releases/download/v0.6.1/prashna-0.6.1.tar.gz
+   curl -fsSLO https://github.com/kvsankar/prashna/releases/download/v0.6.2/prashna-0.6.2.tar.gz
    ```
 
 2. Download the checksums:
 
    ```sh
-   curl -fsSLO https://github.com/kvsankar/prashna/releases/download/v0.6.1/SHA256SUMS
+   curl -fsSLO https://github.com/kvsankar/prashna/releases/download/v0.6.2/SHA256SUMS
    ```
 
-3. Check the download. It prints `prashna-0.6.1.tar.gz: OK`:
+3. Check the download. It prints `prashna-0.6.2.tar.gz: OK`:
 
    ```sh
    sha256sum -c --ignore-missing SHA256SUMS
@@ -152,13 +152,13 @@ sudo docker compose ls
    `.tar.gz`:
 
    ```sh
-   tar xzf prashna-0.6.1.tar.gz
+   tar xzf prashna-0.6.2.tar.gz
    ```
 
 5. Go to the bundle folder:
 
    ```sh
-   cd prashna-0.6.1
+   cd prashna-0.6.2
    ```
 
 6. Turn on HTTPS for your domain. This writes a `.env` with two settings:
@@ -283,11 +283,11 @@ Cloudflare's addresses.
 
 ## Start without Compose
 
-The image also runs on its own. Replace `0.6.1` with the release you
+The image also runs on its own. Replace `0.6.2` with the release you
 want:
 
 ```sh
-docker run -d --name prashna -p 127.0.0.1:8000:8000 -v prashna-data:/data -v prashna-uploads:/app/uploads ghcr.io/kvsankar/prashna:0.6.1
+docker run -d --name prashna -p 127.0.0.1:8000:8000 -v prashna-data:/data -v prashna-uploads:/app/uploads ghcr.io/kvsankar/prashna:0.6.2
 ```
 
 Then find the setup link in its log:
@@ -351,7 +351,7 @@ If that commit also changed the bundle files (`compose.yaml`,
 `compose.https.yaml`, `Caddyfile` or `compose.env.example`), build a
 bundle from it. In a clone of the repository at that commit, run
 `python3 scripts/build_release_bundle.py` with the current release
-number, for example `0.6.1`. It writes the bundle into `dist/`. Unpack
+number, for example `0.6.2`. It writes the bundle into `dist/`. Unpack
 it and copy your `.env` into it, as for an update.
 
 ## Share over the internet
@@ -433,11 +433,11 @@ Open root's crontab:
 sudo crontab -e
 ```
 
-Add this line. Replace `/srv/prashna-0.6.1` with your bundle
+Add this line. Replace `/srv/prashna-0.6.2` with your bundle
 folder, and change it after each update.
 
 ```text
-30 3 * * * cd /srv/prashna-0.6.1 && docker compose exec -T prashna python -m prashna.backup create /data/nightly.tar.gz && docker compose cp prashna:/data/nightly.tar.gz /var/backups/prashna/prashna-$(date +\%Y\%m\%d).tar.gz && docker compose exec -T prashna rm /data/nightly.tar.gz
+30 3 * * * cd /srv/prashna-0.6.2 && docker compose exec -T prashna python -m prashna.backup create /data/nightly.tar.gz && docker compose cp prashna:/data/nightly.tar.gz /var/backups/prashna/prashna-$(date +\%Y\%m\%d).tar.gz && docker compose exec -T prashna rm /data/nightly.tar.gz
 ```
 
 It makes a backup at 03:30, server time. Each file holds the whole
