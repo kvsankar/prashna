@@ -1,13 +1,13 @@
 # Prashna demo video build
 
-Builds the Prashna demo video (about 84 s, 1920x1080, 30 fps, H.264) from real
+Builds the Prashna demo video (about 90 s, 1920x1080, 30 fps, H.264) from real
 headless screen recordings of Prashna 0.6.0, with a spoken narration. Outputs:
 
 - `prashna-demo.mp4`: video with narration (AAC-LC, 48 kHz, 192 kbit/s,
   -14 LUFS integrated, true peak at most -1 dBTP), `+faststart`. It has one
   video and one audio stream: no subtitle stream, and no captions in the
-  picture. The problem, the reasons and the end card are on-screen graphics
-  that show the narration's words.
+  picture. The audience, the problem, the reasons and the end card are
+  on-screen graphics that show the narration's words.
 - `prashna-demo-silent.mp4`: the same video without sound, with the narration
   burned in as captions on the app scenes.
 - `prashna-demo.srt`: the narration as subtitles, one cue per part of each
@@ -15,19 +15,20 @@ headless screen recordings of Prashna 0.6.0, with a spoken narration. Outputs:
   platform offers an optional caption track.
 - `contact-sheet.png` and `frames/`: one frame every 6 s, for review.
 - `opening-preview.png` and `ending-preview.png`: one frame each of the
-  opening montage and the end card.
+  opening (who Prashna is for) and the end card.
 - `voice-samples/`: the why passage in the chosen voice and two others.
 
 ## Storyboard
 
 | Scene | What is on screen | Narration |
 | --- | --- | --- |
+| 00 | "For trainers, teachers and speakers", as large text | "You're running a workshop, a class or a talk." |
 | 01, 02 | The problem, as large text | "Half the room has a question. Nobody asks." "And you can't tell who's keeping up." |
 | 03 | Montage: the projector and three phones join, a question climbs, quiz bars fill | What Prashna does |
 | 04 | Why Prashna: four lines, each appearing as it is said | Runs on your laptop, one command, built-in tunnel, data on your machine |
 | 05-11 | The live room: projector and Diego's phone side by side; short zoomed shots of the presenter's laptop | Join, ask, upvote, answer, quiz, answer text hidden until reveal, reveal |
 | 12-14 | Setup: `prashna --tunnel cloudflare`, the invite card, creating the session and quiz | One flag gives a public address |
-| 15 | End card: "Free. Runs on your laptop. No sign-ups for your audience.", both install lines, the cloudflared note, QR code to the landing page | The same words |
+| 15 | End card: "Free. Runs on your laptop. No sign-ups for your audience.", both install lines, the cloudflared note, QR code to the landing page and its address | The same words, then "Get it at sankara.net/prashna." |
 
 `compose.py` holds the storyboard (`SCENES`) and `narration.txt` the words.
 
@@ -63,7 +64,7 @@ headless screen recordings of Prashna 0.6.0, with a spoken narration. Outputs:
 5. `uv run --project tooling python shoot_cards.py` renders the designed
    scenes from `cards.html` (see Cards and frames below): it calls the page's
    `renderAt(t)` for every frame at 30 fps, screenshots it at 1920x1080 in
-   headless Chromium, and encodes `cards/01-hook.mp4`, `02-hook.mp4`,
+   headless Chromium, and encodes `cards/00-context.mp4`, `01-hook.mp4`, `02-hook.mp4`,
    `04-why.mp4`, `12-tunnel.mp4` and `15-end.mp4`. The words appear when the
    voice says them (from `voice/parts.json`). With `--preview` it writes only
    the last frame of each card to `cards/preview/`.
@@ -119,7 +120,9 @@ CSS transitions or animations, so every run gives the same frames. Colours are
 copied from `frontend/src/tokens.css`; fonts are the local Inter and DejaVu
 Sans Mono; no file is fetched from the network.
 
-- `hook`: the two problem lines, then the third.
+- `hook`: "For trainers, teachers and speakers" (scene 00), which fades out
+  after the voice; then the two problem lines, then the third. The three
+  scenes are one animation cut into three clips.
 - `why`: four lines with icons: "Runs on your own laptop", "One command · no
   server · no subscription", "A built-in tunnel puts it online for your
   audience", "Your data stays on your machine".
@@ -127,10 +130,13 @@ Sans Mono; no file is fetched from the network.
   the recording run (`terminal-text.txt`); the flag and the public address
   are lit when the narration names them.
 - `end`: the headline, "Install with one line · macOS · Linux · Windows",
-  the macOS/Linux and Windows (PowerShell) install lines from the
-  repository's README, a note that the public link also needs `cloudflared`
-  (the installer does not fetch it), a QR code for `https://kvsankar.github.io/prashna/`
-  (the landing page with the install steps), "Open source · MIT", and "The
+  the macOS/Linux and Windows (PowerShell) install lines in the form of the
+  repository's README, with the installers on the landing page
+  (`https://sankara.net/prashna/install.sh` and `install.ps1`), a note that
+  the public link also needs `cloudflared` (the installer does not fetch
+  it), a QR code for `https://sankara.net/prashna/` (the landing page with
+  the install steps) with the address `sankara.net/prashna` under it, which
+  lights up when the voice reads it out, "Open source · MIT", and "The
   narration is a synthetic voice." The QR code is drawn by the generator
   Prashna already vendors, `frontend/public/vendor/qrcode.js` (MIT, Kazuhiko
   Arase), error correction level M. It stays up 1.5 s after the voice ends.
@@ -160,7 +166,7 @@ held).
   no server and no subscription; a built-in tunnel puts it online for your
   audience; your data stays on your machine; it is free, and the audience
   needs no sign-up. It does not say that Prashna works without internet or
-  that nothing leaves the laptop.
+  that nothing leaves the laptop. It ends with the landing page's address.
 - `voice.py` runs Kokoro-82M v1.0 (Apache-2.0) locally on the CPU through
   ONNX Runtime, using the ONNX export at
   `https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX`, pinned to
@@ -171,9 +177,12 @@ held).
 - Voice `af_heart`, speed 1.0, American English. Each part is spoken
   separately and the parts are joined with 0.25 s of silence. Phonemes come
   from espeak-ng (bundled by `espeakng-loader`); `PRONUNCIATIONS` in
-  `voice.py` sets "Prashna" to `pɹˈʌʃnə`.
+  `voice.py` sets "Prashna" to `pɹˈʌʃnə` and "Sankara" to `sˈʌŋkəɹə`.
+  `SPOKEN_FORMS` makes the voice read `sankara.net/prashna` as "Sankara dot
+  net slash Prashna"; `narration.txt`, the cards and the subtitles show the
+  written address.
 - `voice/provenance.json` records the model, revision, file URLs and hashes,
-  voice, speed, pronunciations, the pause between parts, package versions
+  voice, speed, pronunciations, spoken forms, the pause between parts, package versions
   and the hash of `narration.txt`.
 - Every scene is at least 0.2 s + its voice line + 0.4 s long, and each line
   starts 0.2 s into its scene, so no line runs into the next scene and the
@@ -200,8 +209,10 @@ database and setup-link lines are dropped.
 `check_text.sh` fails if any text on screen or in the narration (the terminal
 text, `cards.html`, `cards/texts.json`, `segments/plates/texts.json`, the
 captions, `narration.txt`, the SRT and the scene list) contains a path, a
-token, an email, a non-loopback IP address, or the local user name. Web
-addresses may only be the two installer scripts, the landing page,
+token, an email, a non-loopback IP address, or the local user name (the
+landing page's address `sankara.net/prashna` is removed from a line before
+it is checked). Web addresses may only be the landing page
+`https://sankara.net/prashna/`, its two installer scripts,
 `http://127.0.0.1:8000` and the tunnel's `trycloudflare.com` address. The
 tunnel address is public only while the recording runs; it stops working
 when the run ends, so the QR codes in the app scenes lead nowhere later.

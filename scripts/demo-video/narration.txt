@@ -1,9 +1,11 @@
 # Narration for the demo video: one line per scene, "<scene id><TAB><text>".
 # " | " splits a line into parts. voice.py speaks each part and joins them with
 # a short pause; the part times drive the card animations, the subtitle cues
-# and the captions of the silent version. The cards (01, 02, 04, 12, 15) show
+# and the captions of the silent version. The cards (00, 01, 02, 04, 12, 15) show
 # the same words on screen; compose.py burns the other lines in as captions
-# in the silent version only.
+# in the silent version only. voice.py reads the web address aloud as
+# "Sankara dot net slash Prashna" (SPOKEN_FORMS).
+00-context	You're running a workshop, a class or a talk.
 01-hook	Half the room has a question. | Nobody asks.
 02-hook	And you can't tell who's keeping up.
 03-intro	Prashna lets people ask anonymously, upvote, and answer quick quizzes from their phones, | all on one shared screen.
@@ -18,4 +20,4 @@
 12-tunnel	Setting up takes a minute. | One flag gives you a public web address for your audience.
 13-invite	Prashna puts it in the join link and the QR code.
 14-setup	Create a session, write your quiz, | and start when the room is ready.
-15-end	Free. Runs on your laptop. No sign-ups for your audience. | Install it with one line, on macOS, Linux or Windows.
+15-end	Free. Runs on your laptop. No sign-ups for your audience. | Install it with one line, on macOS, Linux or Windows. | Get it at sankara.net/prashna.

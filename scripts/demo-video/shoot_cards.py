@@ -13,7 +13,8 @@ compose.py checks); the two hook scenes and the end card are held longer
 on purpose (MIN_LENGTH, END_HOLD).
 
 Outputs:
-  cards/01-hook.mp4, cards/02-hook.mp4  the problem (one animation, two scenes)
+  cards/00-context.mp4                  who it is for (the same animation as the hook)
+  cards/01-hook.mp4, cards/02-hook.mp4  the problem (one animation, three scenes with 00)
   cards/04-why.mp4                      why Prashna
   cards/12-tunnel.mp4                   `prashna --tunnel cloudflare` (terminal-text.txt)
   cards/15-end.mp4                      the end card
@@ -41,12 +42,12 @@ LEAD = 0.2      # same as compose.py
 TAIL = 0.4      # same as compose.py
 MIN_LENGTH = {"01-hook": 4.0, "02-hook": 3.0}  # deliberate pauses after the problem lines
 END_HOLD = 1.5  # the end card stays up this long after the voice ends
-LANDING = "https://kvsankar.github.io/prashna/"
+LANDING = "https://sankara.net/prashna/"
 INSTALL = [
     ("#", "macOS and Linux"),
-    ("$", "curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh"),
+    ("$", "curl -LsSf https://sankara.net/prashna/install.sh | sh"),
     ("#", "Windows (PowerShell)"),
-    (">", 'powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"'),
+    (">", 'powershell -ExecutionPolicy ByPass -c "irm https://sankara.net/prashna/install.ps1 | iex"'),
 ]
 ENC = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-r", str(FPS), "-an"]
 
@@ -90,10 +91,14 @@ def main() -> None:
         return max(MIN_LENGTH.get(scene, 0.0), LEAD + voice[scene] + TAIL)
 
     OUT.mkdir(exist_ok=True)
-    n1, n2 = frames(length("01-hook")), frames(length("02-hook"))
-    t1 = n1 / FPS
-    p1, p2 = parts["01-hook"], parts["02-hook"]
-    hook = {"scene": "hook", "at": [max(0.05, LEAD + p1[0][0] - 0.1), LEAD + p1[1][0] - 0.1, t1 + LEAD + p2[0][0] - 0.1]}
+    # 00-context, 01-hook and 02-hook are one animation, cut into three clips.
+    n0, n1, n2 = frames(length("00-context")), frames(length("01-hook")), frames(length("02-hook"))
+    t0 = n0 / FPS
+    t1 = t0 + n1 / FPS
+    p0, p1, p2 = parts["00-context"], parts["01-hook"], parts["02-hook"]
+    hook = {"scene": "hook", "context": "For trainers, teachers and speakers",
+            "contextAt": max(0.05, LEAD + p0[0][0] - 0.1), "contextOut": t0 - 0.05,  # fades out after the voice
+            "at": [t0 + max(0.05, LEAD + p1[0][0] - 0.1), t0 + LEAD + p1[1][0] - 0.1, t1 + LEAD + p2[0][0] - 0.1]}
 
     pw = parts["04-why"]
     assert len(pw) == 4, "04-why needs four parts, one per row on the card"
@@ -114,12 +119,15 @@ def main() -> None:
                 "urlAt": LEAD + at_word(pt[1], "public") - 0.1}
 
     pe = parts["15-end"]
+    assert len(pe) == 3, "15-end needs three parts: the headline, the install lines, the address"
     head = ["Free.", "Runs on your laptop.", "No sign-ups for your audience."]
-    end = {"scene": "end", "head": head, "install": INSTALL, "qr": LANDING, "qrLabel": "kvsankar.github.io/prashna",
+    end = {"scene": "end", "head": head, "install": INSTALL, "qr": LANDING, "qrLabel": "sankara.net/prashna",
            # The installer does not fetch cloudflared; --tunnel cloudflare needs it.
            "tunnelNote": "For the public link, also install cloudflared, Cloudflare's free tunnel program (no account needed).",
            "at": [LEAD + pe[0][0] - 0.1, LEAD + at_word(pe[0], "Runs") - 0.1,
-                  LEAD + at_word(pe[0], "No sign") - 0.1, LEAD + pe[1][0] - 0.1]}
+                  LEAD + at_word(pe[0], "No sign") - 0.1, LEAD + pe[1][0] - 0.1,
+                  # the address under the QR code lights up when the voice reads it out
+                  LEAD + at_word(pe[2], "sankara") - 0.1]}
     n_end = frames(LEAD + voice["15-end"] + END_HOLD)
 
     # Every text these cards put on screen, for check_text.sh.
@@ -130,7 +138,8 @@ def main() -> None:
         prev.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            for name, cfg, t in (("hook-1", hook, t1 - 0.1), ("hook-2", hook, t1 + n2 / FPS - 0.1),
+            for name, cfg, t in (("context", hook, t0 - TAIL - 0.1), ("hook-1", hook, t1 - 0.1),
+                                 ("hook-2", hook, t1 + n2 / FPS - 0.1),
                                  ("why", why, length("04-why") - 0.1), ("terminal", terminal, length("12-tunnel") - 0.1),
                                  ("end", end, n_end / FPS - 0.1)):
                 page = browser.new_page(viewport={"width": 1920, "height": 1080})
@@ -144,9 +153,10 @@ def main() -> None:
         return
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        folder = shoot(browser, "hook", hook, n1 + n2)
-        encode(folder, 0, n1, OUT / "01-hook.mp4")
-        encode(folder, n1, n2, OUT / "02-hook.mp4")
+        folder = shoot(browser, "hook", hook, n0 + n1 + n2)
+        encode(folder, 0, n0, OUT / "00-context.mp4")
+        encode(folder, n0, n1, OUT / "01-hook.mp4")
+        encode(folder, n0 + n1, n2, OUT / "02-hook.mp4")
         encode(shoot(browser, "why", why, frames(length("04-why"))), 0, frames(length("04-why")), OUT / "04-why.mp4")
         n_t = frames(length("12-tunnel"))
         encode(shoot(browser, "terminal", terminal, n_t), 0, n_t, OUT / "12-tunnel.mp4")

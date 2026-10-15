@@ -4,7 +4,7 @@
 The storyboard is SCENES below. Every scene becomes a segment in segments/
 (1920x1080, 30 fps, H.264), in two versions: a clean one, and one with the
 scene's narration burned in as captions (ffmpeg drawtext), cue by cue. The
-designed cards (hook, why, tunnel, end) come from shoot_cards.py and already
+designed cards (context, hook, why, tunnel, end) come from shoot_cards.py and already
 show the narration's words, so they carry no captions.
 
 App scenes are one or more shots. Each shot places recordings in device
@@ -35,7 +35,8 @@ Outputs:
   scene-list.txt           start, length and voice timing of every scene
   audio/loudness.json      loudnorm measurements of both passes
   opening-preview.png, ending-preview.png
-                           one frame each of the opening and the end card
+                           one frame each of the opening (the context card)
+                           and the end card
 
 Run:  uv run --project tooling python compose.py
 """
@@ -148,6 +149,7 @@ def around(box: str, above: float, below: float) -> tuple[int, int, int, int]:
 
 PROJ_LABEL = 'Projector <span class="sub">· join address and QR code</span>'
 SCENES = [
+    Scene("00-context"),
     Scene("01-hook"),
     Scene("02-hook"),
     Scene("03-intro", [
@@ -450,8 +452,8 @@ def main() -> None:
     SRT.write_text("\n".join(f"{n}\n{srt_time(a)} --> {srt_time(b)}\n{wrap(text)}\n"
                              for n, (a, b, text) in enumerate(all_cues, start=1)), encoding="utf-8")
     (W / "scene-list.txt").write_text("\n".join(lines) + "\n")
-    start, length = starts["03-intro"]
-    still(start + length - 0.5, W / "opening-preview.png")
+    start, length = starts["00-context"]
+    still(start + LEAD + VOICE["00-context"], W / "opening-preview.png")
     start, length = starts["15-end"]
     still(start + length - 0.5, W / "ending-preview.png")
     print("\n".join(lines))

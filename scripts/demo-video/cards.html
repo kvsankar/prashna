@@ -13,10 +13,12 @@
   MIT).
 
   Scenes (config.scene):
-    hook      01 + 02: the problem, in the words of the narration
+    hook      00 + 01 + 02: who it is for (config.context), then the problem,
+              in the words of the narration
     why       04: why Prashna, in the words of the narration
     terminal  12: `prashna --tunnel cloudflare` and its real output (config.lines)
-    end       15: benefit, price, install lines, the cloudflared note, QR code to the landing page
+    end       15: benefit, price, install lines, the cloudflared note, QR code to the
+              landing page; its address lights up when the voice reads it (config.at[4])
     plate     a still: the navy background and device frames (config.devices)
               drawn behind (config.layer = "bg") or over (= "fg") the
               recordings that compose.py places in the screens
@@ -58,6 +60,7 @@
   .hook-line { width: 1920px; text-align: center; font-size: 104px; font-weight: 700; letter-spacing: -0.03em;
                line-height: 1.1; color: #fff; white-space: nowrap; }
   .hook-line.accent { color: var(--accent-2); }
+  .hook-line.context { font-size: 92px; }
 
   /* why */
   .why-row { display: flex; align-items: center; gap: 40px; white-space: nowrap; }
@@ -184,11 +187,14 @@ let R = null;      // per-scene render function
 /* ---------------------------------------------------------------- hook */
 function buildHook() {
   const drift = makeDrift(7);
+  const ctx = el("div", "abs hook-line context", null, { top: "478px" }, C.context);
   const l1 = el("div", "abs hook-line", null, { top: "300px" }, "Half the room has a question.");
   const l2 = el("div", "abs hook-line accent", null, { top: "430px" }, "Nobody asks.");
   const l3 = el("div", "abs hook-line", null, { top: "640px" }, "And you can't tell who's keeping up.");
   return (t) => {
     drift(t, 0.12);
+    rise(ctx, t, C.contextAt);
+    ctx.style.opacity = (parseFloat(ctx.style.opacity) * (1 - prog(t, C.contextOut - 0.3, C.contextOut))).toFixed(3);
     const dim = 1 - 0.5 * eOut(prog(t, C.at[2] - 0.1, C.at[2] + 0.4));
     rise(l1, t, C.at[0]);
     rise(l2, t, C.at[1]);
@@ -310,6 +316,9 @@ function buildEnd() {
     qr.style.transform = `scale(${(0.9 + 0.1 * q).toFixed(4)})`;
     qr.style.opacity = prog(t, C.at[3] + 0.3, C.at[3] + 0.65).toFixed(3);
     rise(url, t, C.at[3] + 0.5, 12);
+    const lit = eOut(prog(t, C.at[4], C.at[4] + 0.3));
+    url.style.color = lit > 0.5 ? "#fff" : "";
+    url.style.fontSize = px(32 + 6 * lit);
     rise(tunnel, t, C.at[3] + 0.4, 12);
     rise(foot, t, C.at[3] + 0.7, 12);
     note.style.opacity = prog(t, C.at[3] + 0.8, C.at[3] + 1.2).toFixed(3);

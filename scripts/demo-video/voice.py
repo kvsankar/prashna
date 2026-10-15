@@ -6,7 +6,8 @@ Face as onnx-community/Kokoro-82M-v1.0-ONNX, pinned to one revision. On first
 run the model and voice files are downloaded into models/ and their SHA-256
 hashes are checked against the values below; later runs need no network and
 no API key. Phonemes come from espeak-ng through kokoro-onnx's tokenizer;
-PRONUNCIATIONS overrides single words.
+PRONUNCIATIONS overrides single words, and SPOKEN_FORMS says how a written
+form such as a web address is read out.
 
 A line may be split into parts with " | ". Each part is spoken on its own and
 the parts are joined with PART_GAP seconds of silence, so the start and end
@@ -76,8 +77,12 @@ SPEED = 1.0
 LANG = "en-us"
 SAMPLE_RATE = 24000
 PART_GAP = 0.25  # seconds of silence between the parts of one line
-# word -> IPA used in place of espeak-ng's guess ("Prashna" rhymes with "brush-na")
-PRONUNCIATIONS = {"Prashna": "pɹˈʌʃnə"}
+# word -> IPA used in place of espeak-ng's guess ("Prashna" rhymes with "brush-na";
+# "Sankara" is "sun-kuh-ruh", stressed on the first syllable)
+PRONUNCIATIONS = {"Prashna": "pɹˈʌʃnə", "Sankara": "sˈʌŋkəɹə"}
+# written text -> the words spoken for it. narration.txt, the cards and the
+# subtitles show the written form; the voice says the spoken one.
+SPOKEN_FORMS = {"sankara.net/prashna": "Sankara dot net slash Prashna"}
 
 
 def sha256(path: Path) -> str:
@@ -155,6 +160,12 @@ class Speaker:
         return audio
 
 
+def spoken(text: str) -> str:
+    for written, words in SPOKEN_FORMS.items():
+        text = text.replace(written, words)
+    return text
+
+
 def write(path: Path, audio: np.ndarray) -> float:
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(path, audio, SAMPLE_RATE, subtype="PCM_16")
@@ -181,7 +192,7 @@ def main() -> int:
             if k:
                 pieces.append(gap)
                 t += PART_GAP
-            audio = sp.say(part, VOICE).astype(np.float32)
+            audio = sp.say(spoken(part), VOICE).astype(np.float32)
             pieces.append(audio)
             timing[scene].append([round(t, 3), round(t + len(audio) / SAMPLE_RATE, 3), part])
             t += len(audio) / SAMPLE_RATE
@@ -205,6 +216,7 @@ def main() -> int:
         "language": LANG,
         "sample_rate": SAMPLE_RATE,
         "pronunciations": PRONUNCIATIONS,
+        "spoken_forms": SPOKEN_FORMS,
         "part_gap_seconds": PART_GAP,
         "packages": packages,
         "narration_sha256": sha256(W / "narration.txt"),
