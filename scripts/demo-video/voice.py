@@ -82,7 +82,8 @@ PART_GAP = 0.25  # seconds of silence between the parts of one line
 PRONUNCIATIONS = {"Prashna": "pɹˈʌʃnə", "Sankara": "sˈʌŋkəɹə"}
 # written text -> the words spoken for it. narration.txt, the cards and the
 # subtitles show the written form; the voice says the spoken one.
-SPOKEN_FORMS = {"sankara.net/prashna": "Sankara dot net slash Prashna"}
+# "ngrok" is said "en grok"; espeak-ng would say "eng-grok".
+SPOKEN_FORMS = {"sankara.net/prashna": "Sankara dot net slash Prashna", "ngrok": "en grok"}
 
 
 def sha256(path: Path) -> str:

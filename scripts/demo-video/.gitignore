@@ -10,7 +10,6 @@ cards/
 uv-cache/
 tooling/.venv/
 *.raw.txt
-terminal-text.txt
 timeline.json
 scene-list.txt
 contact-sheet.png

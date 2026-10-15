@@ -9,7 +9,7 @@
 01-hook	Half the room has a question. | Nobody asks.
 02-hook	And you can't tell who's keeping up.
 03-intro	Prashna lets people ask anonymously, upvote, and answer quick quizzes from their phones, | all on one shared screen.
-04-why	It runs on your own laptop: | one command, no server, no subscription. | A built-in tunnel puts it online for your audience, | and your data stays on your machine.
+04-why	It runs on your own laptop: | one command, no server, no subscription. | It works with Cloudflare and ngrok tunnels to put it online for your audience, | and your data stays on your machine.
 05-join	People scan the code on the screen and join from their phones. | No app, no sign-up.
 06-ask	They type their questions. | Diego chooses to show his name; the others stay anonymous.
 07-upvote	Everyone upvotes, | and the question most people want answered climbs to the top.

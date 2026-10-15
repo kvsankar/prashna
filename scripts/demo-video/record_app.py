@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
-"""Record the Prashna demo scenes against a fresh Prashna 0.6.0 with a real tunnel.
+"""Record the Prashna demo scenes against a fresh Prashna 0.6.0.
 
-Starts the `prashna` installed by run_install.sh (clean HOME) as
-`prashna --tunnel cloudflare` on 127.0.0.1:8000 with an empty data folder.
-Prashna starts a Cloudflare quick tunnel and prints its public address
-(https://<random words>.trycloudflare.com); the session's join link and the
-projector's QR code use it. The phones open the join link through that public
-address; the presenter's laptop and the projector use 127.0.0.1, as a
-presenter would. Then it drives the real pages headless with Playwright:
+Starts the `prashna` installed by run_install.sh (clean HOME) on
+127.0.0.1:8000 with an empty data folder. It starts no tunnel. Instead it
+gives Prashna, as its public address, the address that an earlier
+`prashna --tunnel cloudflare` run printed (the "Participants join at:" line
+of terminal-text.txt, a https://<random words>.trycloudflare.com name that no
+longer works). Prashna then shows that address as it does with a tunnel: in
+the session's join link, the invite card and the projector's QR code. All
+pages open Prashna at 127.0.0.1. Then it drives the real pages headless with
+Playwright:
 
-  admin.webm      1920x1080, page zoom 2    the presenter's laptop (lays out as 960x540)
-  projector.webm  1920x1080, page zoom 4/3  /p/<code> on the projector (as 1440x810)
-  phone.webm      720x1560, page zoom 2     Diego, the featured participant (as 360x780)
-  phone2.webm, phone3.webm                  two more phones, for the opening
+  admin      1920x1080, page zoom 2    the presenter's laptop (lays out as 960x540)
+  projector  1920x1080, page zoom 4/3  /p/<code> on the projector (as 1440x810)
+  phone      720x1560, page zoom 2     Diego, the featured participant (as 360x780)
+  phone2, phone3                       two more phones, for the opening
 
-Playwright records each page at its viewport size in CSS pixels, so the
-pages are opened at the full recording size and zoomed (CSS zoom on the
-body, as browser zoom does). The text is larger in the frame and stays
-sharp. The phones' media queries see a 720 px wide screen, which selects the
-same phone layout as 360 px. Before each click or tap an
-injected demo overlay draws a ring around the control (and a dot where it is
+Each page is recorded with the Chrome DevTools screencast: Chromium sends a
+lossless PNG frame each time the page changes, with the time it was drawn.
+The frames go to recordings/frames/<name>/; after the run each recording is
+turned into a constant 30 fps lossless video (recordings/<name>.mkv, H.264
+RGB with -qp 0), each frame held until the next one was drawn. A frame is
+the page's viewport in CSS pixels, so the pages are opened at the full
+recording size and zoomed (CSS zoom on the body, as browser zoom does). The
+text is larger in the frame and stays sharp. The phones' media queries see a
+720 px wide screen, which selects the same phone layout as 360 px. Before
+each click or tap an injected demo overlay draws a ring around the control (and a dot where it is
 pressed), so viewers can see what is used. The overlay belongs to the
 recording only; it is not part of Prashna.
 
@@ -28,10 +34,13 @@ cookie each) so the counts move. Every key moment is written to timeline.json
 as a wall-clock mark, with each recording's start time, the on-screen box of
 the controls that compose.py zooms to, and the public address.
 
-Run:  uv run --project tooling python record_app.py
+Run:  uv run --project tooling python record_app.py [--encode-only]
+      (--encode-only makes the videos again from the last run's frames)
 """
 from __future__ import annotations
 
+import base64
+import bisect
 import json
 import random
 import re
@@ -39,15 +48,29 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 import httpx
-from playwright.sync_api import FloatRect, Locator, Page, ViewportSize, sync_playwright
+from playwright.sync_api import (
+    BrowserContext,
+    FloatRect,
+    Locator,
+    Page,
+    ViewportSize,
+    sync_playwright,
+)
+from websockets.exceptions import ConnectionClosed
+from websockets.sync.client import connect as ws_connect
 
 W = Path(__file__).resolve().parent
 CLEAN = W / "clean-home"
 OUT = W / "recordings"
+FPS = 30
+# The tool environment that run_install.sh's `uv tool install` created.
+PRASHNA_PYTHON = CLEAN / ".local/share/uv/tools/prashna/bin/python"
 PORT = 8000
 BASE = f"http://127.0.0.1:{PORT}"
 SETUP_TOKEN = "demo-setup-token-3f9c1b"  # never shown on screen; fictional
@@ -80,6 +103,8 @@ PHONE_VIEW: ViewportSize = {"width": 720, "height": 1560}
 PHONE_ZOOM = 2
 
 T0 = time.monotonic()
+# The wall clock at T0: screencast frames carry wall-clock timestamps.
+EPOCH0 = time.time()
 marks: dict[str, float] = {}
 boxes: dict[str, list[float]] = {}
 videos: dict[str, dict[str, object]] = {}
@@ -123,6 +148,105 @@ def mark(name: str) -> None:
 
 def pause(sec: float) -> None:
     time.sleep(sec)
+
+
+class Recorder:
+    """Lossless frames of one page from the DevTools screencast, with their times.
+
+    A thread of its own holds a DevTools connection to the page (Chromium is
+    started with a debugging port) and acknowledges each frame as soon as it
+    arrives, so the screencast keeps its pace while the main thread drives
+    the pages or sleeps. Each frame's file name, its draw time and its
+    arrival time (seconds since T0) go to frames/<name>/times.tsv.
+    """
+
+    def __init__(self, name: str, ctx: BrowserContext, page: Page, port: int) -> None:
+        self.name = name
+        self.dir = OUT / "frames" / name
+        self.dir.mkdir(parents=True)
+        view = page.viewport_size
+        assert view is not None
+        self.size = (view["width"], view["height"])
+        target = ctx.new_cdp_session(page).send("Target.getTargetInfo")["targetInfo"]["targetId"]
+        self.stack = ExitStack()  # websockets wants its connection used as a context manager
+        self.ws = self.stack.enter_context(ws_connect(f"ws://127.0.0.1:{port}/devtools/page/{target}",
+                                                      max_size=None, proxy=None, compression=None))
+        self.ws.send(json.dumps({"id": 1, "method": "Page.startScreencast", "params": {
+            "format": "png", "everyNthFrame": 1, "maxWidth": self.size[0], "maxHeight": self.size[1]}}))
+        self.times = open(self.dir / "times.tsv", "w")
+        self.count = 0
+        self.thread = threading.Thread(target=self._run, name=f"screencast-{name}", daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        next_id = 2
+        try:
+            for message in self.ws:
+                msg = json.loads(message)
+                if msg.get("method") != "Page.screencastFrame":
+                    continue
+                arrived = now()
+                params = msg["params"]
+                self.ws.send(json.dumps({"id": next_id, "method": "Page.screencastFrameAck",
+                                         "params": {"sessionId": params["sessionId"]}}))
+                next_id += 1
+                stamp = params["metadata"].get("timestamp")
+                drawn = round(stamp - EPOCH0, 4) if stamp else arrived
+                name = f"{self.count:06d}.png"
+                (self.dir / name).write_bytes(base64.b64decode(params["data"]))
+                self.times.write(f"{name}\t{drawn}\t{arrived}\n")
+                self.count += 1
+        except ConnectionClosed:
+            pass
+
+    def stop(self) -> float:
+        """Stop the screencast; return the time the recording ends."""
+        end = now()
+        try:
+            self.ws.send(json.dumps({"id": 0, "method": "Page.stopScreencast"}))
+        finally:
+            self.stack.close()
+            self.thread.join(timeout=10)
+            self.times.close()
+        return end
+
+
+def encode(name: str, end: float, size: list[int]) -> dict[str, object]:
+    """A constant 30 fps lossless video of one recording: each frame held until the next one's time."""
+    folder = OUT / "frames" / name
+    rows = [line.split("\t") for line in (folder / "times.tsv").read_text().splitlines()]
+    files = [r[0] for r in rows]
+    # Draw times, made non-decreasing in arrival order (a frame never shows before the one before it).
+    times: list[float] = []
+    fixed = 0
+    for _, drawn, _ in rows:
+        t = float(drawn)
+        if times and t < times[-1]:
+            t, fixed = times[-1], fixed + 1
+        times.append(t)
+    start = times[0]
+    count = int((end - start) * FPS)
+    picks = [bisect.bisect_right(times, start + k / FPS) - 1 for k in range(count)]
+    entries: list[tuple[str, int]] = []  # (file, frames held)
+    for i in picks:
+        if entries and entries[-1][0] == files[i]:
+            entries[-1] = (files[i], entries[-1][1] + 1)
+        else:
+            entries.append((files[i], 1))
+    lst = folder / "list.txt"
+    lst.write_text("ffconcat version 1.0\n" + "".join(
+        f"file '{f}'\nduration {n / FPS:.6f}\n" for f, n in entries) + f"file '{entries[-1][0]}'\n")
+    out = OUT / f"{name}.mkv"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
+                    "-vf", f"fps={FPS},format=bgr24", "-frames:v", str(count),
+                    "-c:v", "libx264rgb", "-qp", "0", "-preset", "veryfast", "-g", str(FPS), str(out)],
+                   check=True)
+    gaps = [b - a for a, b in zip(times, times[1:])]
+    busy = sum(1 for g in gaps if g < 1.5 / FPS)
+    print(f"  {name}: {len(times)} frames over {end - start:.1f} s, {len(entries)} distinct frames in the"
+          f" 30 fps video; {busy} frame gaps under 50 ms; {fixed} draw times reordered", flush=True)
+    return {"start": start, "end": end, "path": str(out), "size": size, "frames": len(times),
+            "distinct_frames": len(entries)}
 
 
 def zoom_script(zoom: float) -> str:
@@ -192,7 +316,33 @@ def wait_port_free(seconds: float = 120) -> None:
     raise SystemExit(f"port {PORT} stays in use")
 
 
+def captured_address() -> str:
+    """The public address printed by the earlier tunnel run (terminal-text.txt)."""
+    found = re.search(r"^Participants join at: (https://[a-z0-9-]+\.trycloudflare\.com)$",
+                      (W / "terminal-text.txt").read_text(), re.M)
+    if not found:
+        raise SystemExit("terminal-text.txt has no 'Participants join at:' trycloudflare.com address")
+    return found.group(1)
+
+
+# Runs the installed Prashna's command line as `prashna` does, and sets the
+# public address that a tunnel would have set, just before the server starts.
+LAUNCH = """
+import os, sys, uvicorn
+_run = uvicorn.run
+def run(*args, **kwargs):
+    from prashna import main as server
+    server.PUBLIC_URL = os.environ["DEMO_PUBLIC_URL"]
+    print("Participants join at: " + server.PUBLIC_URL, flush=True)
+    return _run(*args, **kwargs)
+uvicorn.run = run
+from prashna.cli import main
+sys.exit(main())
+"""
+
+
 def start_server() -> tuple[subprocess.Popen, str]:
+    public = captured_address()
     wait_port_free()
     data = W / "demo-data"
     shutil.rmtree(data, ignore_errors=True)
@@ -205,12 +355,13 @@ def start_server() -> tuple[subprocess.Popen, str]:
         "TMPDIR": str(CLEAN / "tmp"),
         "PRASHNA_SETUP_TOKEN": SETUP_TOKEN,
         "PRASHNA_RATELIMIT": "off",
+        "DEMO_PUBLIC_URL": public,
     }
-    log_path = W / "server-output.raw.txt"
+    # Not server-output.raw.txt: that is the earlier tunnel run's output.
+    log_path = W / "server-output.recording.raw.txt"
     log = open(log_path, "w")
     proc = subprocess.Popen(
-        [str(CLEAN / ".local/bin/prashna"), "--no-browser", "--data-dir", str(data), "--port", str(PORT),
-         "--tunnel", "cloudflare"],
+        [str(PRASHNA_PYTHON), "-c", LAUNCH, "--no-browser", "--data-dir", str(data), "--port", str(PORT)],
         env=env, stdout=log, stderr=subprocess.STDOUT,
     )
     deadline = time.time() + 120
@@ -223,28 +374,16 @@ def start_server() -> tuple[subprocess.Popen, str]:
         time.sleep(0.5)
     else:
         proc.terminate()
-        raise SystemExit("prashna did not report its tunnel address")
-    found = re.search(r"Participants join at: (https://[a-z0-9-]+\.trycloudflare\.com)", log_path.read_text())
-    if not found:
-        proc.terminate()
-        raise SystemExit("no trycloudflare.com address in the server output")
-    public = found.group(1)
+        raise SystemExit("prashna did not start")
     for _ in range(100):
         try:
             if httpx.get(f"{BASE}/api/admin/status", timeout=1.0, trust_env=False).status_code == 200:
-                break
-        except Exception:
-            time.sleep(0.2)
-    # The phones must reach the page through the tunnel before recording starts.
-    for _ in range(60):
-        try:
-            if httpx.get(f"{public}/api/admin/status", timeout=5.0, trust_env=False).status_code == 200:
                 return proc, public
         except Exception:
             pass
-        time.sleep(1)
+        time.sleep(0.2)
     proc.terminate()
-    raise SystemExit(f"the public address {public} did not answer")
+    raise SystemExit("prashna did not answer on 127.0.0.1")
 
 
 def client() -> httpx.Client:
@@ -257,30 +396,39 @@ def wait_text(page: Page, selector: str, text: str, timeout: float = 15000) -> N
         arg=[selector, text], timeout=timeout)
 
 
+def free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 def main() -> int:
+    if "--encode-only" in sys.argv[1:]:
+        encode_all()  # again, from the frames of the last run
+        return 0
     shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir()
     shots = W / "shots"
     shutil.rmtree(shots, ignore_errors=True)
     shots.mkdir()
     server, public = start_server()
-    print("server up; public address", public)
-    subprocess.run([sys.executable, "-I", str(W / "sanitize_terminal.py")], check=True)
+    print("server up; public address shown", public)
+    recorders: dict[str, Recorder] = {}
     rng = random.Random(7)
     code = ""
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-proxy-server"])
+            devtools = free_port()
+            browser = p.chromium.launch(headless=True, args=["--no-proxy-server",
+                                                             f"--remote-debugging-port={devtools}"])
 
             def desktop(view: ViewportSize, zoom: float):  # noqa: ANN202
-                ctx = browser.new_context(viewport=view, record_video_dir=str(OUT), record_video_size=view)
+                ctx = browser.new_context(viewport=view)
                 ctx.add_init_script(zoom_script(zoom))
                 return ctx
 
             def phone_ctx():  # noqa: ANN202
-                ctx = browser.new_context(
-                    viewport=PHONE_VIEW, is_mobile=True, has_touch=True,
-                    record_video_dir=str(OUT), record_video_size=PHONE_VIEW)
+                ctx = browser.new_context(viewport=PHONE_VIEW, is_mobile=True, has_touch=True)
                 ctx.add_init_script(zoom_script(PHONE_ZOOM))
                 ctx.add_init_script(OVERLAY)
                 return ctx
@@ -289,7 +437,7 @@ def main() -> int:
             actx = desktop(ADMIN_VIEW, ADMIN_ZOOM)
             actx.add_init_script(OVERLAY)
             a = actx.new_page()
-            videos["admin"] = {"start": now()}
+            recorders["admin"] = Recorder("admin", actx, a, devtools)
             # First-run account (not shown in the video).
             a.goto(f"{BASE}/#setup={SETUP_TOKEN}")
             a.wait_for_selector("#setup-card:visible")
@@ -387,18 +535,20 @@ def main() -> int:
             # ---------------- projector and phones ----------------
             pctx = desktop(PROJ_VIEW, PROJ_ZOOM)
             pr = pctx.new_page()
-            videos["projector"] = {"start": now()}
+            recorders["projector"] = Recorder("projector", pctx, pr, devtools)
             pr.goto(f"{BASE}/p/{code}")
             pr.wait_for_selector("#join-qr canvas, #join-qr img, #join-qr svg, #join-qr table", timeout=10000)
             wait_text(pr, "#origin", "trycloudflare.com")
             mark("projector_shown")
             pr.screenshot(path=str(shots / "e-projector.png"))
-            join_url = f"{public}/s/{code}"
+            # The phones open Prashna at 127.0.0.1; the join link, the QR codes
+            # and the phone frame's address bar show the public address.
+            join_url = f"{BASE}/s/{code}"
             phones: list[tuple[str, Page, object]] = []
             for name in ("phone", "phone2", "phone3"):
                 ctx = phone_ctx()
                 page = ctx.new_page()
-                videos[name] = {"start": now()}
+                recorders[name] = Recorder(name, ctx, page, devtools)
                 # A dark page until the phone opens the join link (no white flash).
                 page.set_content("<html style='background:#0f172a'><body></body></html>")
                 phones.append((name, page, ctx))
@@ -581,11 +731,10 @@ def main() -> int:
             ph.screenshot(path=str(shots / "k-phone-reveal.png"))
             a.screenshot(path=str(shots / "k-admin-reveal.png"))
             pause(0.3)
-            for name, page, ctx in (("admin", a, actx), ("projector", pr, pctx), *phones):
+            ends = {name: rec.stop() for name, rec in recorders.items()}
+            for page, ctx in ((a, actx), (pr, pctx), *((pg, c) for _, pg, c in phones)):
                 page.close()
                 ctx.close()  # type: ignore[attr-defined]
-                assert page.video is not None  # recording is on for every context
-                videos[name]["path"] = str(page.video.path())
             browser.close()
     finally:
         server.terminate()
@@ -593,10 +742,25 @@ def main() -> int:
             server.wait(timeout=10)
         except subprocess.TimeoutExpired:
             server.kill()
+    for name, rec in recorders.items():
+        videos[name] = {"end": ends[name], "size": list(rec.size)}
+    write_timeline(code, public)
+    encode_all()
+    return 0
+
+
+def write_timeline(code: str, public: str) -> None:
     (W / "timeline.json").write_text(json.dumps(
         {"videos": videos, "marks": marks, "boxes": boxes, "code": code, "public_url": public}, indent=2))
+
+
+def encode_all() -> None:
+    """Turn the frames into recordings/<name>.mkv and add each one's start and path to timeline.json."""
+    tl = json.loads((W / "timeline.json").read_text())
+    for name, v in tl["videos"].items():
+        tl["videos"][name] = encode(name, v["end"], v["size"])
+    (W / "timeline.json").write_text(json.dumps(tl, indent=2))
     print("wrote timeline.json")
-    return 0
 
 
 if __name__ == "__main__":

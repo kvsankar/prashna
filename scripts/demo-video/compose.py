@@ -2,7 +2,7 @@
 """Compose the demo video from recordings/, cards/, timeline.json and voice/.
 
 The storyboard is SCENES below. Every scene becomes a segment in segments/
-(1920x1080, 30 fps, H.264), in two versions: a clean one, and one with the
+(1920x1080, 30 fps, lossless H.264 in 4:4:4), in two versions: a clean one, and one with the
 scene's narration burned in as captions (ffmpeg drawtext), cue by cue. The
 designed cards (context, hook, why, tunnel, end) come from shoot_cards.py and already
 show the narration's words, so they carry no captions.
@@ -22,6 +22,11 @@ where it would play slower than MIN_SPEED its last frame is held.
 Each scene lasts at least LEAD + its voice line + TAIL seconds (MIN_LENGTH
 lengthens a few on purpose). The voice line starts LEAD seconds into its
 scene, so no line runs into the next scene.
+
+The recordings (recordings/*.mkv) and the cards are lossless, and the
+segments are lossless too, so the picture is compressed once: when the
+segments are joined into the two MP4 files (FINAL_ENC: H.264 4:2:0, tuned
+for screen content).
 
 Outputs:
   prashna-demo.mp4         the clean segments with the narration track: no
@@ -58,7 +63,15 @@ AUD = W / "audio"
 PLATES = SEG / "plates"
 FONT = "/usr/share/fonts/opentype/inter/Inter-Medium.otf"
 FPS = 30
-ENC = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-r", str(FPS), "-an"]
+# Segments: lossless, full colour resolution (4:4:4), quick to decode.
+ENC = ["-c:v", "libx264", "-qp", "0", "-preset", "veryfast", "-pix_fmt", "yuv444p", "-r", str(FPS), "-an"]
+# The one lossy step, for both MP4 files. Screen content: sharp text on flat
+# colour, mostly still. Measured against the lossless segments, -tune
+# stillimage kept the most detail (SSIM) of stillimage, animation and no
+# tune at crf 16; crf 12 raises SSIM further and the file stays near 10 MB.
+FINAL_ENC = ["-c:v", "libx264", "-preset", "slow", "-crf", "12", "-tune", "stillimage",
+             "-pix_fmt", "yuv420p", "-r", str(FPS)]
+SCALE_FLAGS = "lanczos+accurate_rnd+full_chroma_int"
 SILENT = W / "prashna-demo-silent.mp4"
 CLEAN = SEG / "clean.mp4"  # the narrated video's picture, before the audio is added
 OUT = W / "prashna-demo.mp4"
@@ -281,17 +294,19 @@ def shot_graph(shot: Shot, length: float, idx: int, inputs: list[str]) -> str:
     n0 = sum(1 for x in inputs if x == "-i")
     inputs += ["-loop", "1", "-framerate", str(FPS), "-t", f"{length:.3f}", "-i", str(bg)]
     inputs += ["-loop", "1", "-framerate", str(FPS), "-t", f"{length:.3f}", "-i", str(fg)]
-    g = [f"[{n0}:v]format=yuv420p,setsar=1[b{idx}]", f"[{n0 + 1}:v]format=rgba[f{idx}]"]
+    g = [f"[{n0}:v]format=yuv444p,setsar=1[b{idx}]", f"[{n0 + 1}:v]format=rgba[f{idx}]"]
     cur = f"b{idx}"
     for k, (video, (x, y, w, h), crop) in enumerate(sources):
         inputs += ["-ss", f"{off(video, shot.w_in):.3f}", "-t", f"{span:.3f}", "-i", V[video]["path"]]
         n = n0 + 2 + k
         crop_f = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
-        g.append(f"[{n}:v]{crop_f}setpts=(PTS-STARTPTS)/{speed:.5f},fps={FPS},scale={w}:{h}:flags=lanczos,setsar=1,"
+        g.append(f"[{n}:v]{crop_f}setpts=(PTS-STARTPTS)/{speed:.5f},fps={FPS},"
+                 f"scale={w}:{h}:flags={SCALE_FLAGS},format=yuv444p,setsar=1,"
                  f"tpad=stop_mode=clone:stop_duration={hold:.3f},trim=duration={length:.3f}[r{idx}_{k}]")
-        g.append(f"[{cur}][r{idx}_{k}]overlay={x}:{y}:eof_action=repeat[o{idx}_{k}]")
+        g.append(f"[{cur}][r{idx}_{k}]overlay={x}:{y}:eof_action=repeat:format=yuv444[o{idx}_{k}]")
         cur = f"o{idx}_{k}"
-    g.append(f"[{cur}][f{idx}]overlay=0:0,trim=duration={length:.3f},setpts=PTS-STARTPTS[s{idx}]")
+    g.append(f"[{cur}][f{idx}]overlay=0:0:format=yuv444,format=yuv444p,trim=duration={length:.3f},"
+             f"setpts=PTS-STARTPTS[s{idx}]")
     return ";".join(g)
 
 
@@ -388,8 +403,7 @@ def build_audio(names: list[str], lengths: list[float]) -> dict[str, dict[str, s
 def concat(segments: list[Path], out: Path) -> None:
     lst = SEG / f"{out.stem}.txt"
     lst.write_text("".join(f"file '{p}'\n" for p in segments))
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS),
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst), *FINAL_ENC,
          "-movflags", "+faststart", "-an", "-sn", "-dn", "-map_metadata", "-1", str(out)])
 
 

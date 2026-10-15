@@ -49,7 +49,8 @@ INSTALL = [
     ("#", "Windows (PowerShell)"),
     (">", 'powershell -ExecutionPolicy ByPass -c "irm https://sankara.net/prashna/install.ps1 | iex"'),
 ]
-ENC = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-r", str(FPS), "-an"]
+# Lossless, full colour resolution: compose.py compresses the whole video once at the end.
+ENC = ["-c:v", "libx264", "-qp", "0", "-preset", "veryfast", "-pix_fmt", "yuv444p", "-r", str(FPS), "-an"]
 
 
 def frames(seconds: float) -> int:
@@ -105,7 +106,7 @@ def main() -> None:
     why = {"scene": "why", "at": [LEAD + p[0] - 0.1 for p in pw], "rows": [
         ["laptop", "Runs on your own laptop"],
         ["command", 'One command<span class="dot">&middot;</span>no server<span class="dot">&middot;</span>no subscription'],
-        ["globe", "A built-in tunnel puts it online for your audience"],
+        ["globe", "Works with Cloudflare and ngrok tunnels"],
         ["shield", "Your data stays on your machine"],
     ]}
 

@@ -1,0 +1,7 @@
+$ prashna --tunnel cloudflare
+Starting the cloudflared tunnel...
+Waiting for the public address to come online (about 15 seconds)...
+
+Prashna is running at http://127.0.0.1:8000
+Participants join at: https://advice-tim-purse-partnership.trycloudflare.com
+Press Ctrl+C to stop.

@@ -2,8 +2,9 @@
 # Rebuild prashna-demo.mp4 (narrated, no captions), prashna-demo-silent.mp4
 # (captions burned in) and prashna-demo.srt from scratch.
 # See README.md for what each step does. Steps 1-3 need network access the
-# first time (installer, PyPI, Hugging Face). Step 4 needs internet and
-# cloudflared every time: it records through a real Cloudflare quick tunnel.
+# first time (installer, PyPI, Hugging Face). Step 4 needs no network: it
+# starts no tunnel and shows the public address of an earlier tunnel run
+# (terminal-text.txt).
 set -eu
 W="$(cd "$(dirname "$0")" && pwd)"
 cd "$W"
@@ -12,7 +13,7 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-$W/uv-cache}"
 # 1. Real installer run in a clean HOME -> install-output.raw.txt, clean-home/.local/bin/prashna
 [ -x clean-home/.local/bin/prashna ] || ./run_install.sh
 
-# 2. Tooling environment (Playwright 1.59, httpx, kokoro-onnx) for the scripts below
+# 2. Tooling environment (Playwright 1.59, httpx, websockets, kokoro-onnx) for the scripts below
 [ -d tooling/.venv ] || (cd tooling && uv sync -q)
 
 # 3. Narration: Kokoro-82M speaks narration.txt -> voice/*.wav, durations.json,
@@ -20,10 +21,10 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-$W/uv-cache}"
 #    Downloads and hash-checks the model into models/ on first run.
 uv run --project tooling python voice.py --samples
 
-# 4. Start `prashna --tunnel cloudflare` (0.6.0, clean HOME), drive the real
-#    pages headless (phones through the public trycloudflare.com address),
-#    record laptop/projector/phone videos -> recordings/, timeline.json
-#    (also writes server-output.raw.txt and terminal-text.txt via sanitize_terminal.py)
+# 4. Start prashna (0.6.0, clean HOME) with the earlier tunnel run's public
+#    address, drive the real pages headless, record laptop/projector/phone
+#    as lossless DevTools screencast frames -> recordings/<name>.mkv
+#    (constant 30 fps, lossless), timeline.json
 uv run --project tooling python record_app.py
 
 # 5. The designed cards from cards.html, one frame at a time, timed to the
