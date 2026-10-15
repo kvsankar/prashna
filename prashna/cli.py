@@ -10,7 +10,8 @@ Data lives in the per-user app-data folder unless --data-dir or
 PRASHNA_DATA_DIR says otherwise. An explicit --data-dir wins over
 PRASHNA_DB_PATH and PRASHNA_UPLOADS_DIR. On the first run the browser
 opens the one-time setup page, so creating the admin needs no
-copy-and-paste.
+copy-and-paste; the terminal shows the link too, for when no browser
+opens (for example over SSH).
 """
 from __future__ import annotations
 
@@ -54,8 +55,10 @@ def _parser() -> argparse.ArgumentParser:
     # Accept --data-dir after the subcommand too; SUPPRESS keeps a value given
     # before the subcommand from being reset to None.
     reset.add_argument("--data-dir", default=argparse.SUPPRESS, help="folder holding the database")
-    backup = commands.add_parser("backup", add_help=False, help="create or restore a backup of the data folder")
-    backup.add_argument("args", nargs=argparse.REMAINDER)
+    from .backup import DESCRIPTION, add_commands
+    backup = commands.add_parser("backup", help="create or restore a backup of the data folder",
+                                 description=DESCRIPTION)
+    add_commands(backup)
     return parser
 
 
@@ -168,6 +171,21 @@ def _reset_password(db_path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    tunnels: list = []  # a started tunnel, stopped however `prashna` ends
+    try:
+        return _main(argv, tunnels)
+    except KeyboardInterrupt:
+        # Ctrl+C before the server has taken over the signals (for example
+        # while it is still loading), or during a backup or a password reset:
+        # stop without a traceback. 130 is the shell's status for an
+        # interrupted command, so an interrupted backup never looks done.
+        return 130
+    finally:
+        for tunnel in tunnels:
+            tunnel.stop()
+
+
+def _main(argv: list[str] | None, tunnels: list) -> int:
     args = _parser().parse_args(argv)
     data_dir = _data_dir(args.data_dir)
     # Set before the server modules are imported; they read these at import.
@@ -182,8 +200,8 @@ def main(argv: list[str] | None = None) -> int:
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if args.command == "backup":
-        from .backup import main as backup_main
-        return backup_main(args.args)
+        from .backup import run as run_backup
+        return run_backup(args)
 
     if not _port_free(args.host, args.port):
         print(f"Port {args.port} is already in use. Start on another port, "
@@ -209,6 +227,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Starting the {PROGRAMS[args.tunnel]} tunnel...", flush=True)
         try:
             tunnel = Tunnel(args.tunnel, args.port, shown_host)
+            tunnels.append(tunnel)
             public_url = tunnel.wait_for_url()
         except TunnelError as error:
             print(error, file=sys.stderr)
@@ -235,10 +254,11 @@ def main(argv: list[str] | None = None) -> int:
         who = f"as {sign_in_as}" if sign_in_as else "with your admin account"
         print(f"Sign in at {address}/ {who}." + ("" if args.no_browser else " Opening it in your browser."))
     if token:
-        if args.no_browser:
-            print(f"Create your admin account here (one-time link): {url}")
-        else:
-            print("Opening the one-time setup page in your browser to create your admin account.")
+        # Shown even when a browser opens: over SSH, or when no browser can
+        # be found, the terminal is the only place the link appears.
+        print(f"Create your admin account here (one-time link): {url}")
+        if not args.no_browser:
+            print("Opening it in your browser.")
     print("Press Ctrl+C to stop.\n", flush=True)
     if not args.no_browser:
         threading.Thread(target=_open_when_ready, args=(shown_host, args.port, url), daemon=True).start()
@@ -249,8 +269,9 @@ def main(argv: list[str] | None = None) -> int:
     server.ANNOUNCE_SETUP_LINK = False
     server.PUBLIC_URL = public_url
     if tunnel:
-        # uvicorn re-raises SIGINT/SIGTERM after shutting down, which ends the
-        # process before `finally` runs; it calls these handlers when it does.
+        # uvicorn re-raises SIGINT/SIGTERM after shutting down, which can end
+        # the process before `finally` in main() runs; it calls these handlers
+        # when it does.
         # Each hands over to the handler that was installed before it, so
         # default behaviour (and any tool watching the process) is kept.
         previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -263,11 +284,7 @@ def main(argv: list[str] | None = None) -> int:
 
         for sig in previous:
             signal.signal(sig, stop_tunnel_then_continue)
-    try:
-        uvicorn.run(server.app, host=args.host, port=args.port, log_level="warning")
-    finally:
-        if tunnel:
-            tunnel.stop()
+    uvicorn.run(server.app, host=args.host, port=args.port, log_level="warning")
     return 0
 
 

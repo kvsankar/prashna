@@ -182,18 +182,39 @@ def restore_archive(archive_path: Path, *, confirmed: bool = False) -> Path | No
     return pre_restore
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="command", required=True)
-    create = commands.add_parser("create", help="create a SQLite + uploads archive")
-    create.add_argument("archive", type=Path)
-    restore = commands.add_parser("restore", help="restore an archive while the app is stopped")
-    restore.add_argument("archive", type=Path)
-    restore.add_argument("--confirm", action="store_true")
-    args = parser.parse_args(argv)
+# The help that `prashna backup --help` and `python -m prashna.backup --help`
+# show; written for the people who run Prashna (UC-X-15).
+DESCRIPTION = (
+    "Copy Prashna's data (the database and the uploaded images) into one "
+    "backup file, or put a backup file back. Stop Prashna before you restore."
+)
 
+
+def add_commands(parser: argparse.ArgumentParser) -> None:
+    """Add the `create` and `restore` commands to `parser`."""
+    commands = parser.add_subparsers(dest="backup_command", required=True, metavar="{create,restore}")
+    create = commands.add_parser(
+        "create", help="write a backup file",
+        description="Write Prashna's database and uploaded images into one backup file. "
+                    "Prashna can keep running.")
+    create.add_argument("archive", type=Path,
+                        help="the backup file to write, for example prashna-backup.tar.gz")
+    restore = commands.add_parser(
+        "restore", help="put a backup file back (stop Prashna first)",
+        description="Replace Prashna's database and uploaded images with the contents of a "
+                    "backup file. Stop Prashna first. Before anything is replaced, any current "
+                    "data is saved to a prashna-pre-restore-<time>.tar.gz file beside the "
+                    "backup file.")
+    restore.add_argument("archive", type=Path, help="the backup file to restore")
+    restore.add_argument("--confirm", action="store_true",
+                         help="confirm that Prashna is stopped and that its current data "
+                              "may be replaced; without it, nothing changes")
+
+
+def run(args: argparse.Namespace) -> int:
+    """Carry out a parsed `create` or `restore` command."""
     # A failure is one plain line, not a traceback (UC-X-10).
-    if args.command == "create":
+    if args.backup_command == "create":
         try:
             print(create_archive(args.archive))
         except (RuntimeError, OSError) as exc:
@@ -210,5 +231,11 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def main(argv: list[str] | None = None, prog: str | None = None) -> int:
+    parser = argparse.ArgumentParser(prog=prog, description=DESCRIPTION)
+    add_commands(parser)
+    return run(parser.parse_args(argv))
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(prog="python -m prashna.backup"))

@@ -30,8 +30,8 @@ npm run dev                                              # Vite dev server with 
 ```
 
 - `uv run prashna` serves on `http://127.0.0.1:8000` and opens the browser.
-  While no admin exists, it opens the one-time setup page. `--help` lists the
-  options.
+  While no admin exists, it opens the one-time setup page and also prints
+  that link, for when no browser opens. `--help` lists the options.
 - `uvicorn` serves the API, the WebSocket endpoint, and the last frontend
   build. While no admin exists, it logs the setup link as a `WARNING`:
 

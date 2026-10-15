@@ -8,6 +8,7 @@ browser would be sent to.
 from __future__ import annotations
 
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -93,9 +94,9 @@ def test_uc_x_15_first_run_opens_setup_page_with_a_working_token(tmp_path):
         out = _stop(proc)
     assert f"http://127.0.0.1:{port}" in out
     assert str(data) in out
-    # The terminal stays readable: no diagnostics, and the browser carries the link.
+    # The terminal stays readable: no diagnostics, and the setup link once.
     assert "diagnostic_event" not in out
-    assert "#setup=" not in out
+    assert out.count("#setup=") == 1
     assert "diagnostic_event" in (data / "prashna.log").read_text()
 
 
@@ -122,6 +123,92 @@ def test_uc_x_15_later_runs_open_home_and_no_browser_opens_nothing(tmp_path):
         assert _wait_for_file(opened) == f"http://127.0.0.1:{port}/"
     finally:
         _stop(proc)
+
+
+def _start_patched_cli(patch: str, args: list[str], env: dict[str, str]) -> subprocess.Popen[str]:
+    """Run `prashna` after the Python statements in `patch`, which stand in
+    for a part of the machine (the browser, or a Ctrl+C) in the test."""
+    code = f"import sys\n{patch}\nfrom prashna import cli\nsys.exit(cli.main(sys.argv[1:]))\n"
+    return subprocess.Popen([sys.executable, "-c", code, *args], cwd=ROOT, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+
+@pytest.mark.parametrize("browser", ["opens", "fails", "disabled"])
+def test_uc_x_15_terminal_always_shows_the_setup_link(tmp_path, browser):
+    """UC-X-15: while no admin exists the terminal shows the one-time setup
+    link exactly once, whether the browser opens, fails to open (as over
+    SSH), or is turned off; once an admin exists it shows no setup link."""
+    port, data = _free_port(), tmp_path / "data"
+    args = ["--data-dir", str(data), "--port", str(port)]
+    recorder, opened = _recorder(tmp_path)
+    if browser == "opens":
+        proc = _start_cli(args, _cli_env(BROWSER=recorder))
+    elif browser == "fails":
+        # No BROWSER setting, and webbrowser finds no browser to open: it
+        # notes the URL it was asked to open, then reports failure.
+        patch = ("import webbrowser\n"
+                 f"webbrowser.open = lambda url, *a, **k: (open({str(opened)!r}, 'a').write(url + '\\n'), False)[1]")
+        env = _cli_env()
+        env.pop("BROWSER", None)
+        proc = _start_patched_cli(patch, args, env)
+    else:
+        proc = _start_cli([*args, "--no-browser"], _cli_env())
+    try:
+        _wait_up(port)
+        token = (data / "setup-token").read_text().strip()
+        if browser != "disabled":
+            assert _wait_for_file(opened) == f"http://127.0.0.1:{port}/#setup={token}"
+        httpx.post(f"http://127.0.0.1:{port}/api/admin/setup",
+                   json={"username": "me", "password": "longenough", "setup_token": token}).raise_for_status()
+    finally:
+        out = _stop(proc)
+    assert out.count("#setup=") == 1, out
+    assert f"http://127.0.0.1:{port}/#setup={token}" in out
+
+    proc = _start_cli([*args, "--no-browser"], _cli_env())
+    try:
+        _wait_up(port)
+    finally:
+        later = _stop(proc)
+    assert "#setup=" not in later
+
+
+def test_uc_x_15_ctrl_c_while_starting_exits_quietly(tmp_path):
+    """UC-X-15: a Ctrl+C that arrives before the server serves ends the
+    command quietly, with no traceback."""
+    patch = "import uvicorn\ndef interrupted(*a, **k):\n    raise KeyboardInterrupt\nuvicorn.run = interrupted"
+    proc = _start_patched_cli(patch, ["--data-dir", str(tmp_path / "d"), "--port", str(_free_port()),
+                                      "--no-browser"], _cli_env())
+    out, _ = proc.communicate(timeout=60)
+    assert "Press Ctrl+C to stop." in out
+    assert "Traceback" not in out
+    assert "KeyboardInterrupt" not in out
+    assert proc.returncode == 130, out
+
+
+@pytest.mark.parametrize("command", [[], ["create"], ["restore"]])
+def test_uc_x_15_backup_help(tmp_path, command):
+    """UC-X-15: `prashna backup [create|restore] --help` prints help written
+    for users and exits 0, without touching the data folder."""
+    data = tmp_path / "data"
+    result = subprocess.run(
+        [sys.executable, "-m", "prashna.cli", "--data-dir", str(data), "backup", *command, "--help"],
+        cwd=ROOT, env=_cli_env(), capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    help_text = result.stdout
+    usage = " ".join(help_text.split("\n\n", 1)[0].split())
+    assert usage.startswith(f"usage: prashna backup {' '.join(command)}".rstrip()), usage
+    assert "container" not in help_text.lower()
+    assert "sqlite" not in help_text.lower()
+    assert "uploaded images" in help_text
+    if command:
+        # argparse lists a described argument as "  archive   <its help>".
+        assert re.search(r"^\s+archive\s+\S", help_text, re.MULTILINE), help_text
+    if command == ["restore"]:
+        assert re.search(r"^\s+--confirm\s+\S", help_text, re.MULTILINE), help_text
+    if not command:
+        assert "create" in help_text and "restore" in help_text
+    assert not data.exists()
 
 
 def test_uc_x_15_port_in_use_exits_with_a_hint(tmp_path):

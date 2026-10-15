@@ -2850,8 +2850,12 @@ one command, on macOS, Linux, or Windows.
   prints the address and the data folder, and opens the browser — on the
   one-time setup page (`/#setup=<token>`, UC-A-01) while no admin exists,
   otherwise on `/`
-- **And** the terminal shows only those lines, the setup link at most once
-  (as a full URL with `--no-browser`), and how to stop; the server's
+- **And** the terminal shows only those lines, the setup link, and how to
+  stop. While no admin exists, the terminal shows the one-time setup link
+  exactly once, as a full URL, also when a browser opens. A presenter
+  whose browser does not open (for example over SSH) can therefore copy
+  it. Once an admin exists, the terminal shows no setup link. It shows no
+  other secret; the server's
   diagnostic records go to `prashna.log` in the data folder instead of the
   terminal. Warnings and errors still reach the terminal
 - **And** the terminal says which data it uses. `<path>` is the database
@@ -2867,6 +2871,11 @@ one command, on macOS, Linux, or Windows.
 - **And** `--port`, `--host`, `--data-dir` (or `PRASHNA_DATA_DIR`), and
   `--no-browser` change those defaults; a port already in use exits with
   status 1 and suggests `--port`
+- **And** Ctrl+C stops Prashna without a traceback, also when it is pressed
+  while Prashna is still starting, and the tunnel stops with it. Pressed
+  before the server serves (or during `prashna backup …` or
+  `prashna reset-password`), it ends the command with status 130, the
+  shell's status for an interrupted command
 - **And** the files Prashna uses are chosen in one order: the command line,
   then the environment, then the default. This holds for `prashna`,
   `prashna backup …` and `prashna reset-password` alike:
@@ -2923,6 +2932,12 @@ one command, on macOS, Linux, or Windows.
 - **And** `prashna backup create|restore …` runs the backup tool
   (UC-X-10) against the same database and uploads folder, chosen by the
   order above; `prashna --version` prints the version
+- **And** `prashna backup --help`, `prashna backup create --help` and
+  `prashna backup restore --help` print help and exit with status 0. The
+  usage line starts with `prashna backup`. The help explains in user terms
+  what a backup holds (the database and the uploaded images), what
+  `archive` is, and what `--confirm` does. It does not mention containers
+  or SQLite tools. Asking for help changes nothing in the data folder
 - **And** each version tag publishes the two scripts and a one-page
   landing page to GitHub Pages (`https://kvsankar.github.io/prashna/`),
   built by `scripts/build_pages_site.py`, after the PyPI package of that
@@ -3044,7 +3059,10 @@ rest of the end-user how-to. The container guide covers Docker.
 - `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
 - `install.sh` with a `uv` whose `tool install` exits 1 exits non-zero and does not print `Prashna is installed` (`test_uc_x_15_installer_stops_when_uv_tool_install_fails`).
 - `install.sh` run where `uv` is absent and its download fails exits 1 with a message naming `https://docs.astral.sh/uv/`, and never runs `uv tool install`.
-- On a fresh data folder the CLI's terminal output contains no `diagnostic_event` line and the setup link at most once (exactly once with `--no-browser`); `prashna.log` in the data folder holds the diagnostic records.
+- On a fresh data folder the CLI's terminal output contains no `diagnostic_event` line and the setup link exactly once; `prashna.log` in the data folder holds the diagnostic records.
+- On a fresh data folder the terminal shows the one-time setup link `http://127.0.0.1:<port>/#setup=<token>` exactly once when the browser opens it, when no browser can be opened (the opener reports failure), and with `--no-browser`; once an admin exists the terminal shows no `#setup=` link (`test_uc_x_15_terminal_always_shows_the_setup_link`).
+- A Ctrl+C that arrives while Prashna is still starting (before the server serves) ends the command with status 130 and no `Traceback` (`test_uc_x_15_ctrl_c_while_starting_exits_quietly`).
+- `prashna backup --help`, `prashna backup create --help` and `prashna backup restore --help` exit 0; each usage line contains `prashna backup`; the help describes `archive` and `--confirm` and does not mention containers or `sqlite`; the data folder is not created (`test_uc_x_15_backup_help`).
 - Applying the additive migration bridge to an up-to-date database logs no `db.migration` record.
 - `prashna.db.default_data_dir()` returns the per-platform folder, also inside a source checkout (`XDG_DATA_HOME` honoured on Linux, `LOCALAPPDATA` on Windows), and never a folder inside the repository.
 - The CLI resolves the data folder from `--data-dir`, then `PRASHNA_DATA_DIR`, then the default, and sets `PRASHNA_DB_PATH` / `PRASHNA_UPLOADS_DIR` inside it.
