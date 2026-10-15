@@ -2823,9 +2823,9 @@ one command, on macOS, Linux, or Windows.
 
 - **Given** a machine with a shell and internet access
 - **When** the presenter runs one of
-  - `uvx prashna` (if `uv` is installed)
   - `curl -LsSf https://sankara.net/prashna/install.sh | sh` (macOS, Linux)
   - `powershell -ExecutionPolicy ByPass -c "irm https://sankara.net/prashna/install.ps1 | iex"` (Windows)
+  - `uv tool install prashna` (if `uv` is installed)
   - `pipx install prashna`, or `pip install prashna` inside a virtual
     environment (any machine with Python 3.11 or newer, no `uv` needed)
 - **Then** the install scripts install `uv` if it is missing (Astral's
@@ -2918,6 +2918,13 @@ one command, on macOS, Linux, or Windows.
   page, the scripts' own usage comments and the package's Homepage link
   show these addresses. sankara.net serves them from the GitHub Pages site,
   outside this repository, and the GitHub Pages addresses keep working
+- **And** the README and the landing page offer, right after the install
+  scripts and before pipx, `uv tool install prashna` for people who
+  already have `uv`. It installs the same `prashna` command. They also
+  offer `uvx prashna` to try Prashna without installing it, and say that
+  it runs Prashna without installing the command. They say that
+  `uvx prashna` keeps using the version uv already has, and that
+  `uvx prashna@latest` gets the newest version
 - **And** every Prashna server also serves the scripts at `/install.sh`
   and `/install.ps1` (`text/plain`), so a self-hosted server can offer them
 - **And** the wheel published to PyPI as `prashna` contains the built
@@ -2978,6 +2985,7 @@ code without installing the command, it is
 **Tests (packaging, CI)**
 - `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT`, includes `LICENSE`, and links Homepage to `https://sankara.net/prashna/` and Source to the GitHub repository.
 - `scripts/build_pages_site.py <dir>` writes `install.sh` and `install.ps1` byte-for-byte equal to `prashna/installers/`, and an `index.html` showing both one-liners with the `https://sankara.net/prashna/` URLs and the pipx and virtual-environment commands; README.md shows the same commands, links the landing page `https://sankara.net/prashna/`, and shows no `kvsankar.github.io` install command.
+- README.md and the landing page show `uv tool install prashna`, `uvx prashna` and `uvx prashna@latest` (in README.md, each alone in its own `sh` block), in that order, after the one-liners and before `pipx install prashna`; the text that introduces `uvx prashna` says it runs Prashna without installing it, no text says `uvx prashna` installs Prashna, and the text that introduces `uvx prashna@latest` says it gets the newest version (`test_uc_x_15_readme_offers_uv_tool_install_before_pipx`, `test_uc_x_15_landing_page_offers_uv_tool_install_before_pipx`).
 - The usage comment at the top of `prashna/installers/install.sh` and `install.ps1` shows that script's one-liner with its `https://sankara.net/prashna/` URL.
 - README.md, the GitHub and PyPI front page, opens with who Prashna is for and the problem it solves, then `## What Prashna does` and `## Why Prashna`, and only then `## Install` (`test_readme_opens_with_context_before_install`).
 - Every fenced code block in README.md is tagged `sh` or `powershell` and holds exactly one command, with no `$` prompt, so a reader copies each command on its own (`test_readme_puts_each_command_in_its_own_tagged_block`).

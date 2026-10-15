@@ -65,6 +65,27 @@ powershell -ExecutionPolicy ByPass -c "irm https://sankara.net/prashna/install.p
 
 The landing page <https://sankara.net/prashna/> shows the same commands.
 
+**Already have uv?** This command installs the same `prashna` command. It
+is the same on macOS, Linux, and Windows:
+
+```sh
+uv tool install prashna
+```
+
+To try Prashna first, this command runs it without installing the
+`prashna` command:
+
+```sh
+uvx prashna
+```
+
+It keeps using the version that uv already has. To get the newest
+version, run:
+
+```sh
+uvx prashna@latest
+```
+
 **Already have Python 3.11 or newer?** Install without uv, using
 [pipx](https://pipx.pypa.io/):
 
@@ -94,12 +115,6 @@ A plain `pip install` into the system Python is refused on Debian, Ubuntu,
 and some other Linux distributions ("externally-managed-environment"); the
 virtual environment avoids that.
 
-**Already have uv?** This command installs and starts Prashna in one step:
-
-```sh
-uvx prashna
-```
-
 ## Start and update
 
 Start Prashna:
@@ -114,7 +129,8 @@ If you installed it into a virtual environment, start it from there:
 ~/.prashna/bin/prashna
 ```
 
-To update, use the tool you installed with. With uv:
+To update, use the tool you installed with. With uv, which the
+one-command installer also uses:
 
 ```sh
 uv tool upgrade prashna

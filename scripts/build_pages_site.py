@@ -66,6 +66,16 @@ PAGE = """<!doctype html>
 <p>One command, on a machine with or without Python. It installs
 <a href="https://docs.astral.sh/uv/">uv</a>, which fetches Python if needed.</p>
 {installs}
+<h2>Already have uv?</h2>
+<p>This command installs the same <code>prashna</code> command. It is the
+same on macOS, Linux, and Windows:</p>
+<pre><code>uv tool install prashna</code></pre>
+<p>To try Prashna first, this command runs it without installing the
+<code>prashna</code> command:</p>
+<pre><code>uvx prashna</code></pre>
+<p>It keeps using the version that uv already has. To get the newest
+version, run:</p>
+<pre><code>uvx prashna@latest</code></pre>
 <h2>Already have Python 3.11 or newer?</h2>
 <p>Install without uv:</p>
 {with_python}
@@ -76,8 +86,7 @@ that. On Windows, the pip is <code>~\\.prashna\\Scripts\\pip</code>.</p>
 <pre><code>prashna</code></pre>
 <p>With the virtual environment, run <code>~/.prashna/bin/prashna</code>. Your
 browser opens on a one-time page where you choose the admin's username and
-password. If you already have uv, <code>uvx prashna</code> installs and starts
-it in one step.</p>
+password.</p>
 
 <h2>More</h2>
 <p><a href="{repo}">Source code and documentation on GitHub</a></p>

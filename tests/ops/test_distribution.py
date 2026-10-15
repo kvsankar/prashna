@@ -270,6 +270,28 @@ def test_pages_site_serves_the_packaged_installers(tmp_path):
     assert f"<{INSTALL_URL}/>" in readme or f"]({INSTALL_URL}/)" in readme
 
 
+def test_uc_x_15_landing_page_offers_uv_tool_install_before_pipx(tmp_path):
+    """UC-X-15: the landing page offers `uv tool install prashna` after the
+    one-liners and before pipx, and `uvx prashna` to try Prashna, described
+    as not installing it, and `uvx prashna@latest` for the newest version."""
+    site = tmp_path / "site"
+    subprocess.run([sys.executable, "scripts/build_pages_site.py", str(site)], cwd=ROOT, check=True)
+    index = (site / "index.html").read_text(encoding="utf-8")
+    one_liner = index.index(html.escape(SH_ONE_LINER, quote=False))
+    uv_tool = index.index("<pre><code>uv tool install prashna</code></pre>")
+    uvx = index.index("<pre><code>uvx prashna</code></pre>")
+    uvx_latest = index.index("<pre><code>uvx prashna@latest</code></pre>")
+    pipx = index.index("<pre><code>pipx install prashna</code></pre>")
+
+    assert one_liner < uv_tool < uvx < uvx_latest < pipx
+    uvx_intro = " ".join(index[index.rindex("<p>", 0, uvx):uvx].split())
+    assert "without installing" in uvx_intro
+    latest_intro = " ".join(index[index.rindex("<p>", 0, uvx_latest):uvx_latest].split())
+    assert "newest version" in latest_intro
+    assert index.count("uvx prashna") == 2
+    assert "installs and starts" not in index
+
+
 def test_installer_usage_comments_show_the_public_address():
     """UC-X-15: each install script's header comment shows its own one-liner
     with the sankara.net address, as the README does."""

@@ -125,6 +125,30 @@ def test_readme_puts_each_command_in_its_own_tagged_block():
     assert readme.count("```") == 2 * len(blocks)
 
 
+def test_uc_x_15_readme_offers_uv_tool_install_before_pipx():
+    """UC-X-15: for people who already have uv, the README offers
+    `uv tool install prashna` after the one-liners and before pipx, and
+    `uvx prashna` to try Prashna, described as not installing it, and
+    `uvx prashna@latest` for the newest version."""
+    readme = read("README.md")
+    one_liner = readme.index("```sh\ncurl -LsSf https://sankara.net/prashna/install.sh | sh\n```")
+    uv_tool = readme.index("```sh\nuv tool install prashna\n```")
+    uvx = readme.index("```sh\nuvx prashna\n```")
+    uvx_latest = readme.index("```sh\nuvx prashna@latest\n```")
+    pipx = readme.index("```sh\npipx install prashna\n```")
+
+    assert one_liner < uv_tool < uvx < uvx_latest < pipx
+    latest_intro = " ".join(readme[readme.rindex("```", 0, uvx_latest - 1) + 3:uvx_latest].split())
+    assert "newest version" in latest_intro
+    uvx_intro = " ".join(readme[readme.rindex("```", 0, uvx - 1) + 3:uvx].split())
+    assert "without installing" in uvx_intro
+    assert not re.search(r"\binstalls\b", uvx_intro), uvx_intro
+    for paragraph in readme.split("\n\n"):
+        paragraph = " ".join(paragraph.split())
+        if "uvx" in paragraph and "without installing" not in paragraph:
+            assert not re.search(r"\binstalls?\b", paragraph), paragraph
+
+
 def test_removed_process_docs_stay_removed():
     """The Sarathi baseline files are replaced by docs/specs.md and
     docs/architecture.md."""
