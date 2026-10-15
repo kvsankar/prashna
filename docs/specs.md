@@ -3105,7 +3105,8 @@ rest of the end-user how-to. The container guide covers Docker.
   backup commands `prashna backup create <file>` and
   `prashna backup restore <file> --confirm`, the update and uninstall
   commands of each install method, `prashna reset-password` and its
-  container form, and links the container guide
+  container form, and links the container guide and, for a server with
+  a domain, its `Run on your own server with HTTPS` section
 - **The GitHub Pages page** (`scripts/build_pages_site.py`) opens with the
   same context as the README: Prashna is a live Q&A and quiz tool for
   trainers, teachers and speakers. It links the landing page
@@ -3126,7 +3127,63 @@ rest of the end-user how-to. The container guide covers Docker.
     the UI
   - has no text about the owner's production host and no "Registry
     access" section
-  - puts each command in its own fenced block
+  - puts each command alone in a fenced block tagged `sh`, with no `$`
+    prompt. Configuration examples (an nginx site, a crontab line) sit in
+    blocks with their own language tag. Every fenced block has a tag
+  - says that the `docker` commands need `sudo`, unless the user is in
+    the `docker` group
+  - in its backup steps, creates the folder with `mkdir -p backups`
+    before the commands that write into it
+  - warns that `PRASHNA_BIND_ADDR=0.0.0.0` publishes plain HTTP to
+    everyone who can reach the machine, and that Docker's published ports
+    bypass UFW rules
+  - has a section `Run on your own server with HTTPS`. It gives, in this
+    order:
+    - the prerequisites: a DNS A record for the domain (and an AAAA
+      record when the server has IPv6) that points at the server; ports
+      80 and 443 open in any cloud firewall; Docker with Compose 2.24 or
+      later, installed with `curl -fsSL https://get.docker.com | sudo sh`,
+      or with `sudo apt install docker-compose-v2` on Ubuntu when
+      `docker compose version` fails
+    - the download of the current release's `.tar.gz` and `SHA256SUMS`,
+      each with `curl -fsSLO` from
+      `https://github.com/kvsankar/prashna/releases/download/v<version>/`,
+      the check `sha256sum -c --ignore-missing SHA256SUMS`, and
+      `tar xzf` (many servers have no `unzip`)
+    - the `.env` with `COMPOSE_FILE=compose.yaml:compose.https.yaml` and
+      `PRASHNA_DOMAIN`
+    - `docker compose up -d --wait`
+    - the certificate check
+      `docker compose logs caddy | grep "certificate obtained"`
+    - the setup link from `docker compose logs prashna | grep setup=`,
+      opened as `https://<domain>` followed by the `/#setup=…` part
+    - how to find real errors:
+      `docker compose logs caddy | grep '"level":"error"'`
+  - has a section `Already run a reverse proxy?`: keep `compose.yaml`
+    alone, set `PRASHNA_TRUSTED_PROXY_HOPS=1` (one proxy hop), and forward
+    WebSockets. It gives a generic nginx example for `quiz.example.org`
+    with the upstream `127.0.0.1:8000`, the `Upgrade` and `Connection`
+    headers, `client_max_body_size` and one-hour timeouts. It tells
+    Cloudflare users to set the record to "DNS only"
+  - says that every bundle uses the Compose project name `prashna`, and
+    that a server that already runs another Compose project named
+    `prashna` needs another name in `COMPOSE_PROJECT_NAME`
+  - gives the update: unpack the new bundle beside the old one, copy
+    `.env` into it, then run `docker compose up -d --wait` there. It says
+    that only one folder controls the live project, so `docker compose
+    down` must not run in the old folder
+  - gives an optional scheduled-backup example (a root crontab line) and
+    says to copy backups off the machine
+  - has a subsection `Run an unreleased build`. It says that every push
+    to `main` publishes images tagged `latest`, `main` and
+    `sha-<short commit>`. Setting `PRASHNA_IMAGE_TAG=sha-<commit>` in
+    `.env`, then running `docker compose pull -q` and
+    `docker compose up -d --wait`, runs that exact commit. Setting the
+    previous tag the same way rolls back. If `main` changed the bundle
+    files, the reader rebuilds the bundle with
+    `scripts/build_release_bundle.py` from that commit. It says that
+    release tags are the supported choice and that builds from `main`
+    are not tested between releases
 
 **Tests (API)**
 - `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
@@ -3171,7 +3228,11 @@ rest of the end-user how-to. The container guide covers Docker.
 - README.md's "Quick tutorial" names, in this order, **+ New session**, **Projector**, the QR code, **Ask**, a quiz's **Reveal results**, `prashna --tunnel cloudflare`, and `prashna --host 0.0.0.0` with **Base URL**; each bold UI label it uses appears in `frontend/` (`test_uc_x_15_readme_quick_tutorial_steps`).
 - `docs/user-guide.md` has the `##` sections listed above, in that order; it names the three data folders, `prashna backup create`, `prashna backup restore … --confirm`, `uv tool uninstall prashna`, `pipx uninstall prashna` and `distribution/README.md` (as a link); it also names `docker compose exec prashna python -m prashna reset-password`; each bold UI label it uses appears in `frontend/` (`test_uc_x_15_user_guide_covers_the_end_user_topics`).
 - `scripts/build_pages_site.py <dir>` writes an `index.html` that says "trainers, teachers and speakers", links `https://sankara.net/prashna/` and the user guide, and has exactly one non-empty line in each `<pre>` block; its description and the `pyproject.toml` `description` are "Live questions and quizzes for trainers, teachers and speakers" (`test_uc_x_15_pages_site_opens_with_context_and_links_the_landing_page`).
-- `distribution/README.md` names `ghcr.io/kvsankar/prashna:<the pyproject version>`, says that `latest` follows `main`, names the release asset `prashna-<version>.zip`, gives `docker compose exec prashna python -m prashna reset-password`, says **Invite participants**, does not say "Invite card", "Hetzner" or "Registry access", and has exactly one command in each fenced block (`test_uc_x_15_container_guide_names_a_release_and_its_bundle`).
+- `distribution/README.md` names `ghcr.io/kvsankar/prashna:<the pyproject version>`, says that `latest` follows `main`, names the release asset `prashna-<version>.zip`, gives `docker compose exec prashna python -m prashna reset-password`, says **Invite participants**, does not say "Invite card", "Hetzner" or "Registry access", tags every fenced block, and has exactly one command, with no `$` prompt, in each `sh` block (`test_uc_x_15_container_guide_names_a_release_and_its_bundle`).
+- `distribution/README.md` has the section `Run on your own server with HTTPS` with, in order: the A/AAAA record, ports 80 and 443 and the cloud firewall, Compose 2.24, `get.docker.com`, `docker-compose-v2`, the two `curl -fsSLO` commands for `v<the pyproject version>`, `sha256sum -c --ignore-missing SHA256SUMS`, `tar xzf`, `COMPOSE_FILE=compose.yaml:compose.https.yaml` with `PRASHNA_DOMAIN`, `docker compose up -d --wait`, `grep "certificate obtained"`, `grep setup=`, `https://` followed by the `/#setup=` part, and `grep '"level":"error"'` (`test_uc_x_15_container_guide_runs_on_your_own_server_with_https`).
+- `distribution/README.md` says `sudo` and the `docker` group; puts `mkdir -p backups` before the first backup command; warns about `PRASHNA_BIND_ADDR=0.0.0.0` and UFW; has the section `Already run a reverse proxy?` with `PRASHNA_TRUSTED_PROXY_HOPS=1`, WebSockets, an `nginx` block for `quiz.example.org` with `127.0.0.1:8000`, `Upgrade`, `client_max_body_size` and `1h`, and "DNS only"; names `COMPOSE_PROJECT_NAME`; describes the update with a copied `.env` and `docker compose up -d --wait` and warns against `docker compose down` in the old folder; and gives a crontab line and copying backups off the machine (`test_uc_x_15_container_guide_covers_server_operation`).
+- `distribution/README.md` has the subsection `Run an unreleased build` with `latest`, `main` and `sha-<short commit>`, `PRASHNA_IMAGE_TAG=sha-`, `docker compose pull -q` before `docker compose up -d --wait`, the rollback to the previous tag, `scripts/build_release_bundle.py`, and the statements that release tags are the supported choice and that `main` builds are not tested between releases; the CI workflow's image tags include `sha-`, the branch name and `latest` (`test_uc_x_15_container_guide_runs_an_unreleased_build`).
+- `docs/user-guide.md`, in "Run Prashna in Docker", links the container guide's HTTPS section (`test_uc_x_15_user_guide_points_server_owners_to_https`).
 
 ---
 

@@ -565,7 +565,134 @@ def test_uc_x_15_container_guide_names_a_release_and_its_bundle():
     for internal in ("Invite card", "Hetzner", "Registry access"):
         assert internal not in guide
     # Fenced blocks, also those indented inside a numbered list.
-    blocks = re.findall(r"^ *```[^\n]*\n(.*?)^ *```$", guide, re.MULTILINE | re.DOTALL)
+    blocks = re.findall(r"^ *```([^\n]*)\n(.*?)^ *```$", guide, re.MULTILINE | re.DOTALL)
     assert len(blocks) == guide.count("```") // 2
-    for block in blocks:
-        assert len([line for line in block.splitlines() if line.strip()]) == 1, block
+    for language, block in blocks:
+        assert language.strip(), block
+        if language.strip() == "sh":
+            lines = [line for line in block.splitlines() if line.strip()]
+            assert len(lines) == 1, block
+            assert not lines[0].lstrip().startswith("$ "), block
+
+
+def _guide_section(guide: str, heading: str) -> str:
+    """The body of one `## heading` section of the container guide."""
+    assert f"\n## {heading}\n" in guide, heading
+    return guide.split(f"\n## {heading}\n", 1)[1].split("\n## ", 1)[0]
+
+
+def _in_order(text: str, needles: list[str]) -> None:
+    positions = [text.find(needle) for needle in needles]
+    assert -1 not in positions, dict(zip(needles, positions))
+    assert positions == sorted(positions), dict(zip(needles, positions))
+
+
+def test_uc_x_15_container_guide_runs_on_your_own_server_with_https():
+    """UC-X-15: the container guide walks a server owner from DNS and the
+    firewall to the first sign-in over HTTPS, in order, with the current
+    release's download URLs."""
+    guide = (ROOT / "distribution" / "README.md").read_text(encoding="utf-8")
+    https = _guide_section(guide, "Run on your own server with HTTPS")
+    version = _project_version()
+    release = f"https://github.com/kvsankar/prashna/releases/download/v{version}"
+
+    flat = " ".join(https.split())
+    _in_order(flat, [
+        "AAAA record",
+        "80 and 443",
+        "cloud firewall",
+        "Compose 2.24",
+        "curl -fsSL https://get.docker.com | sudo sh",
+        "docker compose version",
+        "sudo apt install docker-compose-v2",
+        f"curl -fsSLO {release}/prashna-{version}.tar.gz",
+        f"curl -fsSLO {release}/SHA256SUMS",
+        "sha256sum -c --ignore-missing SHA256SUMS",
+        f"tar xzf prashna-{version}.tar.gz",
+        "COMPOSE_FILE=compose.yaml:compose.https.yaml\\nPRASHNA_DOMAIN=",
+        "docker compose up -d --wait",
+        'docker compose logs caddy | grep "certificate obtained"',
+        "docker compose logs prashna | grep setup=",
+        "/#setup=",
+        """docker compose logs caddy | grep '"level":"error"'""",
+    ])
+    assert re.search(r"`https://[^`]+` followed by the `/#setup=", flat), flat
+
+
+def test_uc_x_15_container_guide_covers_server_operation():
+    """UC-X-15: the container guide covers sudo, the backup folder, the
+    bind-address risk, an existing reverse proxy, the project name, updates
+    and scheduled backups."""
+    guide = (ROOT / "distribution" / "README.md").read_text(encoding="utf-8")
+    flat = " ".join(guide.split())
+
+    assert "sudo" in guide and "`docker` group" in flat
+
+    backup = _guide_section(guide, "Back up")
+    _in_order(backup, ["```sh\nmkdir -p backups\n```", "python -m prashna.backup create"])
+    assert re.search(r"crontab", backup)
+    assert "```text\n" in backup
+    assert re.search(r"off (the|this) machine", " ".join(backup.split()))
+
+    assert "PRASHNA_BIND_ADDR=0.0.0.0" in flat
+    assert re.search(r"PRASHNA_BIND_ADDR=0\.0\.0\.0`[^.]*plain HTTP", flat)
+    assert "UFW" in flat
+
+    proxy = _guide_section(guide, "Already run a reverse proxy?")
+    proxy_flat = " ".join(proxy.split())
+    assert "PRASHNA_TRUSTED_PROXY_HOPS=1" in proxy
+    assert "WebSocket" in proxy
+    nginx = re.search(r"```nginx\n(.*?)\n```", proxy, re.DOTALL)
+    assert nginx, "an nginx example"
+    for directive in ("server_name quiz.example.org;", "127.0.0.1:8000", "Upgrade", "Connection",
+                      "client_max_body_size", "1h;"):
+        assert directive in nginx.group(1), directive
+    assert "DNS only" in proxy_flat
+
+    assert "COMPOSE_PROJECT_NAME" in guide
+
+    update = _guide_section(guide, "Update")
+    update_flat = " ".join(update.split())
+    _in_order(update, ["beside", ".env", "docker compose up -d --wait"])
+    assert re.search(r"`docker compose down` in the old folder", update_flat), update_flat
+
+
+def test_uc_x_15_container_guide_runs_an_unreleased_build():
+    """UC-X-15: the container guide says how to run one commit of `main` by
+    its image tag, how to roll back, when to rebuild the bundle, and that
+    release tags are the supported choice. The tags it names are the ones
+    the CI workflow publishes."""
+    guide = (ROOT / "distribution" / "README.md").read_text(encoding="utf-8")
+    assert "\n### Run an unreleased build\n" in guide
+    sub = guide.split("\n### Run an unreleased build\n", 1)[1].split("\n## ", 1)[0].split("\n### ", 1)[0]
+    flat = " ".join(sub.split())
+
+    for text in ("`latest`", "`main`", "`sha-<short commit>`", "PRASHNA_IMAGE_TAG=sha-",
+                 "scripts/build_release_bundle.py", "previous tag"):
+        assert text in flat, text
+    _in_order(sub, ["```sh\ndocker compose pull -q\n```", "```sh\ndocker compose up -d --wait\n```"])
+    assert re.search(r"[Rr]elease tags are the supported choice", flat)
+    assert re.search(r"not tested between releases", flat)
+
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    for tag_rule in ("type=sha,prefix=sha-", "type=ref,event=branch",
+                     "type=raw,value=latest,enable={{is_default_branch}}"):
+        assert tag_rule in workflow, tag_rule
+
+
+def test_deploy_readme_points_server_owners_to_the_container_guide():
+    """deploy/ is the maintainer's runbook: its notice sends server owners to
+    the container guide, warns about the shared project name, and it links
+    nothing that does not exist."""
+    readme = (ROOT / "deploy" / "README.md").read_text(encoding="utf-8")
+    notice = " ".join(readme.split("\n## ", 1)[0].split())
+
+    assert "will be removed" in notice
+    assert "../distribution/README.md#run-on-your-own-server-with-https" in notice
+    assert "../distribution/README.md#already-run-a-reverse-proxy" in notice
+    assert "COMPOSE_PROJECT_NAME" in notice or "project name `prashna`" in notice
+    assert "#registry-access" not in readme
+    assert "deploy.yml" not in readme
+    guide = (ROOT / "distribution" / "README.md").read_text(encoding="utf-8")
+    assert "\n## Run on your own server with HTTPS\n" in guide
+    assert "\n## Already run a reverse proxy?\n" in guide

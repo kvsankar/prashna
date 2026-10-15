@@ -320,3 +320,12 @@ def test_uc_x_15_user_guide_is_listed_where_topics_live():
     assert "docs/user-guide.md" in read("CLAUDE.md")
     policy = read("docs/development.md").split("## Documentation policy", 1)[1]
     assert "[`user-guide.md`](user-guide.md)" in policy
+
+
+def test_uc_x_15_user_guide_points_server_owners_to_https():
+    """UC-X-15: the user guide's Docker section sends owners of a server
+    with a domain to the container guide's HTTPS section."""
+    docker = section(read("docs/user-guide.md") + "\n## ", "Run Prashna in Docker")
+
+    assert "](../distribution/README.md#run-on-your-own-server-with-https)" in docker
+    assert "## Run on your own server with HTTPS\n" in read("distribution/README.md")

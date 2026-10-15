@@ -574,3 +574,6 @@ See
 
 To run Prashna in a container instead, see the
 [container guide](../distribution/README.md).
+For a server of your own with HTTPS on your domain, see
+[Run on your own server with HTTPS](../distribution/README.md#run-on-your-own-server-with-https)
+in the container guide.

@@ -1,5 +1,17 @@
 # Deploy
 
+> **Maintainer's runbook.** This folder is the maintainer's runbook for
+> `https://prashna.sankara.net` and will be removed. To run Prashna on a
+> server of your own, use the container guide:
+> [Run on your own server with HTTPS](../distribution/README.md#run-on-your-own-server-with-https),
+> or [Already run a reverse proxy?](../distribution/README.md#already-run-a-reverse-proxy)
+> if the server already has a web server.
+>
+> Warning: `/opt/prashna` and the container guide's bundle both use the
+> Compose project name `prashna`. On a server that has both, give the
+> bundle another name with `COMPOSE_PROJECT_NAME` in its `.env`, or its
+> commands replace this deployment's container.
+
 This directory holds everything the **Hetzner** box needs to run Prashna at
 `https://prashna.sankara.net`.
 
@@ -29,8 +41,8 @@ instead; see [`distribution/README.md`](../distribution/README.md).
    and Certbot commands to exist before configuring TLS.
 
 4. **If the GHCR package is private**, sign in to `ghcr.io` on the server
-   first, as described in
-   [Registry access](../distribution/README.md#registry-access).
+   first with `docker login ghcr.io` and a GitHub token that has
+   `read:packages`.
 
 5. **Run the bootstrap**:
 
@@ -55,8 +67,6 @@ instead; see [`distribution/README.md`](../distribution/README.md).
 
 ## Updating
 
-Either:
-
 ```bash
 cd /opt/prashna
 old=$(docker inspect --format '{{.Image}}' $(docker compose ps -q))
@@ -68,9 +78,6 @@ The tag keeps the image that was running, so a bad release can be undone
 with `docker tag ghcr.io/kvsankar/prashna:rollback-<stamp>
 ghcr.io/kvsankar/prashna:latest && docker compose up -d`. A restart drops
 every live connection for a few seconds; update between quizzes.
-
-Or wire up the optional `deploy.yml` workflow (not included by default) that
-SSHes in and runs that on every push to `main`.
 
 ## Cloudflare visitor IP and HTTP/2
 
