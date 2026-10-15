@@ -333,6 +333,23 @@ def test_uc_x_15_installer_stops_when_uv_cannot_be_installed(tmp_path):
     assert "uv: not found" not in result.stderr
 
 
+def test_uc_x_15_installer_stops_when_uv_tool_install_fails(tmp_path):
+    """UC-X-15: when `uv tool install` fails, install.sh exits non-zero and
+    does not say Prashna is installed."""
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    (stubs / "uv").write_text('#!/bin/sh\nif [ "$1 $2" = "tool install" ]; then\n'
+                              '    echo "error: failed to fetch prashna" >&2\n    exit 1\nfi\nexit 0\n')
+    (stubs / "uv").chmod(0o755)
+    result = subprocess.run(
+        ["sh", str(ROOT / "prashna" / "installers" / "install.sh")],
+        env={"HOME": str(tmp_path), "PATH": f"{stubs}:/usr/bin:/bin"},
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0
+    assert "failed to fetch prashna" in result.stderr
+    assert "Prashna is installed" not in result.stdout
+
+
 # ---------- --tunnel (UC-X-15) ----------
 
 STUB_URLS = {"cloudflare": "https://stub-tunnel.trycloudflare.com", "ngrok": "https://stub-tunnel.ngrok-free.app"}

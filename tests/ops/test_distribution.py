@@ -7,6 +7,7 @@ import html
 import io
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -301,6 +302,32 @@ def test_installer_usage_comments_show_the_public_address():
     assert f"#   {PS1_ONE_LINER}\n" in ps1
     assert "kvsankar.github.io" not in sh
     assert "kvsankar.github.io" not in ps1
+
+
+def test_uc_x_15_windows_installer_checks_exit_codes():
+    """UC-X-15: install.ps1 stops when the uv installer or `uv tool install`
+    fails. `$ErrorActionPreference = "Stop"` ignores a program's exit status,
+    so each of these calls must be followed by a `$LASTEXITCODE` check that
+    throws before the success message. PowerShell is not run here."""
+    path = ROOT / "prashna" / "installers" / "install.ps1"
+    ps1 = path.read_text(encoding="utf-8")
+    code = [line.strip() for line in ps1.splitlines()
+            if line.strip() and not line.strip().startswith("#")]
+    success = next(i for i, line in enumerate(code) if "Prashna is installed" in line)
+    for native in ('powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"',
+                   "uv tool install --upgrade prashna"):
+        at = code.index(native)
+        assert code[at + 1] == "if ($LASTEXITCODE -ne 0) {", native
+        assert code[at + 2].startswith('throw "'), native
+        assert at + 2 < success
+    pwsh = shutil.which("pwsh")
+    if pwsh:  # a syntax check only; the installer itself is never run
+        parse = subprocess.run(
+            [pwsh, "-NoProfile", "-Command",
+             "$e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile("
+             f"'{path}', [ref]$null, [ref]$e); $e.Count"],
+            capture_output=True, text=True, timeout=60)
+        assert parse.stdout.strip() == "0", parse.stdout + parse.stderr
 
 
 def test_pages_publish_contract():

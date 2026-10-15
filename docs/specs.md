@@ -2833,6 +2833,13 @@ one command, on macOS, Linux, or Windows.
   to start it; if `uv` still cannot be found after that step, they stop with
   status 1 and a message pointing to `https://docs.astral.sh/uv/` instead of
   continuing
+- **And** if the `uv` installer or `uv tool install --upgrade prashna`
+  exits with a non-zero status, the install scripts stop with a non-zero
+  status and an error message, and do not print that Prashna is installed.
+  `install.ps1` checks `$LASTEXITCODE` after each of these programs,
+  because PowerShell's `$ErrorActionPreference = "Stop"` ignores a
+  program's exit status. A failed `uv tool update-shell` is not an
+  error: both scripts then tell the presenter to open a new terminal
 - **When** the presenter runs `prashna`
 - **Then** it serves on `http://127.0.0.1:8000`, keeps its database,
   uploads, `secret-key` and `setup-token` in the per-user app-data folder
@@ -3035,6 +3042,7 @@ rest of the end-user how-to. The container guide covers Docker.
 
 **Tests (API)**
 - `GET /install.sh` → `200 text/plain` containing `uv tool install --upgrade prashna` and Astral's installer URL; `GET /install.ps1` likewise for PowerShell.
+- `install.sh` with a `uv` whose `tool install` exits 1 exits non-zero and does not print `Prashna is installed` (`test_uc_x_15_installer_stops_when_uv_tool_install_fails`).
 - `install.sh` run where `uv` is absent and its download fails exits 1 with a message naming `https://docs.astral.sh/uv/`, and never runs `uv tool install`.
 - On a fresh data folder the CLI's terminal output contains no `diagnostic_event` line and the setup link at most once (exactly once with `--no-browser`); `prashna.log` in the data folder holds the diagnostic records.
 - Applying the additive migration bridge to an up-to-date database logs no `db.migration` record.
@@ -3063,6 +3071,7 @@ rest of the end-user how-to. The container guide covers Docker.
 - `scripts/build_pages_site.py <dir>` writes `install.sh` and `install.ps1` byte-for-byte equal to `prashna/installers/`, and an `index.html` showing both one-liners with the `https://sankara.net/prashna/` URLs and the pipx and virtual-environment commands; README.md shows the same commands, links the landing page `https://sankara.net/prashna/`, and shows no `kvsankar.github.io` install command.
 - README.md and the landing page show `uv tool install prashna`, `uvx prashna` and `uvx prashna@latest` (in README.md, each alone in its own `sh` block), in that order, after the one-liners and before `pipx install prashna`; the text that introduces `uvx prashna` says it runs Prashna without installing it, no text says `uvx prashna` installs Prashna, and the text that introduces `uvx prashna@latest` says it gets the newest version (`test_uc_x_15_readme_offers_uv_tool_install_before_pipx`, `test_uc_x_15_landing_page_offers_uv_tool_install_before_pipx`).
 - The usage comment at the top of `prashna/installers/install.sh` and `install.ps1` shows that script's one-liner with its `https://sankara.net/prashna/` URL.
+- `install.ps1` checks `$LASTEXITCODE` after the `uv` installer and after `uv tool install --upgrade prashna`, and each check stops the script with `throw` (which ends `powershell -c` with status 1) before the success message. The test reads the script text and does not run PowerShell (`test_uc_x_15_windows_installer_checks_exit_codes`).
 - README.md, the GitHub and PyPI front page, opens with who Prashna is for and the problem it solves, then `## What Prashna does` and `## Why Prashna`, and only then `## Install` (`test_readme_opens_with_context_before_install`).
 - Every fenced code block in README.md is tagged `sh` or `powershell` and holds exactly one command, with no `$` prompt, so a reader copies each command on its own (`test_readme_puts_each_command_in_its_own_tagged_block`).
 - The CI workflow has a `pages` job that runs only on `v*` tags, needs the PyPI job, builds the site with that script, and deploys it with `actions/upload-pages-artifact` and `actions/deploy-pages` under the `github-pages` environment with `pages: write` and `id-token: write`.
