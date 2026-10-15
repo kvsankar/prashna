@@ -95,6 +95,36 @@ def test_readme_uses_only_absolute_links():
     assert relative == []
 
 
+# A fenced code block in Markdown: its language tag and its body.
+FENCED_BLOCK = re.compile(r"^```([^\n]*)\n(.*?)^```$", re.MULTILINE | re.DOTALL)
+
+
+def test_readme_opens_with_context_before_install():
+    """UC-X-15: the README (the GitHub and PyPI front page) says who Prashna
+    is for and why, before it says how to install it."""
+    readme = read("README.md")
+    headings = re.findall(r"^## (.+)$", readme, re.MULTILINE)
+
+    assert headings[:3] == ["What Prashna does", "Why Prashna", "Install"]
+    opening = readme.split("\n## ", 1)[0]
+    assert "trainers, teachers and speakers" in opening
+
+
+def test_readme_puts_each_command_in_its_own_tagged_block():
+    """UC-X-15: each README command sits alone in a fenced block tagged sh or
+    powershell, with no prompt sign, so it copies cleanly."""
+    readme = read("README.md")
+    blocks = FENCED_BLOCK.findall(readme)
+
+    assert blocks, "README.md should show its commands in fenced blocks"
+    for language, body in blocks:
+        lines = [line for line in body.splitlines() if line.strip()]
+        assert language in ("sh", "powershell"), body
+        assert len(lines) == 1, body
+        assert not lines[0].lstrip().startswith("$"), body
+    assert readme.count("```") == 2 * len(blocks)
+
+
 def test_removed_process_docs_stay_removed():
     """The Sarathi baseline files are replaced by docs/specs.md and
     docs/architecture.md."""

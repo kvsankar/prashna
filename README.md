@@ -4,15 +4,16 @@
   <img src="https://raw.githubusercontent.com/kvsankar/prashna/main/docs/images/prashna-hero.jpg" alt="A teacher under a banyan tree, with students raising their hands and question marks rising to an oil lamp" width="50%" />
 </p>
 
-![How prashna brings an admin, moderators, participants and a projector into one live session for Q&A and quizzes, and what it produces afterwards](https://raw.githubusercontent.com/kvsankar/prashna/main/docs/images/prashna-infographic.png)
+Prashna is a live Q&A and quiz tool for trainers, teachers and speakers who
+run a workshop, a class or a talk. *Prashna* (प्रश्न) is Sanskrit for
+*question*.
 
-*How prashna runs a session with an audience: an admin sets it up, a moderator runs the room, participants join on their phones and the projector shows the room the same state. Questions are asked and upvoted, versioned quizzes are run question by question, and the session ends with ranked questions, quiz results, run reports, attendee profiles and feedback. The [infographic source](https://github.com/kvsankar/prashna/blob/main/docs/images/prashna-infographic.html) is kept with the image.*
+In a room, most people do not ask questions out loud. From the front, you
+cannot tell who is following and who is lost. With Prashna, people use
+their phones to ask questions without giving their names, and to answer
+short quizzes. You see what the room wants to know and what it understood.
 
-A live Q&A and quiz tool for any session with an audience: training,
-lectures, workshops, town halls, meetups. *Prashna* (प्रश्न) is
-Sanskrit for *question*.
-
-Two core features:
+## What Prashna does
 
 - **Anonymous Q&A.** Participants post questions and upvote each other's.
   The moderator responds in text or out loud. A removed question is hidden
@@ -22,25 +23,44 @@ Two core features:
   screen on the projector, and optional live counts while people answer.
   Quizzes are versioned: editing a quiz never changes the report of a past
   run.
+- **Projector view.** The screen at the front of the room shows the join
+  code, a QR code for the participant link, the top questions, and the
+  current quiz question in step with the moderator.
+- **Export.** The admin can export sessions, Q&A questions, attendee
+  profiles, feedback, quiz runs, and quizzes as JSON or as an Excel workbook.
 
-A **projector view** for the screen at the front of the room shows the join
-code, a QR code for the participant link, the top questions, and the current
-quiz question in step with the moderator.
+![How prashna brings an admin, moderators, participants and a projector into one live session for Q&A and quizzes, and what it produces afterwards](https://raw.githubusercontent.com/kvsankar/prashna/main/docs/images/prashna-infographic.png)
 
-The admin can **export** sessions, Q&A questions, attendee profiles,
-feedback, quiz runs, and quizzes as JSON or as an Excel workbook.
+*How prashna runs a session with an audience: an admin sets it up, a moderator runs the room, participants join on their phones and the projector shows the room the same state. Questions are asked and upvoted, versioned quizzes are run question by question, and the session ends with ranked questions, quiz results, run reports, attendee profiles and feedback. The [infographic source](https://github.com/kvsankar/prashna/blob/main/docs/images/prashna-infographic.html) is kept with the image.*
+
+## Why Prashna
+
+- **It runs on your own laptop.** One command installs it. You need no
+  server and no subscription.
+- **Your audience can reach it over the internet.** A built-in tunnel puts
+  it online. The tunnel needs `cloudflared` or `ngrok`.
+- **Your data stays on your machine.** Prashna stores its data in a folder
+  on your computer.
+- **It is free and open source,** under the MIT licence.
 
 ## Install
 
 Choose one of these. Each installs the same `prashna` command.
 
-**One command, on macOS, Linux, or Windows.** Works on a machine without
-Python; it installs [uv](https://docs.astral.sh/uv/), which fetches Python if
-needed.
+**One command, on macOS, Linux, or Windows.** This works on a machine
+without Python. It installs [uv](https://docs.astral.sh/uv/), which fetches
+Python if needed.
 
-```bash
-curl -LsSf https://sankara.net/prashna/install.sh | sh                  # macOS / Linux
-powershell -ExecutionPolicy ByPass -c "irm https://sankara.net/prashna/install.ps1 | iex"   # Windows
+On macOS and Linux:
+
+```sh
+curl -LsSf https://sankara.net/prashna/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://sankara.net/prashna/install.ps1 | iex"
 ```
 
 The landing page <https://sankara.net/prashna/> shows the same commands.
@@ -48,34 +68,83 @@ The landing page <https://sankara.net/prashna/> shows the same commands.
 **Already have Python 3.11 or newer?** Install without uv, using
 [pipx](https://pipx.pypa.io/):
 
-```bash
+```sh
 pipx install prashna
 ```
 
-Or use pip inside a virtual environment:
+Or use pip inside a virtual environment. First create the environment:
 
-```bash
+```sh
 python3 -m venv ~/.prashna
-~/.prashna/bin/pip install prashna          # Windows: ~\.prashna\Scripts\pip install prashna
+```
+
+Then install Prashna into it. On macOS and Linux:
+
+```sh
+~/.prashna/bin/pip install prashna
+```
+
+On Windows:
+
+```powershell
+~\.prashna\Scripts\pip install prashna
 ```
 
 A plain `pip install` into the system Python is refused on Debian, Ubuntu,
 and some other Linux distributions ("externally-managed-environment"); the
 virtual environment avoids that.
 
-**Already have uv?** `uvx prashna` installs and starts it in one step.
+**Already have uv?** This command installs and starts Prashna in one step:
 
-Then start it:
-
-```bash
-prashna                                     # virtual environment: ~/.prashna/bin/prashna
+```sh
+uvx prashna
 ```
 
-Update with `uv tool upgrade prashna`, `pipx upgrade prashna`, or
-`~/.prashna/bin/pip install --upgrade prashna`. `prashna --help` lists every
-option: the address and port, the data folder, `--no-browser`, `--tunnel`, and
-the `backup` and `reset-password` commands. If you forget the admin password,
-`prashna reset-password` sets a new one.
+## Start and update
+
+Start Prashna:
+
+```sh
+prashna
+```
+
+If you installed it into a virtual environment, start it from there:
+
+```sh
+~/.prashna/bin/prashna
+```
+
+To update, use the tool you installed with. With uv:
+
+```sh
+uv tool upgrade prashna
+```
+
+With pipx:
+
+```sh
+pipx upgrade prashna
+```
+
+With the virtual environment:
+
+```sh
+~/.prashna/bin/pip install --upgrade prashna
+```
+
+To list every option (the address and port, the data folder,
+`--no-browser`, `--tunnel`, and the `backup` and `reset-password`
+commands):
+
+```sh
+prashna --help
+```
+
+If you forget the admin password, set a new one:
+
+```sh
+prashna reset-password
+```
 
 ## First run
 
@@ -87,11 +156,16 @@ Prashna keeps its data in your app-data folder.
 ## Share over the internet
 
 To let people join from their own phones over the internet, start Prashna
-with a tunnel:
+with a tunnel. With a Cloudflare quick tunnel (no account needed):
 
-```bash
-prashna --tunnel cloudflare      # Cloudflare quick tunnel: no account needed
-prashna --tunnel ngrok           # ngrok: uses your signed-in ngrok
+```sh
+prashna --tunnel cloudflare
+```
+
+With ngrok (uses your signed-in ngrok):
+
+```sh
+prashna --tunnel ngrok
 ```
 
 Prashna starts the tunnel, waits until its public address works, and prints
@@ -100,14 +174,29 @@ QR code use that address automatically, while you keep using
 `http://127.0.0.1:8000` yourself. Ctrl+C stops Prashna and the tunnel
 together.
 
-You need the tunnel program once:
+You need the tunnel program once.
 
-- **Cloudflare:** install `cloudflared` (macOS: `brew install cloudflared`;
-  Windows: `winget install --id Cloudflare.cloudflared`; Linux:
-  [Cloudflare's downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)).
-  No account is needed.
-- **ngrok:** install it from [ngrok.com/download](https://ngrok.com/download)
-  and sign in once with `ngrok config add-authtoken <your token>`.
+**Cloudflare.** Install `cloudflared`. No account is needed. On macOS:
+
+```sh
+brew install cloudflared
+```
+
+On Windows:
+
+```powershell
+winget install --id Cloudflare.cloudflared
+```
+
+On Linux, use
+[Cloudflare's downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+
+**ngrok.** Install it from [ngrok.com/download](https://ngrok.com/download),
+then sign in once:
+
+```sh
+ngrok config add-authtoken <your token>
+```
 
 On the free plans they differ like this:
 

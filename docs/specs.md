@@ -2979,6 +2979,8 @@ code without installing the command, it is
 - `uv build --wheel` produces a wheel that contains `prashna/static/index.html`, the install scripts, and a `prashna` console-script entry point, and no top-level `app` package; its metadata declares `License-Expression: MIT`, includes `LICENSE`, and links Homepage to `https://sankara.net/prashna/` and Source to the GitHub repository.
 - `scripts/build_pages_site.py <dir>` writes `install.sh` and `install.ps1` byte-for-byte equal to `prashna/installers/`, and an `index.html` showing both one-liners with the `https://sankara.net/prashna/` URLs and the pipx and virtual-environment commands; README.md shows the same commands, links the landing page `https://sankara.net/prashna/`, and shows no `kvsankar.github.io` install command.
 - The usage comment at the top of `prashna/installers/install.sh` and `install.ps1` shows that script's one-liner with its `https://sankara.net/prashna/` URL.
+- README.md, the GitHub and PyPI front page, opens with who Prashna is for and the problem it solves, then `## What Prashna does` and `## Why Prashna`, and only then `## Install` (`test_readme_opens_with_context_before_install`).
+- Every fenced code block in README.md is tagged `sh` or `powershell` and holds exactly one command, with no `$` prompt, so a reader copies each command on its own (`test_readme_puts_each_command_in_its_own_tagged_block`).
 - The CI workflow has a `pages` job that runs only on `v*` tags, needs the PyPI job, builds the site with that script, and deploys it with `actions/upload-pages-artifact` and `actions/deploy-pages` under the `github-pages` environment with `pages: write` and `id-token: write`.
 
 ---
