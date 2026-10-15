@@ -47,7 +47,7 @@ dev = [
 prashna = "prashna.cli:main"
 
 [project.urls]
-Homepage = "https://kvsankar.github.io/prashna/"
+Homepage = "https://sankara.net/prashna/"
 Source = "https://github.com/kvsankar/prashna"
 Documentation = "https://github.com/kvsankar/prashna/tree/main/docs"
 Issues = "https://github.com/kvsankar/prashna/issues"

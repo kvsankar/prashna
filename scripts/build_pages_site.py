@@ -5,7 +5,9 @@
 Writes install.sh and install.ps1 (copied unchanged from
 prashna/installers/) and an index.html landing page. The release workflow
 runs it on version tags and deploys OUT_DIR to
-https://kvsankar.github.io/prashna/ (UC-X-15).
+https://kvsankar.github.io/prashna/. The public addresses that the page
+shows are under https://sankara.net/prashna/, which serves this site
+(UC-X-15).
 """
 
 from __future__ import annotations
@@ -17,12 +19,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLERS = ROOT / "prashna" / "installers"
-SITE_URL = "https://kvsankar.github.io/prashna"
+INSTALL_URL = "https://sankara.net/prashna"
 REPO_URL = "https://github.com/kvsankar/prashna"
 
 ONE_LINERS = (
-    ("macOS and Linux", f"curl -LsSf {SITE_URL}/install.sh | sh"),
-    ("Windows (PowerShell)", f'powershell -ExecutionPolicy ByPass -c "irm {SITE_URL}/install.ps1 | iex"'),
+    ("macOS and Linux", f"curl -LsSf {INSTALL_URL}/install.sh | sh"),
+    ("Windows (PowerShell)", f'powershell -ExecutionPolicy ByPass -c "irm {INSTALL_URL}/install.ps1 | iex"'),
 )
 
 # The same routes the README shows for machines that already have Python.

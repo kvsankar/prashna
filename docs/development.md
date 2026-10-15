@@ -233,8 +233,10 @@ The tag starts the CI workflow, which:
   if the tag does not match the version in `pyproject.toml`;
 - after the PyPI job, builds the install-script site with
   `scripts/build_pages_site.py` and deploys it to GitHub Pages at
-  `https://kvsankar.github.io/prashna/`, which serves the README's
-  one-line installers.
+  `https://kvsankar.github.io/prashna/`. Users install from
+  `https://sankara.net/prashna/install.sh` and `install.ps1`, the addresses
+  the README shows; sankara.net serves them from the GitHub Pages site, so
+  each Pages deploy updates them. The GitHub Pages addresses also work.
 
 Two one-time settings make the publishing jobs work: a trusted publisher on
 PyPI for project `prashna` (workflow `docker.yml`, environment `pypi`), and

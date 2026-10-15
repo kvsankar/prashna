@@ -239,10 +239,13 @@ def test_pypi_publish_contract():
     assert 'test "${GITHUB_REF_NAME#v}" = "$version"' in job
 
 
-PAGES_URL = "https://kvsankar.github.io/prashna"
+# The public landing page; sankara.net serves it from the GitHub Pages site.
+INSTALL_URL = "https://sankara.net/prashna"
+SH_ONE_LINER = f"curl -LsSf {INSTALL_URL}/install.sh | sh"
+PS1_ONE_LINER = f'powershell -ExecutionPolicy ByPass -c "irm {INSTALL_URL}/install.ps1 | iex"'
 ONE_LINERS = (
-    f"curl -LsSf {PAGES_URL}/install.sh | sh",
-    f'powershell -ExecutionPolicy ByPass -c "irm {PAGES_URL}/install.ps1 | iex"',
+    SH_ONE_LINER,
+    PS1_ONE_LINER,
     # Without uv, for anyone with Python 3.11 or newer.
     "pipx install prashna",
     "python3 -m venv ~/.prashna",
@@ -263,6 +266,19 @@ def test_pages_site_serves_the_packaged_installers(tmp_path):
         assert html.escape(line, quote=False) in index
         assert line in readme
     assert "prashna.sankara.net/install" not in readme
+    assert "kvsankar.github.io/prashna/install" not in readme
+    assert f"<{INSTALL_URL}/>" in readme or f"]({INSTALL_URL}/)" in readme
+
+
+def test_installer_usage_comments_show_the_public_address():
+    """UC-X-15: each install script's header comment shows its own one-liner
+    with the sankara.net address, as the README does."""
+    sh = (ROOT / "prashna" / "installers" / "install.sh").read_text(encoding="utf-8")
+    ps1 = (ROOT / "prashna" / "installers" / "install.ps1").read_text(encoding="utf-8")
+    assert f"#   {SH_ONE_LINER}\n" in sh
+    assert f"#   {PS1_ONE_LINER}\n" in ps1
+    assert "kvsankar.github.io" not in sh
+    assert "kvsankar.github.io" not in ps1
 
 
 def test_pages_publish_contract():

@@ -39,9 +39,11 @@ Python; it installs [uv](https://docs.astral.sh/uv/), which fetches Python if
 needed.
 
 ```bash
-curl -LsSf https://kvsankar.github.io/prashna/install.sh | sh                  # macOS / Linux
-powershell -ExecutionPolicy ByPass -c "irm https://kvsankar.github.io/prashna/install.ps1 | iex"   # Windows
+curl -LsSf https://sankara.net/prashna/install.sh | sh                  # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://sankara.net/prashna/install.ps1 | iex"   # Windows
 ```
+
+The landing page <https://sankara.net/prashna/> shows the same commands.
 
 **Already have Python 3.11 or newer?** Install without uv, using
 [pipx](https://pipx.pypa.io/):
