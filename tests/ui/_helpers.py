@@ -151,6 +151,19 @@ def ask_query_api(client_or_url, code: str, text: str, *, voter_token: str | Non
 CONFIRM_DIALOG = "dialog.confirm-dialog"
 
 
+def wait_until_usable(page) -> None:
+    """Wait until the page has applied its bootstrap response.
+
+    The static shell, including the participant Profile form, is visible
+    before the bootstrap request returns. When the response lands, the page
+    fills the form from the saved profile and so replaces anything typed
+    before then. A test that types into such a form waits for the page's
+    `prashna-usable` mark first (UC-X-11)."""
+    page.wait_for_function(
+        "performance.getEntriesByName('prashna-usable').length > 0", timeout=5000
+    )
+
+
 def watch_native_dialogs(page) -> list[str]:
     """Collect every native browser dialog (alert, confirm, prompt) the page
     opens and dismiss it. Prashna uses none (UX.md §14), so tests assert the

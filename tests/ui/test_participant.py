@@ -22,6 +22,7 @@ from ._helpers import (
     ask_query_api,
     confirm_dialog,
     dismiss_confirm,
+    wait_until_usable,
     watch_native_dialogs,
 )
 
@@ -412,6 +413,7 @@ def test_uc_p_03_set_display_name_persists(base_url, admin_setup, page):
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#profile-card:visible")
+        wait_until_usable(page)
         page.locator("#profile-card > summary").click()
         page.fill("#my-name", "Alice")
         page.click("#profile-submit")
@@ -464,6 +466,7 @@ def test_uc_p_03_attendee_profile_persists(
     try:
         page.goto(f"{base_url}/s/{s['code']}")
         page.wait_for_selector("#profile-card:visible")
+        wait_until_usable(page)
         expect(page.locator("#profile-card")).not_to_have_attribute("open", "")
         expect(page.locator(".profile-title-closed")).to_be_visible()
         expect(page.locator(".profile-cta-closed")).to_be_visible()
@@ -490,6 +493,7 @@ def test_uc_p_03_attendee_profile_persists(
 
         page.reload()
         page.wait_for_selector("#profile-card:visible")
+        wait_until_usable(page)
         expect(page.locator("#profile-card")).not_to_have_attribute("open", "")
         expect(page.locator(".profile-title-closed")).to_be_visible()
         expect(page.locator(".profile-cta-closed")).to_be_visible()
