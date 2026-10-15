@@ -39,8 +39,10 @@ results, the attendee profiles and the feedback.*
 
 - **It runs on your own laptop.** One command installs it. You need no
   server and no subscription.
-- **Your audience can reach it over the internet.** A built-in tunnel puts
-  it online. The tunnel needs `cloudflared` or `ngrok`.
+- **Your audience can reach it over the internet.** Prashna works with
+  Cloudflare and ngrok tunnels. Start it with `--tunnel cloudflare` or
+  `--tunnel ngrok`, and it puts the public address in the join link and
+  QR code. Install `cloudflared` or `ngrok` first.
 - **Your data stays on your machine.** Prashna stores its data in a folder
   on your computer.
 - **It is free and open source,** under the MIT License.
